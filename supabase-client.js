@@ -43,7 +43,15 @@
 
   function getSession() { return cachedSession; }
   function currentUserId() { return cachedSession && cachedSession.user ? cachedSession.user.id : null; }
-  function onAuthChange(cb) { authListeners.push(cb); if (cachedSession !== null) cb(cachedSession); }
+  // Registering a listener is what app.js does once at startup — use that as
+  // the trigger to actually create the Supabase client, so it picks up an
+  // existing session (or one just returned by a Google OAuth redirect)
+  // immediately, instead of waiting for the user to click "Sign in" again.
+  function onAuthChange(cb) {
+    authListeners.push(cb);
+    client_();
+    if (cachedSession !== null) cb(cachedSession);
+  }
 
   function signInWithGoogle() {
     var c = client_();
