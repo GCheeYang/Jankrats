@@ -1,4 +1,4 @@
--- Jank Vault social layer — Supabase schema.
+-- Jankrats social layer — Supabase schema.
 -- Run this once in the Supabase SQL editor (Project → SQL Editor → New query → paste → Run).
 -- Safe to re-run: uses "if not exists" / "or replace" throughout.
 

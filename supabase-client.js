@@ -1,5 +1,5 @@
 /* ============================================================
-   JVBackend — thin wrapper around Supabase for Jank Vault's social layer
+   JVBackend — thin wrapper around Supabase for Jankrats' social layer
    (Feed, Profiles, Follows, Kudos, Comments, Top Cards, Push).
 
    Every method degrades gracefully when Supabase isn't configured yet

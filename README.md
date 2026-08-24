@@ -1,4 +1,4 @@
-# Jank Vault social layer — setup checklist
+# Jankrats social layer — setup checklist
 
 Everything here happens in your own browser, on accounts only you can create.
 Once you're through it, send me back the four values marked **→ send me this**
@@ -7,7 +7,7 @@ and I'll wire the app up to them.
 ## 1. Create the Supabase project
 
 1. Go to supabase.com and sign up / log in.
-2. Click **New project**. Pick any name (e.g. "jank-vault"), a database
+2. Click **New project**. Pick any name (e.g. "jankrats"), a database
    password (Supabase needs one — you won't need to remember it, it's not
    used day to day), and the region closest to your group.
 3. Wait for the project to finish provisioning (~2 minutes).
@@ -34,7 +34,7 @@ out an OAuth client ID.
 1. Go to console.cloud.google.com, create a project (or reuse one you
    already have).
 2. **APIs & Services → OAuth consent screen** — fill in an app name (e.g.
-   "Jank Vault") and your email as support/developer contact. "External"
+   "Jankrats") and your email as support/developer contact. "External"
    user type is fine; you don't need to submit it for verification for a
    small group — Google just caps it at 100 test users until/unless you do.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**

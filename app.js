@@ -1,5 +1,5 @@
 /* ============================================================
-   Jank Vault — app logic (no build step, no dependencies)
+   Jankrats — app logic (no build step, no dependencies)
    Persistence: localStorage, namespaced per browser/viewer.
    ============================================================ */
 
@@ -117,18 +117,18 @@
   });
 
   var DEMO_CARDS = [
-    { id: "JANK-001", name: "Bargain-Bin Baron", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "001", type: "Legend", domains: ["Body", "Chaos"], rarity: "Legend", cost: null, power: null, text: "Legend. Grants access to Body and Chaos. Once per turn, you may swap a card in your hand for a random one from your sideboard, free of charge, no refunds.", isPlaceholder: true },
-    { id: "JANK-002", name: "Sir Reginald, Duct-Taped", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "002", type: "Unit", domains: ["Body"], rarity: "Epic", cost: 4, power: 5, text: "Chosen Champion. Held together by hope and adhesive. When Sir Reginald blocks, he gains +1/+1 until the mechanism fails.", isPlaceholder: true },
-    { id: "JANK-003", name: "Clearance Rack Golem", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "003", type: "Unit", domains: ["Body"], rarity: "Common", cost: 3, power: 3, text: "Was 6 energy, now 3 energy. Ask about our other deals.", isPlaceholder: true },
-    { id: "JANK-004", name: "Overclocked Bilgerat", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "004", type: "Unit", domains: ["Chaos"], rarity: "Uncommon", cost: 2, power: 3, text: "When played, deal 1 damage to a random target. Including, occasionally, its own team.", isPlaceholder: true },
-    { id: "JANK-005", name: "Receipt of Doom", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "005", type: "Spell", domains: ["Chaos"], rarity: "Common", cost: 1, power: null, text: "Deal 2 damage to an enemy unit. It's non-refundable.", isPlaceholder: true },
-    { id: "JANK-006", name: "Warranty Void Ritual", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "006", type: "Spell", domains: ["Body", "Chaos"], rarity: "Rare", cost: 5, power: null, text: "Destroy target Gear. Draw a card. The manufacturer is not liable for damages.", isPlaceholder: true },
-    { id: "JANK-007", name: "Half-Price Cutlass", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "007", type: "Gear", domains: ["Chaos"], rarity: "Common", cost: 2, power: null, text: "Equipped unit gets +2/+0. Blade sold separately from handle.", isPlaceholder: true },
-    { id: "JANK-008", name: "Dockside Discount", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "008", type: "Unit", domains: ["Body"], rarity: "Common", cost: 1, power: 1, text: "When played, gain 1 energy next turn if you haven't spent any this turn.", isPlaceholder: true },
-    { id: "JANK-009", name: "Anchor Dump", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "009", type: "Battlefield", domains: [], rarity: "Common", cost: null, power: null, text: "Battlefield. Units here gain +0/+1. The tide smells faintly of regret.", isPlaceholder: true },
-    { id: "JANK-010", name: "Rune of Body", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "R-BODY", type: "Rune", domains: ["Body"], rarity: "Rune", cost: null, power: null, text: "Rune. Provides Body energy.", isPlaceholder: true },
-    { id: "JANK-011", name: "Rune of Chaos", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "R-CHAOS", type: "Rune", domains: ["Chaos"], rarity: "Rune", cost: null, power: null, text: "Rune. Provides Chaos energy.", isPlaceholder: true },
-    { id: "JANK-012", name: "Big Discount Brawler, Clearance Special", set: "JANK", setName: "Jank Vault Demo Set", collectorNumber: "010", type: "Unit", domains: ["Chaos"], rarity: "Epic", cost: 6, power: 8, text: "Chosen Champion. Everything about this card was too expensive except this card.", isPlaceholder: true }
+    { id: "JANK-001", name: "Bargain-Bin Baron", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "001", type: "Legend", domains: ["Body", "Chaos"], rarity: "Legend", cost: null, power: null, text: "Legend. Grants access to Body and Chaos. Once per turn, you may swap a card in your hand for a random one from your sideboard, free of charge, no refunds.", isPlaceholder: true },
+    { id: "JANK-002", name: "Sir Reginald, Duct-Taped", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "002", type: "Unit", domains: ["Body"], rarity: "Epic", cost: 4, power: 5, text: "Chosen Champion. Held together by hope and adhesive. When Sir Reginald blocks, he gains +1/+1 until the mechanism fails.", isPlaceholder: true },
+    { id: "JANK-003", name: "Clearance Rack Golem", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "003", type: "Unit", domains: ["Body"], rarity: "Common", cost: 3, power: 3, text: "Was 6 energy, now 3 energy. Ask about our other deals.", isPlaceholder: true },
+    { id: "JANK-004", name: "Overclocked Bilgerat", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "004", type: "Unit", domains: ["Chaos"], rarity: "Uncommon", cost: 2, power: 3, text: "When played, deal 1 damage to a random target. Including, occasionally, its own team.", isPlaceholder: true },
+    { id: "JANK-005", name: "Receipt of Doom", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "005", type: "Spell", domains: ["Chaos"], rarity: "Common", cost: 1, power: null, text: "Deal 2 damage to an enemy unit. It's non-refundable.", isPlaceholder: true },
+    { id: "JANK-006", name: "Warranty Void Ritual", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "006", type: "Spell", domains: ["Body", "Chaos"], rarity: "Rare", cost: 5, power: null, text: "Destroy target Gear. Draw a card. The manufacturer is not liable for damages.", isPlaceholder: true },
+    { id: "JANK-007", name: "Half-Price Cutlass", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "007", type: "Gear", domains: ["Chaos"], rarity: "Common", cost: 2, power: null, text: "Equipped unit gets +2/+0. Blade sold separately from handle.", isPlaceholder: true },
+    { id: "JANK-008", name: "Dockside Discount", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "008", type: "Unit", domains: ["Body"], rarity: "Common", cost: 1, power: 1, text: "When played, gain 1 energy next turn if you haven't spent any this turn.", isPlaceholder: true },
+    { id: "JANK-009", name: "Anchor Dump", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "009", type: "Battlefield", domains: [], rarity: "Common", cost: null, power: null, text: "Battlefield. Units here gain +0/+1. The tide smells faintly of regret.", isPlaceholder: true },
+    { id: "JANK-010", name: "Rune of Body", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "R-BODY", type: "Rune", domains: ["Body"], rarity: "Rune", cost: null, power: null, text: "Rune. Provides Body energy.", isPlaceholder: true },
+    { id: "JANK-011", name: "Rune of Chaos", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "R-CHAOS", type: "Rune", domains: ["Chaos"], rarity: "Rune", cost: null, power: null, text: "Rune. Provides Chaos energy.", isPlaceholder: true },
+    { id: "JANK-012", name: "Big Discount Brawler, Clearance Special", set: "JANK", setName: "Jankrats Demo Set", collectorNumber: "010", type: "Unit", domains: ["Chaos"], rarity: "Epic", cost: 6, power: 8, text: "Chosen Champion. Everything about this card was too expensive except this card.", isPlaceholder: true }
   ];
 
   /* ---------------- state ---------------- */
@@ -226,6 +226,7 @@
 
   function navigate(view) {
     if (VIEWS.indexOf(view) === -1) view = "dashboard";
+    if (view !== "import" && voiceImportState.listening) stopVoiceListening();
     state.route = view;
     window.location.hash = "#" + view;
     render();
@@ -1321,7 +1322,7 @@
   }
 
   function promptImportShareCode() {
-    var code = window.prompt("Paste a Jank Vault share code:");
+    var code = window.prompt("Paste a Jankrats share code:");
     if (!code) return;
     var payload = decodeDeckShare(code);
     if (!payload) { toast("That doesn't look like a valid share code."); return; }
@@ -1334,7 +1335,7 @@
     var el = document.getElementById("view-shared");
     if (!state.sharedDeck) { el.innerHTML = ""; return; }
     var payload = state.sharedDeck;
-    var html = '<div class="view-head"><div><h1>' + escapeHtml(payload.name || "Shared deck") + '</h1><p>Someone shared this Jank Vault deck with you as a link. Import it to add it (and its cards) to your own Vault.</p></div>' +
+    var html = '<div class="view-head"><div><h1>' + escapeHtml(payload.name || "Shared deck") + '</h1><p>Someone shared this Jankrats deck with you as a link. Import it to add it (and its cards) to your own Vault.</p></div>' +
       '<button class="btn primary" data-action="import-shared">Import into my Vault</button></div>';
     html += '<div class="callout" style="margin-bottom:16px;">Legend: <b>' + escapeHtml(payload.legend ? payload.legend.n : "—") + "</b> · Champion: <b>" + escapeHtml(payload.champion ? payload.champion.n : "—") + "</b> · " + domainChips(payload.domains) + "</div>";
     html += '<div class="card-grid">' + (payload.main || []).map(function (e) {
@@ -1353,6 +1354,9 @@
   /* ================================================================
      IMPORT (CSV / JSON) of real card data
      ================================================================ */
+
+  var SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  var voiceImportState = { listening: false, recognition: null, transcript: "", results: [] };
 
   function renderImportView() {
     var el = document.getElementById("view-import");
@@ -1373,8 +1377,11 @@
       "</div>";
     html += '<div id="import-result" style="margin-top:14px;"></div>';
 
+    html += renderVoiceImportSection();
+
     el.innerHTML = html;
     renderImportSchema("json");
+    wireVoiceImport(el);
     el.querySelectorAll("[data-tab2]").forEach(function (b) {
       b.addEventListener("click", function () {
         el.querySelectorAll("[data-tab2]").forEach(function (x) { x.classList.remove("active"); });
@@ -1454,6 +1461,265 @@
     toast("Import complete.");
   }
 
+  /* ================================================================
+     VOICE IMPORT: speak (or type) a list of owned cards, fuzzy-match
+     each phrase against the card database, and add to the collection.
+     ================================================================ */
+
+  function renderVoiceImportSection() {
+    var supported = !!SpeechRecognitionCtor;
+    var html = '<div class="view-head" style="margin-top:34px;"><div><h1 style="font-size:20px;">Speak your collection</h1>' +
+      "<p>Read off the cards you own out loud (or type/paste a list) and it'll match each one against the card database and add it to your Collection.</p></div></div>";
+
+    if (!supported) {
+      html += '<div class="callout" style="margin-bottom:14px;">Voice input isn\'t supported in this browser — try Chrome or Edge. You can still type or paste a list below (one card per line or comma-separated, e.g. "2 Bargain-Bin Baron, Sir Reginald Duct-Taped").</div>';
+    } else {
+      html += '<div class="callout" style="margin-bottom:14px;">Click the mic, then say your cards one after another (e.g. "two Bargain-Bin Baron, Sir Reginald Duct-Taped, three Anchor Dump"). Say a number before a card to set its quantity — otherwise it assumes 1. Click the mic again when you\'re done, then review the matches before adding them.</div>';
+    }
+
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+      (supported ? '<button class="btn primary" id="voice-mic-toggle" type="button">🎤 Start listening</button>' : "") +
+      '<button class="btn" id="voice-match" type="button">Match cards</button>' +
+      '<button class="btn ghost" id="voice-clear" type="button">Clear</button>' +
+      "</div>";
+
+    html += '<div class="field" style="margin-top:12px;"><label>' + (supported ? "Heard so far (editable)" : "Type or paste a list") +
+      '</label><textarea id="voice-transcript" rows="4" placeholder="e.g. two Bargain-Bin Baron, Sir Reginald Duct-Taped, three Anchor Dump">' +
+      escapeHtml(voiceImportState.transcript) + "</textarea></div>";
+
+    html += '<div id="voice-results" style="margin-top:14px;">' + voiceResultsHtml() + "</div>";
+    return html;
+  }
+
+  function voiceResultsHtml() {
+    var results = voiceImportState.results;
+    if (!results.length) return "";
+    var sorted = state.cards.slice().sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+    var html = '<div style="overflow-x:auto;"><table class="coll-table"><thead><tr>' +
+      "<th>You said</th><th>Matched card</th><th>Qty</th><th>Add</th>" +
+      "</tr></thead><tbody>" +
+      results.map(function (r, i) {
+        return "<tr>" +
+          "<td>" + escapeHtml(r.phrase) + (r.cardId ? "" : ' <span class="pill warn">no match</span>') + "</td>" +
+          '<td><select data-row="' + i + '" data-field="card">' + cardSelectOptions(r.cardId, sorted) + "</select></td>" +
+          '<td><input type="number" min="0" max="999" style="width:64px;" data-row="' + i + '" data-field="qty" value="' + r.qty + '"></td>' +
+          '<td style="text-align:center;"><input type="checkbox" data-row="' + i + '" data-field="include"' + (r.cardId ? " checked" : "") + "></td>" +
+          "</tr>";
+      }).join("") +
+      "</tbody></table></div>";
+    html += '<div style="margin-top:10px;"><button class="btn primary" id="voice-add" type="button">Add checked cards to collection</button></div>';
+    return html;
+  }
+
+  function cardSelectOptions(selectedId, sortedCards) {
+    var html = '<option value=""' + (!selectedId ? " selected" : "") + ">— No match —</option>";
+    sortedCards.forEach(function (c) {
+      html += '<option value="' + escapeHtml(c.id) + '"' + (c.id === selectedId ? " selected" : "") + ">" + escapeHtml(c.name) + "</option>";
+    });
+    return html;
+  }
+
+  var VOICE_NUMBER_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+
+  function extractQtyAndName(phrase) {
+    var words = phrase.trim().split(/\s+/).filter(Boolean);
+    var qty = 1;
+    if (words.length > 1) {
+      var first = words[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (/^\d+$/.test(first)) { qty = parseInt(first, 10); words.shift(); }
+      else if (VOICE_NUMBER_WORDS[first] !== undefined) { qty = VOICE_NUMBER_WORDS[first]; words.shift(); }
+    }
+    if (words.length > 1) {
+      var xMatch = words[words.length - 1].toLowerCase().match(/^x(\d+)$/);
+      if (xMatch) { qty = parseInt(xMatch[1], 10); words.pop(); }
+    }
+    return { qty: clamp(qty || 1, 1, 999), name: words.join(" ") };
+  }
+
+  function splitTranscript(text) {
+    return String(text || "")
+      .split(/[,\n]|(?:\s+and\s+)/i)
+      .map(function (s) { return s.trim(); })
+      .filter(Boolean);
+  }
+
+  function normalizeForMatch(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function levenshtein(a, b) {
+    var m = a.length, n = b.length;
+    if (!m) return n;
+    if (!n) return m;
+    var prev = new Array(n + 1), curr = new Array(n + 1);
+    for (var j = 0; j <= n; j++) prev[j] = j;
+    for (var i = 1; i <= m; i++) {
+      curr[0] = i;
+      for (var j2 = 1; j2 <= n; j2++) {
+        var cost = a.charAt(i - 1) === b.charAt(j2 - 1) ? 0 : 1;
+        curr[j2] = Math.min(prev[j2] + 1, curr[j2 - 1] + 1, prev[j2 - 1] + cost);
+      }
+      var tmp = prev; prev = curr; curr = tmp;
+    }
+    return prev[n];
+  }
+
+  function cardNameSimilarity(a, b) {
+    if (a === b) return 1;
+    if (!a.length || !b.length) return 0;
+    var wa = a.split(" "), wb = b.split(" ");
+    var common = wa.filter(function (w) { return wb.indexOf(w) !== -1; }).length;
+    var wordScore = common / Math.max(wa.length, wb.length);
+    var containScore = (b.indexOf(a) !== -1 || a.indexOf(b) !== -1) ? 0.85 : 0;
+    var editScore = 1 - levenshtein(a, b) / Math.max(a.length, b.length);
+    return Math.max(wordScore, containScore, editScore);
+  }
+
+  function bestCardMatch(nameQuery) {
+    var nq = normalizeForMatch(nameQuery);
+    if (!nq) return null;
+    var best = null, bestScore = 0;
+    state.cards.forEach(function (c) {
+      var score = cardNameSimilarity(nq, normalizeForMatch(c.name));
+      if (score > bestScore) { bestScore = score; best = c; }
+    });
+    return best && bestScore >= 0.55 ? { card: best, score: bestScore } : null;
+  }
+
+  function matchTranscriptToCards(text) {
+    return splitTranscript(text).map(function (phrase) {
+      var parsed = extractQtyAndName(phrase);
+      var match = bestCardMatch(parsed.name);
+      return { phrase: phrase, qty: parsed.qty, cardId: match ? match.card.id : null };
+    });
+  }
+
+  function wireVoiceImport(el) {
+    var micBtn = el.querySelector("#voice-mic-toggle");
+    var transcriptEl = el.querySelector("#voice-transcript");
+    var matchBtn = el.querySelector("#voice-match");
+    var clearBtn = el.querySelector("#voice-clear");
+
+    if (transcriptEl) {
+      transcriptEl.addEventListener("input", function () { voiceImportState.transcript = transcriptEl.value; });
+    }
+    if (micBtn) {
+      micBtn.textContent = voiceImportState.listening ? "⏹ Stop listening" : "🎤 Start listening";
+      micBtn.addEventListener("click", function () {
+        if (voiceImportState.listening) stopVoiceListening();
+        else startVoiceListening(transcriptEl);
+      });
+    }
+    if (matchBtn) {
+      matchBtn.addEventListener("click", function () {
+        voiceImportState.transcript = transcriptEl ? transcriptEl.value : voiceImportState.transcript;
+        voiceImportState.results = matchTranscriptToCards(voiceImportState.transcript);
+        rerenderVoiceResults();
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        stopVoiceListening();
+        voiceImportState.transcript = "";
+        voiceImportState.results = [];
+        if (transcriptEl) transcriptEl.value = "";
+        rerenderVoiceResults();
+      });
+    }
+    wireVoiceResultsControls();
+  }
+
+  function startVoiceListening(transcriptEl) {
+    if (!SpeechRecognitionCtor || voiceImportState.listening) return;
+    var recognition = new SpeechRecognitionCtor();
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    var baseTranscript = voiceImportState.transcript ? voiceImportState.transcript.replace(/\s+$/, "") : "";
+
+    recognition.onresult = function (event) {
+      var finalChunk = "", interimChunk = "";
+      for (var i = event.resultIndex; i < event.results.length; i++) {
+        var r = event.results[i];
+        if (r.isFinal) finalChunk += r[0].transcript;
+        else interimChunk += r[0].transcript;
+      }
+      if (finalChunk) {
+        baseTranscript = (baseTranscript ? baseTranscript + ", " : "") + finalChunk.trim();
+        voiceImportState.transcript = baseTranscript;
+      }
+      if (transcriptEl) transcriptEl.value = baseTranscript + (interimChunk ? (baseTranscript ? " " : "") + interimChunk : "");
+    };
+    recognition.onerror = function (event) {
+      toast(event.error === "not-allowed" ? "Microphone access denied." : "Voice input error: " + event.error);
+      stopVoiceListening();
+    };
+    recognition.onend = function () {
+      voiceImportState.listening = false;
+      voiceImportState.recognition = null;
+      var btn = document.getElementById("voice-mic-toggle");
+      if (btn) btn.textContent = "🎤 Start listening";
+    };
+
+    voiceImportState.recognition = recognition;
+    voiceImportState.listening = true;
+    recognition.start();
+    var btn = document.getElementById("voice-mic-toggle");
+    if (btn) btn.textContent = "⏹ Stop listening";
+  }
+
+  function stopVoiceListening() {
+    if (voiceImportState.recognition) {
+      try { voiceImportState.recognition.stop(); } catch (e) {}
+    }
+    voiceImportState.listening = false;
+  }
+
+  function rerenderVoiceResults() {
+    var host = document.getElementById("voice-results");
+    if (!host) return;
+    host.innerHTML = voiceResultsHtml();
+    wireVoiceResultsControls();
+  }
+
+  function wireVoiceResultsControls() {
+    var host = document.getElementById("voice-results");
+    if (!host) return;
+    host.querySelectorAll('select[data-field="card"]').forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        var row = parseInt(sel.getAttribute("data-row"), 10);
+        voiceImportState.results[row].cardId = sel.value || null;
+      });
+    });
+    host.querySelectorAll('input[data-field="qty"]').forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        var row = parseInt(inp.getAttribute("data-row"), 10);
+        voiceImportState.results[row].qty = clamp(parseInt(inp.value, 10) || 0, 0, 999);
+      });
+    });
+    var addBtn = document.getElementById("voice-add");
+    if (addBtn) {
+      addBtn.addEventListener("click", function () {
+        var added = 0;
+        host.querySelectorAll('input[data-field="include"]').forEach(function (chk) {
+          var row = parseInt(chk.getAttribute("data-row"), 10);
+          var r = voiceImportState.results[row];
+          if (!chk.checked || !r || !r.cardId) return;
+          setOwned(r.cardId, getOwned(r.cardId) + r.qty, getOwnedFoil(r.cardId));
+          added++;
+        });
+        if (!added) { toast("Nothing checked to add."); return; }
+        toast("Added " + added + " card" + (added === 1 ? "" : "s") + " to your collection.");
+        voiceImportState.results = [];
+        voiceImportState.transcript = "";
+        var transcriptEl = document.getElementById("voice-transcript");
+        if (transcriptEl) transcriptEl.value = "";
+        rerenderVoiceResults();
+        renderRail();
+      });
+    }
+  }
+
   function validateCardRaw(raw, idx) {
     if (!raw || typeof raw !== "object") return "Row " + idx + ": not an object";
     if (!raw.id) return "Row " + idx + ": missing id";
@@ -1521,7 +1787,11 @@
     nameInput.addEventListener("change", function () { state.profile.name = nameInput.value; persistProfile(); renderRail(); });
     window.addEventListener("hashchange", function () {
       var h = (window.location.hash || "").replace("#", "");
-      if (h && VIEWS.indexOf(h) !== -1) { state.route = h; render(); }
+      if (h && VIEWS.indexOf(h) !== -1) {
+        if (h !== "import" && voiceImportState.listening) stopVoiceListening();
+        state.route = h;
+        render();
+      }
     });
   }
 
@@ -1605,7 +1875,7 @@
 
   function socialNotConfiguredHtml(title) {
     return '<div class="empty-state"><h3>' + escapeHtml(title) + '</h3>' +
-      '<p>This deployment isn\'t connected to a Jank Vault backend yet, so social features are off here. ' +
+      '<p>This deployment isn\'t connected to a Jankrats backend yet, so social features are off here. ' +
       'The person running this instance needs to finish the Supabase setup (see SETUP.md) — once that\'s done, this tab lights up automatically.</p></div>';
   }
 

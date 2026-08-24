@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "jankvault-static",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8080"],
+      "name": "jankrats",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": [".claude\\static-server.js"],
       "port": 8080
     }
   ]

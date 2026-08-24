@@ -1,4 +1,4 @@
-/* Jank Vault — deployment config.
+/* Jankrats — deployment config.
    Fill these in with your own Supabase project's values (see SETUP.md).
    The anon key is meant to be public/client-side — Supabase's row-level
    security policies (in supabase/schema.sql) are what actually protect

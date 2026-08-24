@@ -1,4 +1,4 @@
-// Jank Vault — send-push Edge Function.
+// Jankrats — send-push Edge Function.
 //
 // Triggered by two Supabase Database Webhooks (set up in the dashboard,
 // see SETUP.md step 5): one on INSERT into public.posts, one on INSERT
@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
 
       const kind = record.type === "deck" ? "posted a new deck" : "shared a pull";
       const payload = {
-        title: "Jank Vault",
+        title: "Jankrats",
         body: `${authorName} ${kind}${record.caption ? `: "${record.caption}"` : ""}`,
         url: `${SITE_URL}#feed`,
       };
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
       if (post && post.author_id !== record.author_id) {
         const commenterName = await displayName(record.author_id);
         const payload = {
-          title: "Jank Vault",
+          title: "Jankrats",
           body: `${commenterName} commented: "${record.body}"`,
           url: `${SITE_URL}#feed`,
         };

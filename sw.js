@@ -1,13 +1,13 @@
-/* Jank Vault service worker — exists solely to receive Web Push events and
+/* Jankrats service worker — exists solely to receive Web Push events and
    show a notification. No offline caching (that's a separate concern this
    app doesn't need yet). */
 
 self.addEventListener("push", function (event) {
   var data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) {
-    data = { title: "Jank Vault", body: event.data ? event.data.text() : "" };
+    data = { title: "Jankrats", body: event.data ? event.data.text() : "" };
   }
-  var title = data.title || "Jank Vault";
+  var title = data.title || "Jankrats";
   var options = {
     body: data.body || "",
     icon: data.icon || undefined,
