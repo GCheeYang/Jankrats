@@ -629,6 +629,15 @@ code.deckcode {
 }
 .social-avatar-sm.placeholder { display: inline-block; }
 
+.friends-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.friend-tile {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left;
+}
+.friend-tile:hover { border-color: var(--line-strong); }
+.friend-tile .social-avatar-sm { width: 30px; height: 30px; }
+
 .composer {
   background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px;
   padding: 16px; margin-bottom: 22px;

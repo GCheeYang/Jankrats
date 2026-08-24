@@ -57,6 +57,39 @@ create trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 
 -- ---------------------------------------------------------------------------
+-- collection_entries: how many of each card a player owns, one row per
+-- (player, card). This is what powers the Friends tab — every signed-in
+-- player's collection is readable by every other signed-in player, so
+-- friends can see what each other owns.
+-- ---------------------------------------------------------------------------
+create table if not exists public.collection_entries (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  card_id text not null,
+  qty integer not null default 0,
+  foil integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, card_id),
+  constraint non_negative_counts check (qty >= 0 and foil >= 0)
+);
+
+create index if not exists collection_entries_user_idx on public.collection_entries (user_id);
+
+alter table public.collection_entries enable row level security;
+
+drop policy if exists "collection entries are publicly readable" on public.collection_entries;
+create policy "collection entries are publicly readable"
+  on public.collection_entries for select
+  to authenticated
+  using (true);
+
+drop policy if exists "users manage their own collection entries" on public.collection_entries;
+create policy "users manage their own collection entries"
+  on public.collection_entries for all
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
 -- posts: the two post types (deck / pull) live in one table.
 -- ---------------------------------------------------------------------------
 create table if not exists public.posts (

@@ -83,6 +83,65 @@
       .then(function (r) { return r.data; });
   }
 
+  /* ---------------- collection (shared with friends) ---------------- */
+
+  function listProfiles() {
+    var c = client_(); var uid = currentUserId();
+    if (!c) return Promise.resolve([]);
+    return c.from("profiles").select("id, display_name, avatar_url, champion_banner_card_id")
+      .order("display_name", { ascending: true })
+      .then(function (r) {
+        var rows = r.data || [];
+        return uid ? rows.filter(function (p) { return p.id !== uid; }) : rows;
+      });
+  }
+
+  function collectionRowsToMap(rows) {
+    var map = {};
+    (rows || []).forEach(function (row) {
+      map[row.card_id] = { qty: row.qty || 0, foil: row.foil || 0 };
+    });
+    return map;
+  }
+
+  function listMyCollection() {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.resolve({});
+    return c.from("collection_entries").select("card_id, qty, foil").eq("user_id", uid)
+      .then(function (r) { return collectionRowsToMap(r.data); });
+  }
+
+  function listCollectionFor(userId) {
+    var c = client_();
+    if (!c) return Promise.resolve({});
+    return c.from("collection_entries").select("card_id, qty, foil").eq("user_id", userId)
+      .then(function (r) { return collectionRowsToMap(r.data); });
+  }
+
+  function upsertCollectionEntry(cardId, qty, foil) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    if (!qty && !foil) {
+      return c.from("collection_entries").delete().eq("user_id", uid).eq("card_id", cardId);
+    }
+    return c.from("collection_entries").upsert(
+      { user_id: uid, card_id: cardId, qty: qty || 0, foil: foil || 0, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,card_id" }
+    );
+  }
+
+  // Used once, right after sign-in, to migrate a local-only collection
+  // (built before the player ever signed in) up into their new account.
+  function bulkUpsertCollection(entries) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    if (!entries || !entries.length) return Promise.resolve();
+    var rows = entries.map(function (e) {
+      return { user_id: uid, card_id: e.cardId, qty: e.qty || 0, foil: e.foil || 0, updated_at: new Date().toISOString() };
+    });
+    return c.from("collection_entries").upsert(rows, { onConflict: "user_id,card_id" });
+  }
+
   /* ---------------- posts / feed ---------------- */
 
   // opts: { limit, beforeCreatedAt, authorId }
@@ -290,6 +349,11 @@
     myProfile: myProfile,
     getProfile: getProfile,
     updateMyProfile: updateMyProfile,
+    listProfiles: listProfiles,
+    listMyCollection: listMyCollection,
+    listCollectionFor: listCollectionFor,
+    upsertCollectionEntry: upsertCollectionEntry,
+    bulkUpsertCollection: bulkUpsertCollection,
     listPosts: listPosts,
     createDeckPost: createDeckPost,
     createPullPost: createPullPost,

@@ -153,7 +153,11 @@
       profileTargetId: null,   // whose profile the Profile view is showing
       profileData: null,
       profilePosts: null,
-      pushEnabled: false
+      pushEnabled: false,
+      friendsProfiles: null,        // null = not loaded yet, [] = loaded & empty
+      friendsTargetId: null,        // whose collection the Friends view is showing
+      friendsTargetProfile: null,
+      friendsTargetCollection: null // cardId -> {qty, foil} for friendsTargetId
     }
   };
 
@@ -192,6 +196,16 @@
     if (qty === 0 && foil === 0) { delete state.collection[cardId]; }
     else { state.collection[cardId] = { qty: qty, foil: foil }; }
     persistCollection();
+    syncCollectionEntryToCloud(cardId, qty, foil);
+  }
+
+  // Fire-and-forget: keeps the signed-in player's cloud collection (which
+  // the Friends tab reads) in step with every local qty/foil change.
+  function syncCollectionEntryToCloud(cardId, qty, foil) {
+    if (!JVBackend.isConfigured() || !JVBackend.currentUserId()) return;
+    JVBackend.upsertCollectionEntry(cardId, qty, foil).catch(function () {
+      toast("Couldn't sync that to your account — saved locally only.");
+    });
   }
 
   /* ---------------- toast ---------------- */
@@ -208,7 +222,7 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["dashboard", "feed", "cards", "collection", "decks", "topcards", "profile", "import", "shared"];
+  var VIEWS = ["dashboard", "feed", "cards", "collection", "friends", "decks", "topcards", "profile", "import", "shared"];
 
   function navigate(view) {
     if (VIEWS.indexOf(view) === -1) view = "dashboard";
@@ -244,6 +258,7 @@
     if (state.route === "feed") renderFeedView();
     if (state.route === "cards") renderCardsView();
     if (state.route === "collection") renderCollectionView();
+    if (state.route === "friends") renderFriendsView();
     if (state.route === "decks") renderDecksView();
     if (state.route === "topcards") renderTopCardsView();
     if (state.route === "profile") renderProfileView();
@@ -599,6 +614,144 @@
         });
       });
     });
+  }
+
+  /* ================================================================
+     RENDER: friends (view other signed-in players' collections)
+     ================================================================ */
+
+  var friendsFilterState = { q: "", domain: "", type: "", rarity: "", ownedOnly: true, sort: "name", limit: 100 };
+  var FRIENDS_PAGE_SIZE = 100;
+
+  function openFriend(userId) {
+    state.social.friendsTargetId = userId;
+    state.social.friendsTargetProfile = null;
+    state.social.friendsTargetCollection = null;
+    friendsFilterState.limit = FRIENDS_PAGE_SIZE;
+    render();
+  }
+
+  function renderFriendsView() {
+    if (!JVBackend.isConfigured()) {
+      document.getElementById("view-friends").innerHTML = socialNotConfiguredHtml("Friends");
+      return;
+    }
+    if (!state.social.session) {
+      var el0 = document.getElementById("view-friends");
+      el0.innerHTML = socialSignInPromptHtml("Sign in with Google to see your friends' collections.");
+      wireSignInPrompt(el0);
+      return;
+    }
+    if (!state.social.friendsTargetId) renderFriendsList();
+    else renderFriendCollection();
+  }
+
+  function renderFriendsList() {
+    var el = document.getElementById("view-friends");
+    var s = state.social;
+    if (s.friendsProfiles === null) {
+      el.innerHTML = '<div class="view-head"><div><h1>Friends</h1><p>Loading…</p></div></div>';
+      JVBackend.listProfiles().then(function (profiles) {
+        s.friendsProfiles = profiles;
+        if (state.route === "friends" && !s.friendsTargetId) renderFriendsList();
+      });
+      return;
+    }
+    var html = '<div class="view-head"><div><h1>Friends</h1><p>Everyone signed in to this Vault. Pick someone to see what they own, side by side with your own collection.</p></div></div>';
+    if (!s.friendsProfiles.length) {
+      html += '<div class="empty-state"><h3>No one else has signed in yet</h3><p>Once a friend signs in with Google, they\'ll show up here.</p></div>';
+    } else {
+      html += '<div class="friends-grid">' + s.friendsProfiles.map(function (p) {
+        return '<button class="friend-tile" data-open-friend="' + p.id + '">' +
+          (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
+          '<span>' + escapeHtml(p.display_name || "Anonymous brewer") + "</span></button>";
+      }).join("") + "</div>";
+    }
+    el.innerHTML = html;
+    el.querySelectorAll("[data-open-friend]").forEach(function (b) {
+      b.addEventListener("click", function () { openFriend(b.getAttribute("data-open-friend")); });
+    });
+  }
+
+  function renderFriendCollection() {
+    var el = document.getElementById("view-friends");
+    var s = state.social;
+    if (!s.friendsTargetProfile || !s.friendsTargetCollection) {
+      el.innerHTML = '<div class="view-head"><div><h1>Friends</h1><p>Loading…</p></div></div>';
+      Promise.all([
+        JVBackend.getProfile(s.friendsTargetId),
+        JVBackend.listCollectionFor(s.friendsTargetId)
+      ]).then(function (r) {
+        s.friendsTargetProfile = r[0] || { display_name: "Anonymous brewer" };
+        s.friendsTargetCollection = r[1] || {};
+        if (state.route === "friends" && s.friendsTargetId) renderFriendCollection();
+      });
+      return;
+    }
+
+    var theirCollection = s.friendsTargetCollection;
+    var theirName = s.friendsTargetProfile.display_name || "Anonymous brewer";
+
+    var list = sortCards(filteredCards(friendsFilterState), friendsFilterState.sort);
+    if (friendsFilterState.ownedOnly) {
+      list = list.filter(function (c) {
+        var mine = getOwned(c.id) + getOwnedFoil(c.id);
+        var e = theirCollection[c.id];
+        var theirs = e ? ((e.qty || 0) + (e.foil || 0)) : 0;
+        return mine > 0 || theirs > 0;
+      });
+    }
+    var total = list.length;
+    var shown = Math.min(friendsFilterState.limit || FRIENDS_PAGE_SIZE, total);
+    var page = list.slice(0, shown);
+
+    var html = '<div class="view-head"><div><h1>' + escapeHtml(theirName) + "&rsquo;s collection</h1>" +
+      '<p>Side by side with your own.</p></div><div><button class="btn small ghost" id="friends-back">&larr; All friends</button></div></div>';
+
+    html += '<div class="toolbar">' +
+      field("Search", '<input type="search" id="frf-q" placeholder="Name or text…" value="' + escapeHtml(friendsFilterState.q) + '">') +
+      field("Domain", selectHtml("frf-domain", optionList(["", "Any"], DOMAIN_NAMES, friendsFilterState.domain))) +
+      field("Type", selectHtml("frf-type", optionList(["", "Any"], CARD_TYPES, friendsFilterState.type))) +
+      field("Rarity", selectHtml("frf-rarity", optionList(["", "Any"], uniqueValues("rarity"), friendsFilterState.rarity))) +
+      field("", '<label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;"><input type="checkbox" id="frf-owned-only" ' + (friendsFilterState.ownedOnly ? "checked" : "") + '> Owned by either</label>') +
+      "</div>";
+
+    if (!total) {
+      html += '<div class="empty-state"><h3>No cards match</h3><p>Adjust your filters.</p></div>';
+    } else {
+      html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
+      html += '<div style="overflow-x:auto;"><table class="coll-table"><thead><tr>' +
+        "<th>Card</th><th>Domain</th><th>Type</th><th>You</th><th>" + escapeHtml(theirName) + "</th>" +
+        "</tr></thead><tbody>" +
+        page.map(function (c) {
+          var mineQ = getOwned(c.id), mineF = getOwnedFoil(c.id);
+          var e = theirCollection[c.id];
+          var theirQ = e ? (e.qty || 0) : 0, theirF = e ? (e.foil || 0) : 0;
+          return "<tr>" +
+            "<td>" + escapeHtml(c.name) + '<div style="font-size:11px;color:var(--ink-faint);">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</div></td>" +
+            "<td>" + domainChips(c.domains) + "</td>" +
+            "<td>" + escapeHtml(c.type) + "</td>" +
+            '<td class="tabular">' + mineQ + (mineF ? " +" + mineF + " foil" : "") + "</td>" +
+            '<td class="tabular">' + theirQ + (theirF ? " +" + theirF + " foil" : "") + "</td>" +
+            "</tr>";
+        }).join("") +
+        "</tbody></table></div>";
+      if (shown < total) html += '<div style="text-align:center;margin-top:18px;"><button class="btn" id="frf-load-more">Show ' + Math.min(FRIENDS_PAGE_SIZE, total - shown) + ' more (' + (total - shown) + ' left)</button></div>';
+    }
+
+    el.innerHTML = html;
+    var back = el.querySelector("#friends-back");
+    if (back) back.addEventListener("click", function () { openFriend(null); });
+    var q = el.querySelector("#frf-q");
+    if (q) q.addEventListener("input", function () { friendsFilterState.q = q.value; friendsFilterState.limit = FRIENDS_PAGE_SIZE; rerenderSoft(el, renderFriendCollection); });
+    ["domain", "type", "rarity"].forEach(function (k) {
+      var sel = el.querySelector("#frf-" + k);
+      if (sel) sel.addEventListener("change", function () { friendsFilterState[k] = sel.value; friendsFilterState.limit = FRIENDS_PAGE_SIZE; renderFriendCollection(); });
+    });
+    var ownedOnly = el.querySelector("#frf-owned-only");
+    if (ownedOnly) ownedOnly.addEventListener("change", function () { friendsFilterState.ownedOnly = ownedOnly.checked; friendsFilterState.limit = FRIENDS_PAGE_SIZE; renderFriendCollection(); });
+    var loadMore = el.querySelector("#frf-load-more");
+    if (loadMore) loadMore.addEventListener("click", function () { friendsFilterState.limit = (friendsFilterState.limit || FRIENDS_PAGE_SIZE) + FRIENDS_PAGE_SIZE; renderFriendCollection(); });
   }
 
   /* ================================================================
@@ -1369,7 +1522,9 @@
     document.querySelectorAll(".nav button[data-view]").forEach(function (b) {
       b.addEventListener("click", function () {
         var v = b.getAttribute("data-view");
-        if (v === "profile") openProfile(null); else navigate(v);
+        if (v === "profile") openProfile(null);
+        else if (v === "friends") { state.social.friendsTargetId = null; navigate(v); }
+        else navigate(v);
       });
     });
     var nameInput = document.getElementById("profile-name");
@@ -1395,13 +1550,44 @@
           if (state.route === "feed" || state.route === "profile") render();
         });
         JVBackend.listFollowingIds().then(function (ids) { state.social.followingIds = ids; });
+        if (!hadSession) syncCollectionOnSignIn();
       } else if (hadSession) {
         state.social.myProfile = null;
         state.social.followingIds = [];
         state.social.feedPosts = null;
+        state.social.friendsProfiles = null;
+        state.social.friendsTargetId = null;
+        state.social.friendsTargetProfile = null;
+        state.social.friendsTargetCollection = null;
       }
       renderRail();
-      if (["feed", "profile", "topcards"].indexOf(state.route) !== -1) render();
+      if (["feed", "profile", "topcards", "friends"].indexOf(state.route) !== -1) render();
+    });
+  }
+
+  // Runs once right after sign-in. If the account already has a cloud
+  // collection (e.g. this is a second device), that becomes the source of
+  // truth locally. Otherwise, if this browser already had a local
+  // collection (built before signing in), it's pushed up to seed the
+  // account so it isn't lost.
+  function syncCollectionOnSignIn() {
+    JVBackend.listMyCollection().then(function (cloud) {
+      var cloudHasData = Object.keys(cloud).length > 0;
+      var localHasData = Object.keys(state.collection).length > 0;
+      if (cloudHasData) {
+        state.collection = cloud;
+        persistCollection();
+        renderRail();
+        if (state.route === "collection" || state.route === "dashboard") render();
+      } else if (localHasData) {
+        var entries = Object.keys(state.collection).map(function (cardId) {
+          var e = state.collection[cardId];
+          return { cardId: cardId, qty: e.qty || 0, foil: e.foil || 0 };
+        });
+        JVBackend.bulkUpsertCollection(entries).catch(function () {
+          toast("Couldn't back up your local collection to your account.");
+        });
+      }
     });
   }
 
