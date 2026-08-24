@@ -222,7 +222,7 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["dashboard", "feed", "cards", "collection", "friends", "decks", "topcards", "profile", "import", "shared"];
+  var VIEWS = ["dashboard", "cards", "collection", "friends", "decks", "profile", "import", "shared"];
 
   function navigate(view) {
     if (VIEWS.indexOf(view) === -1) view = "dashboard";
@@ -255,12 +255,10 @@
       if (el) el.classList.toggle("active", v === state.route);
     });
     if (state.route === "dashboard") renderDashboard();
-    if (state.route === "feed") renderFeedView();
     if (state.route === "cards") renderCardsView();
     if (state.route === "collection") renderCollectionView();
     if (state.route === "friends") renderFriendsView();
     if (state.route === "decks") renderDecksView();
-    if (state.route === "topcards") renderTopCardsView();
     if (state.route === "profile") renderProfileView();
     if (state.route === "import") renderImportView();
     if (state.route === "shared") renderSharedView();
@@ -270,14 +268,6 @@
     document.querySelectorAll(".nav button").forEach(function (b) {
       b.classList.toggle("active", b.getAttribute("data-view") === state.route);
     });
-    var uniqueOwned = Object.keys(state.collection).length;
-    var totalOwned = 0;
-    Object.keys(state.collection).forEach(function (k) {
-      totalOwned += (state.collection[k].qty || 0) + (state.collection[k].foil || 0);
-    });
-    document.getElementById("rail-card-count").textContent = state.cards.length;
-    document.getElementById("rail-owned-count").textContent = uniqueOwned + " (" + totalOwned + ")";
-    document.getElementById("rail-deck-count").textContent = state.decks.length;
     var nameInput = document.getElementById("profile-name");
     if (nameInput && document.activeElement !== nameInput) nameInput.value = state.profile.name || "";
     var authHost = document.getElementById("social-auth-host");

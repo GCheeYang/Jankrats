@@ -13,34 +13,29 @@
     <div class="wordmark tag" style="margin-top:-14px;">Riftbound collection &amp; deck ledger</div>
     <div class="nav">
       <button data-view="dashboard"><span class="n-icon">⌂</span>Dashboard</button>
-      <button data-view="feed"><span class="n-icon">◎</span>Feed</button>
       <button data-view="cards"><span class="n-icon">▤</span>Cards</button>
       <button data-view="collection"><span class="n-icon">✦</span>Collection</button>
       <button data-view="friends"><span class="n-icon">◇</span>Friends</button>
       <button data-view="decks"><span class="n-icon">⚔</span>Decks</button>
-      <button data-view="topcards"><span class="n-icon">★</span>Top Cards</button>
-      <button data-view="profile"><span class="n-icon">☺</span>Profile</button>
       <button data-view="import"><span class="n-icon">⇩</span>Import</button>
     </div>
     <div class="rail-stats">
       <div id="social-auth-host"></div>
+      <div class="nav profile-nav">
+        <button data-view="profile"><span class="n-icon">☺</span>Profile</button>
+      </div>
       <div class="profile-field">
         <label>Your name</label>
         <input type="text" id="profile-name" placeholder="Anonymous brewer">
       </div>
-      <div>Cards: <b id="rail-card-count">0</b></div>
-      <div>Owned: <b id="rail-owned-count">0</b></div>
-      <div>Decks: <b id="rail-deck-count">0</b></div>
     </div>
   </nav>
   <main>
     <div class="view" id="view-dashboard"></div>
-    <div class="view" id="view-feed"></div>
     <div class="view" id="view-cards"></div>
     <div class="view" id="view-collection"></div>
     <div class="view" id="view-friends"></div>
     <div class="view" id="view-decks"></div>
-    <div class="view" id="view-topcards"></div>
     <div class="view" id="view-profile"></div>
     <div class="view" id="view-import"></div>
     <div class="view" id="view-shared"></div>
