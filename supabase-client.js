@@ -126,16 +126,20 @@
       .then(function (r) { return collectionRowsToMap(r.data); });
   }
 
+  // Postgrest's query-builder objects are "thenable" (have .then) but don't
+  // implement .catch/.finally themselves, so callers doing
+  // JVBackend.xyz(...).catch(...) directly would throw "catch is not a
+  // function". Wrapping with Promise.resolve() gives back a real Promise.
   function upsertCollectionEntry(cardId, qty, foil) {
     var c = client_(); var uid = currentUserId();
     if (!c || !uid) return Promise.reject(new Error("Not signed in"));
     if (!qty && !foil) {
-      return c.from("collection_entries").delete().eq("user_id", uid).eq("card_id", cardId);
+      return Promise.resolve(c.from("collection_entries").delete().eq("user_id", uid).eq("card_id", cardId));
     }
-    return c.from("collection_entries").upsert(
+    return Promise.resolve(c.from("collection_entries").upsert(
       { user_id: uid, card_id: cardId, qty: qty || 0, foil: foil || 0, updated_at: new Date().toISOString() },
       { onConflict: "user_id,card_id" }
-    );
+    ));
   }
 
   // Used once, right after sign-in, to migrate a local-only collection
@@ -147,7 +151,7 @@
     var rows = entries.map(function (e) {
       return { user_id: uid, card_id: e.cardId, qty: e.qty || 0, foil: e.foil || 0, updated_at: new Date().toISOString() };
     });
-    return c.from("collection_entries").upsert(rows, { onConflict: "user_id,card_id" });
+    return Promise.resolve(c.from("collection_entries").upsert(rows, { onConflict: "user_id,card_id" }));
   }
 
   /* ---------------- posts / feed ---------------- */
@@ -225,7 +229,7 @@
   function deletePost(postId) {
     var c = client_();
     if (!c) return Promise.reject(new Error("Backend not configured"));
-    return c.from("posts").delete().eq("id", postId);
+    return Promise.resolve(c.from("posts").delete().eq("id", postId));
   }
 
   /* ---------------- kudos ---------------- */
@@ -234,9 +238,9 @@
     var c = client_(); var uid = currentUserId();
     if (!c || !uid) return Promise.reject(new Error("Not signed in"));
     if (currentlyKudosed) {
-      return c.from("kudos").delete().eq("post_id", postId).eq("user_id", uid);
+      return Promise.resolve(c.from("kudos").delete().eq("post_id", postId).eq("user_id", uid));
     }
-    return c.from("kudos").insert({ post_id: postId, user_id: uid });
+    return Promise.resolve(c.from("kudos").insert({ post_id: postId, user_id: uid }));
   }
 
   /* ---------------- comments ---------------- */
@@ -271,9 +275,9 @@
     var c = client_(); var uid = currentUserId();
     if (!c || !uid) return Promise.reject(new Error("Not signed in"));
     if (currentlyFollowing) {
-      return c.from("follows").delete().eq("follower_id", uid).eq("following_id", userId);
+      return Promise.resolve(c.from("follows").delete().eq("follower_id", uid).eq("following_id", userId));
     }
-    return c.from("follows").insert({ follower_id: uid, following_id: userId });
+    return Promise.resolve(c.from("follows").insert({ follower_id: uid, following_id: userId }));
   }
 
   /* ---------------- top cards ---------------- */
