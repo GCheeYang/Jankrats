@@ -2157,8 +2157,8 @@
   }
 
   // Shows both provider buttons, with whichever one the browser last signed
-  // in with labeled with a small banner directly above that button — so
-  // returning players don't accidentally create a second account by
+  // in with tagged by a small badge that overlaps its top-right corner —
+  // so returning players don't accidentally create a second account by
   // picking the other provider.
   function providerSignInButtonsHtml(googleId, discordId, baseClass, center) {
     var info = loadJSON(KEYS.lastAuthProvider, null);
@@ -2166,12 +2166,12 @@
     function wrap(provider, id, label) {
       var btn = '<button class="' + baseClass + '" id="' + id + '">' + label + "</button>";
       if (provider !== last) return "<div>" + btn + "</div>";
-      return '<div class="last-used-wrap"><div class="last-used-badge">Last used</div>' + btn + "</div>";
+      return '<div class="last-used-wrap">' + btn + '<div class="last-used-badge">Last used</div></div>';
     }
     var google = wrap("google", googleId, "Sign in with Google");
     var discord = wrap("discord", discordId, "Sign in with Discord");
     var order = last === "discord" ? (discord + google) : (google + discord);
-    return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;' + (center ? "justify-content:center;" : "") + '">' + order + "</div>";
+    return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:8px;' + (center ? "justify-content:center;" : "") + '">' + order + "</div>";
   }
 
   function authRailHtml() {
