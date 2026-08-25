@@ -1643,17 +1643,13 @@
 
   function renderImportView() {
     var el = document.getElementById("view-import");
-    var html = '<div class="view-head"><div><h1>Import cards</h1><p>Bring your own Riftbound card list. Nothing is fetched automatically — paste JSON or CSV you\'ve put together yourself, and it merges into your local card database.</p></div></div>';
-
-    html += '<div class="callout" style="margin-bottom:18px;">' +
-      '<b>Why paste instead of auto-fetch?</b> A couple of fan card-database sites exist, but their own robots.txt explicitly opts out of AI/bot access (one even blocks AI crawlers outright and cites an EU text-and-data-mining reservation). This tool respects that, so it never scrapes them for you. ' +
-      "You can still browse those sites yourself in a normal browser and copy the fields across, or use an API that explicitly allows programmatic access (for example the paid/free-tier RiftboundAPI on RapidAPI)." +
-      "</div>";
+    var html = '<div class="view-head"><div><h1>Import cards</h1><p>Bring your own Riftbound card list. Nothing is fetched automatically — paste or upload JSON or CSV you\'ve put together yourself, and it merges into your local card database.</p></div></div>';
 
     html += '<div class="tabs">' + tabBtn2("json", "JSON") + tabBtn2("csv", "CSV") + "</div>";
     html += '<div id="import-schema"></div>';
 
-    html += '<div class="field" style="margin-top:14px;"><label>Paste data</label><textarea id="import-text" rows="10" placeholder="Paste JSON array or CSV here…"></textarea></div>';
+    html += '<div class="field" style="margin-top:14px;"><label>Upload a file</label><input type="file" id="import-file" accept=".json,.csv,application/json,text/csv"></div>';
+    html += '<div class="field" style="margin-top:14px;"><label>Or paste data</label><textarea id="import-text" rows="10" placeholder="Paste JSON array or CSV here…"></textarea></div>';
     html += '<div style="display:flex;gap:8px;margin-top:10px;">' +
       '<button class="btn primary" id="import-run">Import</button>' +
       '<button class="btn ghost" id="import-clear-db">Reset to official card database</button>' +
@@ -1665,12 +1661,22 @@
     el.innerHTML = html;
     renderImportSchema("json");
     wireVoiceImport(el);
+    function setImportTab(key) {
+      el.querySelectorAll("[data-tab2]").forEach(function (x) { x.classList.toggle("active", x.getAttribute("data-tab2") === key); });
+      renderImportSchema(key);
+    }
     el.querySelectorAll("[data-tab2]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        el.querySelectorAll("[data-tab2]").forEach(function (x) { x.classList.remove("active"); });
-        b.classList.add("active");
-        renderImportSchema(b.getAttribute("data-tab2"));
-      });
+      b.addEventListener("click", function () { setImportTab(b.getAttribute("data-tab2")); });
+    });
+    document.getElementById("import-file").addEventListener("change", function (e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      if (/\.csv$/i.test(file.name)) setImportTab("csv");
+      else if (/\.json$/i.test(file.name)) setImportTab("json");
+      var reader = new FileReader();
+      reader.onload = function () { document.getElementById("import-text").value = reader.result; };
+      reader.onerror = function () { toast("Couldn't read that file."); };
+      reader.readAsText(file);
     });
     document.getElementById("import-run").addEventListener("click", function () {
       var mode = el.querySelector("[data-tab2].active").getAttribute("data-tab2");

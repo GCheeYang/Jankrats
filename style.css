@@ -295,6 +295,15 @@ input[type="text"], input[type="search"], input[type="number"], select, textarea
   color: var(--ink);
   width: 100%;
 }
+
+input[type="file"] {
+  color: var(--ink-soft); font-size: 13px; width: 100%;
+}
+input[type="file"]::file-selector-button {
+  background: var(--surface-raised); border: 1px solid var(--line-strong); border-radius: 8px;
+  color: var(--ink); padding: 6px 12px; margin-right: 10px; font-weight: 600; font-size: 13px; cursor: pointer;
+}
+input[type="file"]::file-selector-button:hover { background: var(--surface); }
 input:focus, select:focus, textarea:focus { border-color: var(--rift); }
 textarea { resize: vertical; min-height: 90px; }
 
