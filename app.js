@@ -302,6 +302,10 @@
   function renderDashboard() {
     var el = document.getElementById("view-dashboard");
     var uniqueOwned = Object.keys(state.collection).length;
+    var totalOwned = 0;
+    Object.keys(state.collection).forEach(function (k) {
+      totalOwned += (state.collection[k].qty || 0) + (state.collection[k].foil || 0);
+    });
 
     var recentDecks = state.decks.slice().sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).slice(0, 5);
 
@@ -317,7 +321,7 @@
       '<button class="btn primary" data-action="new-deck">+ New deck</button></div>';
 
     html += '<div class="stat-row">' +
-      statCard(state.cards.length, "Cards in database") +
+      statCard(totalOwned, "Total cards owned") +
       statCard(uniqueOwned, "Unique cards owned") +
       statCard(state.decks.length, "Decks brewed") +
       "</div>";
