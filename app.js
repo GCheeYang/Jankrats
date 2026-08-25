@@ -2166,8 +2166,7 @@
     function wrap(provider, id, label) {
       var btn = '<button class="' + baseClass + '" id="' + id + '">' + label + "</button>";
       if (provider !== last) return "<div>" + btn + "</div>";
-      var tag = "Last used" + (info.label ? " · " + escapeHtml(info.label) : "");
-      return '<div class="last-used-wrap"><div class="last-used-badge">' + tag + "</div>" + btn + "</div>";
+      return '<div class="last-used-wrap"><div class="last-used-badge">Last used</div>' + btn + "</div>";
     }
     var google = wrap("google", googleId, "Sign in with Google");
     var discord = wrap("discord", discordId, "Sign in with Discord");
