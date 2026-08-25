@@ -339,6 +339,9 @@ textarea { resize: vertical; min-height: 90px; }
   border: 1px solid var(--line);
 }
 .domain-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.domain-chip .domain-rune-icon {
+  width: 15px; height: 15px; border-radius: 50%; flex: none; object-fit: cover; object-position: center 30%;
+}
 
 .empty-state {
   border: 1px dashed var(--line-strong);
