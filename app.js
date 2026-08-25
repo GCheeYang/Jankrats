@@ -1229,6 +1229,12 @@
     });
   }
 
+  function pickRowImgHtml(c) {
+    return c.imageUrl
+      ? '<div class="pr-img"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>'
+      : '<div class="pr-img placeholder"></div>';
+  }
+
   function builderMain(deck) {
     var legend = state.cardsById[deck.legendId];
     var champion = state.cardsById[deck.championId];
@@ -1268,7 +1274,7 @@
       html += '<div class="field" style="margin-bottom:10px;"><input type="search" id="deck-card-filter" placeholder="Filter cards to add…" value="' + escapeHtml(state.builder.cardFilter) + '"></div>';
       html += '<div class="deck-picker-list">' + pickPool.map(function (c) {
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
-        return '<div class="pick-row"><div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span>' +
+        return '<div class="pick-row">' + pickRowImgHtml(c) + '<div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span>' +
           '<span class="pr-meta"><span class="pr-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span><span>" + escapeHtml(c.type) + "</span><span>" + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span><span>own " + (getOwned(c.id) + getOwnedFoil(c.id)) + "</span></span></div>" +
           '<button class="btn small" data-add-main="' + c.id + '"' + (atLimit ? " disabled" : "") + ">" + (atLimit ? "at limit" : "+ add") + "</button>" +
           "</div>";
@@ -1284,7 +1290,7 @@
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Choose ' + RULES.battlefieldCount + ' unique Battlefields.</p>';
       html += '<div class="deck-picker-list">' + battlefieldPool.map(function (c) {
         var chosen = (deck.battlefields || []).indexOf(c.id) !== -1;
-        return '<div class="pick-row"><div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span><span class="pr-meta">' + escapeHtml(c.text || "") + '</span></div>' +
+        return '<div class="pick-row">' + pickRowImgHtml(c) + '<div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span><span class="pr-meta">' + escapeHtml(c.text || "") + '</span></div>' +
           '<button class="btn small' + (chosen ? " primary" : "") + '" data-toggle-bf="' + c.id + '">' + (chosen ? "✓ chosen" : "choose") + "</button></div>";
       }).join("") + "</div>";
       if (!battlefieldPool.length) html += '<div class="empty-state"><h3>No Battlefield cards yet</h3><p>Import some — Battlefields are colorless.</p></div>';
@@ -1292,7 +1298,7 @@
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Optional: 0 or exactly 8 cards, same domain and copy-limit rules as your main deck.</p>';
       html += '<div class="deck-picker-list">' + pickPool.map(function (c) {
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
-        return '<div class="pick-row"><div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span>' +
+        return '<div class="pick-row">' + pickRowImgHtml(c) + '<div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span>' +
           '<span class="pr-meta"><span class="pr-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span><span>" + escapeHtml(c.type) + "</span><span>" + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span></span></div>" +
           '<button class="btn small" data-add-sb="' + c.id + '"' + (atLimit ? " disabled" : "") + ">" + (atLimit ? "at limit" : "+ add") + "</button></div>";
       }).join("") + "</div>";
