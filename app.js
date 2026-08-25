@@ -1119,8 +1119,7 @@
     var html = '<div class="view-head"><div><h1>Deck builder</h1><p>Build against real Riftbound construction rules: one Legend, one Chosen Champion, a 40-card main deck, a 12-card rune deck, and 3 battlefields.</p></div>' +
       '<div style="display:flex;gap:8px;"><button class="btn" data-action="import-code">Import code</button><button class="btn primary" data-action="new-deck">+ New deck</button></div></div>';
 
-    html += '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:20px;">';
-    html += '<div style="flex:1;min-width:220px;"><div class="deck-row-list">';
+    html += '<div class="deck-row-list" style="margin-bottom:20px;">';
     if (!state.decks.length) {
       html += '<div class="empty-state"><h3>No decks yet</h3><p>Start with a Legend, then add your Chosen Champion.</p></div>';
     } else {
@@ -1134,9 +1133,8 @@
           "</div>";
       });
     }
-    html += "</div></div>";
-    html += '<div style="flex:2;min-width:320px;" id="builder-host"></div>';
     html += "</div>";
+    html += '<div id="builder-host"></div>';
 
     el.innerHTML = html;
     el.querySelector('[data-action="new-deck"]').addEventListener("click", startNewDeck);
