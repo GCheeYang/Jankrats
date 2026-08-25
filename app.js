@@ -636,6 +636,11 @@
     var c = state.cardsById[cardId];
     if (!c) return;
     var owned = getOwned(cardId), foil = getOwnedFoil(cardId);
+    var locked = JVBackend.isConfigured() && !state.social.session;
+    var trackingHtml = locked
+      ? '<div style="flex:1;min-width:220px;"><p style="font-size:13px;color:var(--ink-faint);margin-bottom:10px;">Sign in to track how many you own.</p>' +
+        providerSignInButtonsHtml("cd-signin", "cd-signin-discord", "btn small primary", false) + "</div>"
+      : ownedStepperHtml(cardId, "Owned", owned, "qty") + ownedStepperHtml(cardId, "Foil", foil, "foil");
     var html = '<div class="modal-backdrop" id="card-modal"><div class="modal">' +
       '<div class="modal-head"><div><h2 style="font-size:19px;">' + escapeHtml(c.name) + "</h2>" +
       '<div style="margin-top:6px;">' + domainChips(c.domains) + "</div></div>" +
@@ -655,8 +660,7 @@
       (c.isPlaceholder ? '<p class="pill neutral" style="margin-top:8px;">Demo card</p>' : "") +
       "</div></div>" +
       '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex;align-items:center;gap:18px;flex-wrap:wrap;">' +
-      ownedStepperHtml(cardId, "Owned", owned, "qty") +
-      ownedStepperHtml(cardId, "Foil", foil, "foil") +
+      trackingHtml +
       "</div>" +
       "</div></div>";
     document.getElementById("modal-root").innerHTML = html;
@@ -675,6 +679,10 @@
     var root = document.getElementById("modal-root");
     root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
     root.querySelector("#card-modal").addEventListener("click", function (e) { if (e.target.id === "card-modal") closeModal(); });
+    var cdSignin = root.querySelector("#cd-signin");
+    if (cdSignin) cdSignin.addEventListener("click", function () { JVBackend.signInWithGoogle(); });
+    var cdSigninDiscord = root.querySelector("#cd-signin-discord");
+    if (cdSigninDiscord) cdSigninDiscord.addEventListener("click", function () { JVBackend.signInWithDiscord(); });
     root.querySelectorAll("[data-step]").forEach(function (b) {
       b.addEventListener("click", function () {
         var kind = b.getAttribute("data-kind");
