@@ -155,6 +155,7 @@
       profilePosts: null,
       pushEnabled: false,
       friendsProfiles: null,        // null = not loaded yet, [] = loaded & empty
+      friendsMode: "mine",          // "mine" = added friends only, "add" = browse everyone
       friendsTargetId: null,        // whose collection the Friends view is showing
       friendsTargetProfile: null,
       friendsTargetCollection: null // cardId -> {qty, foil} for friendsTargetId
@@ -449,12 +450,14 @@
   function rerenderSoft(el, rerender) {
     clearTimeout(softTimer);
     softTimer = setTimeout(function () {
-      var q = el.querySelector("#cf-q");
-      var hadFocus = document.activeElement === q;
-      var caret = q ? q.selectionStart : null;
+      var active = document.activeElement;
+      var activeId = active && active.id ? active.id : null;
+      var caret = active && typeof active.selectionStart === "number" ? active.selectionStart : null;
       rerender();
-      var q2 = document.getElementById("cf-q");
-      if (hadFocus && q2) { q2.focus(); try { q2.setSelectionRange(caret, caret); } catch (e) {} }
+      if (activeId) {
+        var again = document.getElementById(activeId);
+        if (again) { again.focus(); try { again.setSelectionRange(caret, caret); } catch (e) {} }
+      }
     }, 120);
   }
 
@@ -648,19 +651,60 @@
       });
       return;
     }
-    var html = '<div class="view-head"><div><h1>Friends</h1><p>Everyone signed in to this Vault. Pick someone to see what they own, side by side with your own collection.</p></div></div>';
-    if (!s.friendsProfiles.length) {
-      html += '<div class="empty-state"><h3>No one else has signed in yet</h3><p>Once a friend signs in with Google, they\'ll show up here.</p></div>';
+
+    var mode = s.friendsMode === "add" ? "add" : "mine";
+    var myId = JVBackend.currentUserId();
+    var others = s.friendsProfiles.filter(function (p) { return p.id !== myId; });
+    var mine = others.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
+    var list = mode === "add" ? others : mine;
+
+    var html = '<div class="view-head"><div><h1>Friends</h1><p>' +
+      (mode === "add" ? "Everyone signed in to this Vault. Add someone to start seeing their collection." : "People you've added. Pick someone to see what they own, side by side with your own collection.") +
+      "</p></div></div>";
+
+    html += '<div class="tabs" style="margin-bottom:16px;">' +
+      '<button class="' + (mode === "mine" ? "active" : "") + '" data-friends-mode="mine">My friends</button>' +
+      '<button class="' + (mode === "add" ? "active" : "") + '" data-friends-mode="add">Add friends</button>' +
+      "</div>";
+
+    if (!list.length) {
+      html += mode === "add"
+        ? '<div class="empty-state"><h3>No one else has signed in yet</h3><p>Once a friend signs in with Google, they\'ll show up here to add.</p></div>'
+        : '<div class="empty-state"><h3>No friends added yet</h3><p>Switch to <b>Add friends</b> to find people who\'ve signed in.</p></div>';
+    } else if (mode === "add") {
+      html += '<div class="friends-grid">' + list.map(function (p) {
+        var isFriend = s.followingIds.indexOf(p.id) !== -1;
+        return '<div class="friend-tile">' +
+          (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
+          '<span style="flex:1;">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span>" +
+          '<button class="btn small ' + (isFriend ? "" : "primary") + '" data-toggle-friend="' + p.id + '">' + (isFriend ? "Remove" : "+ Add") + "</button>" +
+          "</div>";
+      }).join("") + "</div>";
     } else {
-      html += '<div class="friends-grid">' + s.friendsProfiles.map(function (p) {
+      html += '<div class="friends-grid">' + list.map(function (p) {
         return '<button class="friend-tile" data-open-friend="' + p.id + '">' +
           (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
           '<span>' + escapeHtml(p.display_name || "Anonymous brewer") + "</span></button>";
       }).join("") + "</div>";
     }
+
     el.innerHTML = html;
+    el.querySelectorAll("[data-friends-mode]").forEach(function (b) {
+      b.addEventListener("click", function () { s.friendsMode = b.getAttribute("data-friends-mode"); renderFriendsList(); });
+    });
     el.querySelectorAll("[data-open-friend]").forEach(function (b) {
       b.addEventListener("click", function () { openFriend(b.getAttribute("data-open-friend")); });
+    });
+    el.querySelectorAll("[data-toggle-friend]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-toggle-friend");
+        var was = s.followingIds.indexOf(id) !== -1;
+        JVBackend.toggleFollow(id, was).then(function () {
+          if (was) s.followingIds = s.followingIds.filter(function (x) { return x !== id; });
+          else s.followingIds.push(id);
+          renderFriendsList();
+        }).catch(function () { toast("Couldn't update your friends list."); });
+      });
     });
   }
 
@@ -1536,8 +1580,29 @@
     return { qty: clamp(qty || 1, 1, 999), name: words.join(" ") };
   }
 
+  var VOICE_QTY_WORD_RE = /\b(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/gi;
+
+  // Speech recognition rarely inserts punctuation, so "one Abandon two
+  // Adaptatron" comes through as one run-on phrase. Since every card mention
+  // starts with a quantity word ("one", "two", "3", "one of", ...), we can
+  // find those boundaries ourselves and split there before matching.
+  function autoInsertCardBoundaries(text) {
+    if (!text) return text;
+    var re = new RegExp(VOICE_QTY_WORD_RE.source, "gi");
+    var out = "", lastIndex = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      var idx = m.index;
+      if (idx === 0) continue; // nothing before the very first token to separate
+      if (/[,\n]\s*$/.test(text.slice(0, idx))) continue; // already at a boundary
+      out += text.slice(lastIndex, idx).replace(/\s+$/, "") + ", ";
+      lastIndex = idx;
+    }
+    out += text.slice(lastIndex);
+    return out.replace(/,\s*,+/g, ",").replace(/[ \t]{2,}/g, " ").trim();
+  }
+
   function splitTranscript(text) {
-    return String(text || "")
+    return autoInsertCardBoundaries(String(text || ""))
       .split(/[,\n]|(?:\s+and\s+)/i)
       .map(function (s) { return s.trim(); })
       .filter(Boolean);
@@ -1645,7 +1710,7 @@
         else interimChunk += r[0].transcript;
       }
       if (finalChunk) {
-        baseTranscript = (baseTranscript ? baseTranscript + ", " : "") + finalChunk.trim();
+        baseTranscript = (baseTranscript ? baseTranscript + ", " : "") + autoInsertCardBoundaries(finalChunk.trim());
         voiceImportState.transcript = baseTranscript;
       }
       if (transcriptEl) transcriptEl.value = baseTranscript + (interimChunk ? (baseTranscript ? " " : "") + interimChunk : "");
