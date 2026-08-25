@@ -8,7 +8,46 @@
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560;9..144,680&family=Libre+Franklin:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* ---- ledger (light) palette ---- */
+  /* ---- obsidian vault (dark) palette — the default look ---- */
+  --ground: #14121C;
+  --surface: #1B1826;
+  --surface-raised: #232030;
+  --ink: #EDE7F5;
+  --ink-soft: #B6ADC9;
+  --ink-faint: #837A9B;
+  --line: #322C42;
+  --line-strong: #423A58;
+
+  --accent: #E4B95B;        /* rune-gold */
+  --accent-strong: #F0CD82;
+  --accent-ink: #241906;    /* text on accent */
+
+  --rift: #948CE0;          /* rift-violet, used sparingly */
+  --rift-soft: #2A2540;
+
+  --good: #6FBF83;
+  --good-soft: #1E2E22;
+  --warn: #E0A257;
+  --warn-soft: #332512;
+  --bad: #E3776E;
+  --bad-soft: #35201E;
+
+  --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 10px 30px -10px rgba(0,0,0,0.6);
+
+  /* ---- domains (fixed game semantics — not the page accent) ---- */
+  --d-fury: #E07064;
+  --d-calm: #6FBF83;
+  --d-mind: #6FA0E0;
+  --d-chaos: #B08AE0;
+  --d-body: #E0A257;
+  --d-order: #D6BC5A;
+  --d-none: #837A9B;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  /* ---- ledger (light) palette — opt-in via the theme toggle ---- */
   --ground: #ECE6D6;
   --surface: #F7F3E7;
   --surface-raised: #FFFDF6;
@@ -20,9 +59,9 @@
 
   --accent: #A9761E;       /* brass / wax-seal gold */
   --accent-strong: #8A5F14;
-  --accent-ink: #FFF8E8;   /* text on accent */
+  --accent-ink: #FFF8E8;
 
-  --rift: #5B57A6;         /* rift-violet, used sparingly */
+  --rift: #5B57A6;
   --rift-soft: #EFEEF9;
 
   --good: #3F7D4D;
@@ -34,7 +73,6 @@
 
   --shadow: 0 1px 2px rgba(36,30,20,0.06), 0 6px 20px -8px rgba(36,30,20,0.18);
 
-  /* ---- domains (fixed game semantics — not the page accent) ---- */
   --d-fury: #B8402F;
   --d-calm: #3E7D4F;
   --d-mind: #2E63A6;
@@ -44,82 +82,6 @@
   --d-none: #8A806A;
 
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --ground: #17141F;
-    --surface: #1E1A29;
-    --surface-raised: #262133;
-    --ink: #EDE7F5;
-    --ink-soft: #B6ADC9;
-    --ink-faint: #837A9B;
-    --line: #322C42;
-    --line-strong: #423A58;
-
-    --accent: #E4B95B;
-    --accent-strong: #F0CD82;
-    --accent-ink: #241906;
-
-    --rift: #948CE0;
-    --rift-soft: #2A2540;
-
-    --good: #6FBF83;
-    --good-soft: #1E2E22;
-    --warn: #E0A257;
-    --warn-soft: #332512;
-    --bad: #E3776E;
-    --bad-soft: #35201E;
-
-    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 30px -10px rgba(0,0,0,0.55);
-
-    --d-fury: #E07064;
-    --d-calm: #6FBF83;
-    --d-mind: #6FA0E0;
-    --d-chaos: #B08AE0;
-    --d-body: #E0A257;
-    --d-order: #D6BC5A;
-    --d-none: #837A9B;
-
-    color-scheme: dark;
-  }
-}
-
-:root[data-theme="dark"] {
-  --ground: #17141F;
-  --surface: #1E1A29;
-  --surface-raised: #262133;
-  --ink: #EDE7F5;
-  --ink-soft: #B6ADC9;
-  --ink-faint: #837A9B;
-  --line: #322C42;
-  --line-strong: #423A58;
-
-  --accent: #E4B95B;
-  --accent-strong: #F0CD82;
-  --accent-ink: #241906;
-
-  --rift: #948CE0;
-  --rift-soft: #2A2540;
-
-  --good: #6FBF83;
-  --good-soft: #1E2E22;
-  --warn: #E0A257;
-  --warn-soft: #332512;
-  --bad: #E3776E;
-  --bad-soft: #35201E;
-
-  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 30px -10px rgba(0,0,0,0.55);
-
-  --d-fury: #E07064;
-  --d-calm: #6FBF83;
-  --d-mind: #6FA0E0;
-  --d-chaos: #B08AE0;
-  --d-body: #E0A257;
-  --d-order: #D6BC5A;
-  --d-none: #837A9B;
-
-  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -214,6 +176,14 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   letter-spacing: 0.08em;
   margin-top: 2px;
 }
+
+.theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 8px;
+  background: var(--surface-raised); border: 1px solid var(--line);
+  color: var(--ink-soft); cursor: pointer; font-size: 14px; flex: none;
+}
+.theme-toggle:hover { border-color: var(--line-strong); color: var(--ink); }
 
 .nav {
   display: flex;
@@ -477,6 +447,54 @@ textarea { resize: vertical; min-height: 90px; }
   background: var(--surface-raised); cursor: pointer; font-weight: 700; line-height: 1;
 }
 .stepper .val { min-width: 20px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+
+/* ---- Collection grid: card-art tiles with owned/foil steppers ---- */
+
+.coll-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.coll-tile {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+.coll-tile:hover { border-color: var(--line-strong); }
+
+.coll-tile .ct-img {
+  aspect-ratio: 744 / 1039;
+  background: var(--surface-raised);
+  cursor: pointer;
+  position: relative;
+}
+.coll-tile .ct-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.coll-tile .coll-owned-badge {
+  position: absolute; top: 8px; right: 8px;
+  background: var(--accent); color: var(--accent-ink);
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 700;
+  padding: 2px 7px; border-radius: 999px;
+}
+
+.coll-tile .coll-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.coll-tile .ct-name { font-family: 'Fraunces', serif; font-weight: 600; font-size: 14px; line-height: 1.25; }
+
+.coll-id-chip {
+  display: inline-flex; align-self: flex-start;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600;
+  color: var(--ink-faint); background: var(--surface-raised); border: 1px solid var(--line);
+  padding: 1px 7px; border-radius: 999px;
+}
+
+.coll-steppers { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.coll-stepper-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.coll-stepper-row .csr-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); }
 
 /* ============================================================
    Dashboard

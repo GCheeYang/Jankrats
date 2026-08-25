@@ -545,6 +545,29 @@
 
   var COLL_PAGE_SIZE = 100;
 
+  function collectionTileHtml(c) {
+    var owned = getOwned(c.id), foil = getOwnedFoil(c.id);
+    var totalOwned = owned + foil;
+    var primaryDomain = (c.domains && c.domains[0]) || null;
+    return '<div class="coll-tile" data-card-id="' + c.id + '" style="border-left:4px solid ' + domainColor(primaryDomain) + ';">' +
+      '<div class="ct-img" data-open-card="' + c.id + '">' +
+      (c.imageUrl ? '<img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
+      '<span class="coll-owned-badge" style="' + (totalOwned ? "" : "display:none;") + '">×' + totalOwned + "</span>" +
+      "</div>" +
+      '<div class="coll-body">' +
+      '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</span>" +
+      (c.cost !== null && c.cost !== undefined ? '<span class="ct-cost">' + c.cost + "⚡</span>" : "") +
+      "</div>" +
+      '<span class="coll-id-chip">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
+      "<div>" + domainChips(c.domains) + "</div>" +
+      '<div class="coll-steppers">' +
+      '<div class="coll-stepper-row"><span class="csr-label">Owned</span><div class="stepper" data-cid="' + c.id + '" data-kind="qty">' +
+      '<button data-step="-1">−</button><span class="val">' + owned + "</span><button data-step=\"1\">+</button></div></div>" +
+      '<div class="coll-stepper-row"><span class="csr-label">Foil</span><div class="stepper" data-cid="' + c.id + '" data-kind="foil">' +
+      '<button data-step="-1">−</button><span class="val">' + foil + "</span><button data-step=\"1\">+</button></div></div>" +
+      "</div></div></div>";
+  }
+
   function renderCollectionView() {
     var el = document.getElementById("view-collection");
     var list = sortCards(filteredCards(collFilterState), collFilterState.sort);
@@ -567,22 +590,7 @@
       html += '<div class="empty-state"><h3>No cards match</h3><p>Adjust your filters.</p></div>';
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
-      html += '<div style="overflow-x:auto;"><table class="coll-table"><thead><tr>' +
-        "<th>Card</th><th>Domain</th><th>Type</th><th>Cost</th><th>Owned</th><th>Foil</th>" +
-        "</tr></thead><tbody>" +
-        page.map(function (c) {
-          return "<tr>" +
-            "<td>" + escapeHtml(c.name) + '<div style="font-size:11px;color:var(--ink-faint);">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</div></td>" +
-            "<td>" + domainChips(c.domains) + "</td>" +
-            "<td>" + escapeHtml(c.type) + "</td>" +
-            "<td class=\"tabular\">" + (c.cost === null || c.cost === undefined ? "—" : c.cost) + "</td>" +
-            '<td><div class="stepper" data-cid="' + c.id + '" data-kind="qty">' +
-            '<button data-step="-1">−</button><span class="val">' + getOwned(c.id) + "</span><button data-step=\"1\">+</button></div></td>" +
-            '<td><div class="stepper" data-cid="' + c.id + '" data-kind="foil">' +
-            '<button data-step="-1">−</button><span class="val">' + getOwnedFoil(c.id) + "</span><button data-step=\"1\">+</button></div></td>" +
-            "</tr>";
-        }).join("") +
-        "</tbody></table></div>";
+      html += '<div class="coll-grid">' + page.map(collectionTileHtml).join("") + "</div>";
       if (shown < total) html += '<div style="text-align:center;margin-top:18px;"><button class="btn" id="cof-load-more">Show ' + Math.min(COLL_PAGE_SIZE, total - shown) + ' more (' + (total - shown) + ' left)</button></div>';
     }
 
@@ -595,6 +603,9 @@
     });
     var loadMoreBtn2 = document.getElementById("cof-load-more");
     if (loadMoreBtn2) loadMoreBtn2.addEventListener("click", function () { collFilterState.limit = (collFilterState.limit || COLL_PAGE_SIZE) + COLL_PAGE_SIZE; renderCollectionView(); });
+    el.querySelectorAll("[data-open-card]").forEach(function (img) {
+      img.addEventListener("click", function () { openCardDetail(img.getAttribute("data-open-card")); });
+    });
     el.querySelectorAll(".stepper[data-cid]").forEach(function (st) {
       var cid = st.getAttribute("data-cid"), kind = st.getAttribute("data-kind");
       st.querySelectorAll("[data-step]").forEach(function (b) {
@@ -604,6 +615,12 @@
           if (kind === "qty") qty = clamp(qty + delta, 0, 999); else foil = clamp(foil + delta, 0, 999);
           setOwned(cid, qty, foil);
           st.querySelector(".val").textContent = kind === "qty" ? qty : foil;
+          var badge = document.querySelector('.coll-tile[data-card-id="' + cid + '"] .coll-owned-badge');
+          var totalOwned = qty + foil;
+          if (badge) {
+            if (totalOwned) { badge.textContent = "×" + totalOwned; badge.style.display = ""; }
+            else badge.style.display = "none";
+          }
           renderRail();
         });
       });
@@ -1895,6 +1912,8 @@
     });
     var nameInput = document.getElementById("profile-name");
     nameInput.addEventListener("change", function () { state.profile.name = nameInput.value; persistProfile(); renderRail(); });
+    var themeBtn = document.getElementById("theme-toggle");
+    if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
     window.addEventListener("hashchange", function () {
       var h = (window.location.hash || "").replace("#", "");
       if (h && VIEWS.indexOf(h) !== -1) {
@@ -2462,8 +2481,23 @@
     return true;
   }
 
+  function applyTheme() {
+    var saved = loadJSON(KEYS.theme, null);
+    var theme = saved === "light" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", theme);
+    var btn = document.getElementById("theme-toggle");
+    if (btn) btn.textContent = theme === "light" ? "☀" : "☾";
+  }
+
+  function toggleTheme() {
+    var current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+    saveJSON(KEYS.theme, current === "light" ? "dark" : "light");
+    applyTheme();
+  }
+
   function init() {
     loadAll();
+    applyTheme();
     wireShell();
     wireAuth();
     var hadShared = checkForSharedDeckInUrl();
