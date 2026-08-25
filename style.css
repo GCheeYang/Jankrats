@@ -648,6 +648,10 @@ code.deckcode {
 }
 .social-avatar-sm.placeholder { display: inline-block; }
 
+.last-used-note {
+  font-size: 11px; color: var(--ink-faint); margin-bottom: 6px;
+}
+
 .friends-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
 .friend-tile {
   display: flex; align-items: center; gap: 10px;

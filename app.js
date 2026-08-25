@@ -14,7 +14,8 @@
     collection: STORAGE_PREFIX + "collection",
     decks: STORAGE_PREFIX + "decks",
     profile: STORAGE_PREFIX + "profile",
-    theme: STORAGE_PREFIX + "theme"
+    theme: STORAGE_PREFIX + "theme",
+    lastAuthProvider: STORAGE_PREFIX + "lastAuthProvider"
   };
 
   var DOMAINS = {
@@ -2100,6 +2101,13 @@
       var hadSession = !!state.social.session;
       state.social.session = session;
       if (session) {
+        var authProvider = session.user && session.user.app_metadata && session.user.app_metadata.provider;
+        if (authProvider) {
+          var identityLabel = (session.user && session.user.email) ||
+            (session.user && session.user.user_metadata && (session.user.user_metadata.full_name || session.user.user_metadata.name)) ||
+            null;
+          saveJSON(KEYS.lastAuthProvider, { provider: authProvider, label: identityLabel });
+        }
         JVBackend.myProfile().then(function (p) {
           state.social.myProfile = p;
           renderRail();
@@ -2148,13 +2156,31 @@
     });
   }
 
+  // Shows both provider buttons, with whichever one the browser last signed
+  // in with visually highlighted, first, and labeled with the account it
+  // signed into — so returning players don't accidentally create a second
+  // account by picking the other provider.
+  function providerSignInButtonsHtml(googleId, discordId, baseClass, highlightExtra, center) {
+    var info = loadJSON(KEYS.lastAuthProvider, null);
+    var last = info && info.provider;
+    function cls(provider) { return baseClass + (last === provider && highlightExtra ? " " + highlightExtra : ""); }
+    var google = '<button class="' + cls("google") + '" id="' + googleId + '">Sign in with Google</button>';
+    var discord = '<button class="' + cls("discord") + '" id="' + discordId + '">Sign in with Discord</button>';
+    var buttonsHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap;' + (center ? "justify-content:center;" : "") + '">' +
+      (last === "discord" ? (discord + google) : (google + discord)) + "</div>";
+    if (!last) return buttonsHtml;
+    var providerName = last === "google" ? "Google" : "Discord";
+    var note = '<div class="last-used-note">Last signed in with ' + providerName +
+      (info.label ? " (" + escapeHtml(info.label) + ")" : "") + '</div>';
+    return note + buttonsHtml;
+  }
+
   function authRailHtml() {
     if (!JVBackend.isConfigured()) return "";
     var s = state.social;
     if (!s.session) {
-      return '<div class="social-auth" style="display:flex;gap:6px;flex-wrap:wrap;">' +
-        '<button class="btn small" id="auth-signin">Sign in with Google</button>' +
-        '<button class="btn small" id="auth-signin-discord">Sign in with Discord</button>' +
+      return '<div class="social-auth">' +
+        providerSignInButtonsHtml("auth-signin", "auth-signin-discord", "btn small", "primary", false) +
         "</div>";
     }
     var name = (s.myProfile && s.myProfile.display_name) || (s.session.user && s.session.user.email) || "Signed in";
@@ -2183,9 +2209,8 @@
 
   function socialSignInPromptHtml(message) {
     var html = '<div class="empty-state"><h3>Sign in to continue</h3><p>' + escapeHtml(message || "Sign in with Google to see and post to the feed.") + '</p>';
-    html += '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px;">' +
-      '<button class="btn primary" id="empty-signin">Sign in with Google</button>' +
-      '<button class="btn primary" id="empty-signin-discord">Sign in with Discord</button>' +
+    html += '<div style="margin-top:10px;">' +
+      providerSignInButtonsHtml("empty-signin", "empty-signin-discord", "btn primary", null, true) +
       "</div></div>";
     return html;
   }
