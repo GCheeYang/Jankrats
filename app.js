@@ -90,21 +90,19 @@
     return (DOMAINS[name] && DOMAINS[name].color) || "var(--d-none)";
   }
 
-  // Domain chips show that domain's actual Rune card art as a small icon
-  // (falling back to a plain color dot if no Rune card for it is loaded).
-  var domainRuneImageCache = {};
-  function domainRuneImage(name) {
-    if (domainRuneImageCache[name] !== undefined) return domainRuneImageCache[name];
-    var matches = state.cards.filter(function (c) {
-      return c.type === "Rune" && c.domains && c.domains.length === 1 && c.domains[0] === name;
-    });
-    var pick = matches.filter(function (c) { return c.rarity === "Common"; })[0] || matches[0] || null;
-    domainRuneImageCache[name] = (pick && pick.imageUrl) || null;
-    return domainRuneImageCache[name];
-  }
+  // Domain chips show a small rune-glyph icon (pre-cropped, transparent
+  // PNGs in assets/domains/) instead of a flat color dot.
+  var DOMAIN_RUNE_ICONS = {
+    Fury: "assets/domains/fury.png",
+    Calm: "assets/domains/calm.png",
+    Mind: "assets/domains/mind.png",
+    Chaos: "assets/domains/chaos.png",
+    Body: "assets/domains/body.png",
+    Order: "assets/domains/order.png"
+  };
 
   function domainChip(name) {
-    var img = domainRuneImage(name);
+    var img = DOMAIN_RUNE_ICONS[name];
     var icon = img
       ? '<span class="domain-rune-icon" style="background-image:url(\'' + escapeHtml(img) + '\')"></span>'
       : '<span class="dot" style="background:' + domainColor(name) + '"></span>';
@@ -184,7 +182,6 @@
   function rebuildCardIndex() {
     state.cardsById = {};
     state.cards.forEach(function (c) { state.cardsById[c.id] = c; });
-    domainRuneImageCache = {};
   }
 
   function loadAll() {

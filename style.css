@@ -339,18 +339,9 @@ textarea { resize: vertical; min-height: 90px; }
   border: 1px solid var(--line);
 }
 .domain-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-/* Zooms into just the rune glyph printed on that domain's Rune card,
-   instead of showing the whole card — the source images are full
-   744x1039 card art. background-size/position crop to a fixed band
-   around the glyph (same across domains, since every Rune card uses
-   the same template), sized up enough that sub-pixel rounding at a
-   tiny final size doesn't visibly skew the crop. */
 .domain-chip .domain-rune-icon {
-  width: 20px; height: 20px; border-radius: 50%; flex: none;
-  background-color: var(--surface-raised);
-  background-repeat: no-repeat;
-  background-size: 167% 278%;
-  background-position: 50% 12.5%;
+  width: 16px; height: 16px; border-radius: 50%; flex: none;
+  background-repeat: no-repeat; background-size: 80%; background-position: center;
 }
 
 .empty-state {
