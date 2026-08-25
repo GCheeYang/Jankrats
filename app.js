@@ -2157,22 +2157,22 @@
   }
 
   // Shows both provider buttons, with whichever one the browser last signed
-  // in with visually highlighted, first, and labeled with the account it
-  // signed into — so returning players don't accidentally create a second
-  // account by picking the other provider.
-  function providerSignInButtonsHtml(googleId, discordId, baseClass, highlightExtra, center) {
+  // in with labeled with a small banner directly above that button — so
+  // returning players don't accidentally create a second account by
+  // picking the other provider.
+  function providerSignInButtonsHtml(googleId, discordId, baseClass, center) {
     var info = loadJSON(KEYS.lastAuthProvider, null);
     var last = info && info.provider;
-    function cls(provider) { return baseClass + (last === provider && highlightExtra ? " " + highlightExtra : ""); }
-    var google = '<button class="' + cls("google") + '" id="' + googleId + '">Sign in with Google</button>';
-    var discord = '<button class="' + cls("discord") + '" id="' + discordId + '">Sign in with Discord</button>';
-    var buttonsHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap;' + (center ? "justify-content:center;" : "") + '">' +
-      (last === "discord" ? (discord + google) : (google + discord)) + "</div>";
-    if (!last) return buttonsHtml;
-    var providerName = last === "google" ? "Google" : "Discord";
-    var note = '<div class="last-used-note">Last signed in with ' + providerName +
-      (info.label ? " (" + escapeHtml(info.label) + ")" : "") + '</div>';
-    return note + buttonsHtml;
+    function wrap(provider, id, label) {
+      var btn = '<button class="' + baseClass + '" id="' + id + '">' + label + "</button>";
+      if (provider !== last) return "<div>" + btn + "</div>";
+      var tag = "Last used" + (info.label ? " · " + escapeHtml(info.label) : "");
+      return '<div class="last-used-wrap"><div class="last-used-badge">' + tag + "</div>" + btn + "</div>";
+    }
+    var google = wrap("google", googleId, "Sign in with Google");
+    var discord = wrap("discord", discordId, "Sign in with Discord");
+    var order = last === "discord" ? (discord + google) : (google + discord);
+    return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;' + (center ? "justify-content:center;" : "") + '">' + order + "</div>";
   }
 
   function authRailHtml() {
@@ -2180,7 +2180,7 @@
     var s = state.social;
     if (!s.session) {
       return '<div class="social-auth">' +
-        providerSignInButtonsHtml("auth-signin", "auth-signin-discord", "btn small", "primary", false) +
+        providerSignInButtonsHtml("auth-signin", "auth-signin-discord", "btn small", false) +
         "</div>";
     }
     var name = (s.myProfile && s.myProfile.display_name) || (s.session.user && s.session.user.email) || "Signed in";
@@ -2210,7 +2210,7 @@
   function socialSignInPromptHtml(message) {
     var html = '<div class="empty-state"><h3>Sign in to continue</h3><p>' + escapeHtml(message || "Sign in with Google to see and post to the feed.") + '</p>';
     html += '<div style="margin-top:10px;">' +
-      providerSignInButtonsHtml("empty-signin", "empty-signin-discord", "btn primary", null, true) +
+      providerSignInButtonsHtml("empty-signin", "empty-signin-discord", "btn primary", true) +
       "</div></div>";
     return html;
   }
