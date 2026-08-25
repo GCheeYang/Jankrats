@@ -725,6 +725,11 @@
 
   function renderCollectionView() {
     var el = document.getElementById("view-collection");
+    if (JVBackend.isConfigured() && !state.social.session) {
+      el.innerHTML = socialSignInPromptHtml("Sign in to track your collection — it'll sync to your account and follow you across devices.");
+      wireSignInPrompt(el);
+      return;
+    }
     var list = sortCards(filteredCards(collFilterState), collFilterState.sort).filter(function (c) {
       return getOwned(c.id) + getOwnedFoil(c.id) > 0;
     });
@@ -2143,9 +2148,14 @@
         state.social.friendsTargetId = null;
         state.social.friendsTargetProfile = null;
         state.social.friendsTargetCollection = null;
+        // Collection is account-bound once signed in — clear it on sign-out
+        // rather than leaving the previous account's cards visible/editable
+        // to whoever uses this browser next.
+        state.collection = {};
+        persistCollection();
       }
       renderRail();
-      if (["feed", "profile", "topcards", "friends", "dashboard"].indexOf(state.route) !== -1) render();
+      if (["feed", "profile", "topcards", "friends", "dashboard", "collection"].indexOf(state.route) !== -1) render();
     });
   }
 
