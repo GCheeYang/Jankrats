@@ -1643,7 +1643,13 @@
 
   function renderImportView() {
     var el = document.getElementById("view-import");
-    var html = '<div class="view-head"><div><h1>Import cards</h1><p>Bring your own Riftbound card list. Nothing is fetched automatically — paste or upload JSON or CSV you\'ve put together yourself, and it merges into your local card database.</p></div></div>';
+    if (JVBackend.isConfigured() && !state.social.session) {
+      el.innerHTML = socialSignInPromptHtml("Sign in to import cards into your collection — it'll sync to your account and follow you across devices.");
+      wireSignInPrompt(el);
+      return;
+    }
+
+    var html = '<div class="view-head"><div><h1>Import to Collection</h1><p>Bring in a list of cards you own. Nothing is fetched automatically — paste or upload JSON or CSV you\'ve put together yourself, and it sets how many of each you own, matched against the existing card database.</p></div></div>';
 
     html += '<div class="tabs">' + tabBtn2("json", "JSON") + tabBtn2("csv", "CSV") + "</div>";
     html += '<div id="import-schema"></div>';
@@ -1652,7 +1658,6 @@
     html += '<div class="field" style="margin-top:14px;"><label>Or paste data</label><textarea id="import-text" rows="10" placeholder="Paste JSON array or CSV here…"></textarea></div>';
     html += '<div style="display:flex;gap:8px;margin-top:10px;">' +
       '<button class="btn primary" id="import-run">Import</button>' +
-      '<button class="btn ghost" id="import-clear-db">Reset to official card database</button>' +
       "</div>";
     html += '<div id="import-result" style="margin-top:14px;"></div>';
 
@@ -1683,14 +1688,6 @@
       var text = document.getElementById("import-text").value;
       runImport(mode, text);
     });
-    document.getElementById("import-clear-db").addEventListener("click", function () {
-      if (!window.confirm("Reset the card database back to the full official Riftbound set? This won't touch your collection counts or decks, but decks using removed/custom cards may break.")) return;
-      state.cards = (REAL_CARDS.length ? REAL_CARDS : DEMO_CARDS).slice();
-      rebuildCardIndex();
-      persistCards();
-      toast("Card database reset to the official " + state.cards.length + "-card set.");
-      render();
-    });
   }
 
   function tabBtn2(key, label) {
@@ -1700,54 +1697,58 @@
   function renderImportSchema(mode) {
     var host = document.getElementById("import-schema");
     if (mode === "json") {
-      host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint);">Array of objects. Required: <code>id, name, type</code>. Optional: <code>set, setName, collectorNumber, domains (array), rarity, cost, power, tags (array), imageUrl, text</code>. Type is one of ' + CARD_TYPES.join(", ") + ". Domains are from " + DOMAIN_NAMES.join(", ") + " (empty array = colorless).</p>";
+      host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint);">Array of objects, one per card you own. Each needs <code>qty</code> and either <code>id</code> (exact card id, e.g. <code>OGN-179/298</code>) or <code>name</code> (matched against the card database, same fuzzy matching as the voice importer below). <code>foil</code> is optional (defaults to 0). Example: <code>[{"id":"OGN-179/298","qty":3},{"name":"Ahri, Alluring","qty":1,"foil":1}]</code></p>';
     } else {
-      host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint);">First row is a header: <code>id,name,type,set,collectorNumber,domains,rarity,cost,power,text</code>. Multiple domains are pipe-separated, e.g. <code>Fury|Chaos</code>. Leave cost/power blank for cards without one.</p>';
+      host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint);">First row is a header: <code>id,qty,foil</code> or <code>name,qty,foil</code> (both <code>id</code> and <code>name</code> columns are fine together — <code>id</code> wins when both are present). <code>foil</code> is optional.</p>';
     }
   }
 
   function runImport(mode, text) {
     var resultEl = document.getElementById("import-result");
-    var cards, errors = [];
+    var rows, errors = [];
     if (mode === "json") {
       var parsed = safeParse(text, null);
       if (!Array.isArray(parsed)) { resultEl.innerHTML = errorBox("That's not a valid JSON array."); return; }
-      cards = parsed.map(function (raw, i) {
-        var e = validateCardRaw(raw, i);
-        if (e) { errors.push(e); return null; }
-        return normalizeCard(raw);
-      }).filter(Boolean);
+      rows = parsed.map(function (raw, i) {
+        return { idx: i + 1, id: raw && raw.id, name: raw && raw.name, qty: raw && raw.qty, foil: raw && raw.foil };
+      });
     } else {
-      var rows = parseCSV(text);
-      if (!rows.length) { resultEl.innerHTML = errorBox("No rows found."); return; }
-      var header = rows[0].map(function (h) { return h.trim(); });
-      cards = [];
-      for (var r = 1; r < rows.length; r++) {
-        if (!rows[r].length || (rows[r].length === 1 && !rows[r][0])) continue;
-        var obj = {};
-        header.forEach(function (h, i) { obj[h] = rows[r][i]; });
-        if (obj.domains) obj.domains = String(obj.domains).split("|").map(function (s) { return s.trim(); }).filter(Boolean);
-        if (obj.cost !== undefined && obj.cost !== "") obj.cost = Number(obj.cost); else obj.cost = null;
-        if (obj.power !== undefined && obj.power !== "") obj.power = Number(obj.power); else obj.power = null;
-        var e = validateCardRaw(obj, r);
-        if (e) { errors.push(e); continue; }
-        cards.push(normalizeCard(obj));
+      var parsedRows = parseCSV(text);
+      if (!parsedRows.length) { resultEl.innerHTML = errorBox("No rows found."); return; }
+      var header = parsedRows[0].map(function (h) { return h.trim().toLowerCase(); });
+      rows = [];
+      for (var r = 1; r < parsedRows.length; r++) {
+        if (!parsedRows[r].length || (parsedRows[r].length === 1 && !parsedRows[r][0])) continue;
+        var obj = { idx: r + 1 };
+        header.forEach(function (h, i) { obj[h] = parsedRows[r][i]; });
+        rows.push(obj);
       }
     }
 
-    if (!cards.length) { resultEl.innerHTML = errorBox("No valid cards found.") + (errors.length ? errorList(errors) : ""); return; }
+    var applied = 0;
+    rows.forEach(function (row) {
+      var card = null;
+      if (row.id) card = state.cardsById[String(row.id).trim()] || null;
+      if (!card && row.name) {
+        var match = bestCardMatch(String(row.name));
+        if (match) card = match.card;
+      }
+      if (!card) { errors.push("Row " + row.idx + ": no card found for " + escapeHtml(String(row.id || row.name || "(blank)"))); return; }
 
-    var added = 0, updated = 0;
-    cards.forEach(function (c) {
-      if (state.cardsById[c.id]) updated++; else added++;
-      state.cardsById[c.id] = c;
+      var qty = (row.qty === undefined || row.qty === null || row.qty === "") ? NaN : Number(row.qty);
+      if (isNaN(qty)) { errors.push("Row " + row.idx + " (" + card.name + "): missing or invalid qty"); return; }
+      var foil = (row.foil === undefined || row.foil === null || row.foil === "") ? 0 : Number(row.foil);
+      if (isNaN(foil)) foil = 0;
+
+      setOwned(card.id, clamp(qty, 0, 999), clamp(foil, 0, 999));
+      applied++;
     });
-    state.cards = Object.keys(state.cardsById).map(function (k) { return state.cardsById[k]; });
-    persistCards();
 
-    resultEl.innerHTML = '<div class="pill good" style="font-size:13px;padding:6px 12px;">' + added + " added, " + updated + " updated</div>" + (errors.length ? errorList(errors) : "");
+    if (!applied) { resultEl.innerHTML = errorBox("No valid collection entries found.") + (errors.length ? errorList(errors) : ""); return; }
+
+    resultEl.innerHTML = '<div class="pill good" style="font-size:13px;padding:6px 12px;">' + applied + " card" + (applied === 1 ? "" : "s") + " updated in your collection</div>" + (errors.length ? errorList(errors) : "");
     renderRail();
-    toast("Import complete.");
+    toast("Collection import complete.");
   }
 
   /* ================================================================
@@ -2073,33 +2074,6 @@
         renderRail();
       });
     }
-  }
-
-  function validateCardRaw(raw, idx) {
-    if (!raw || typeof raw !== "object") return "Row " + idx + ": not an object";
-    if (!raw.id) return "Row " + idx + ": missing id";
-    if (!raw.name) return "Row " + idx + ": missing name";
-    if (CARD_TYPES.indexOf(raw.type) === -1) return "Row " + idx + " (" + raw.id + "): type must be one of " + CARD_TYPES.join(", ");
-    return null;
-  }
-
-  function normalizeCard(raw) {
-    return {
-      id: String(raw.id),
-      name: String(raw.name),
-      set: raw.set || "",
-      setName: raw.setName || raw.set || "",
-      collectorNumber: raw.collectorNumber || "",
-      type: raw.type,
-      domains: Array.isArray(raw.domains) ? raw.domains.filter(function (d) { return DOMAIN_NAMES.indexOf(d) !== -1; }) : [],
-      rarity: raw.rarity || "",
-      cost: (raw.cost === undefined || raw.cost === null || raw.cost === "") ? null : Number(raw.cost),
-      power: (raw.power === undefined || raw.power === null || raw.power === "") ? null : Number(raw.power),
-      tags: Array.isArray(raw.tags) ? raw.tags : [],
-      imageUrl: raw.imageUrl || null,
-      text: raw.text || "",
-      isPlaceholder: false
-    };
   }
 
   function errorBox(msg) { return '<div class="pill bad" style="font-size:13px;padding:6px 12px;margin-bottom:8px;">' + escapeHtml(msg) + "</div>"; }
