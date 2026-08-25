@@ -106,7 +106,7 @@
   function domainChip(name) {
     var img = domainRuneImage(name);
     var icon = img
-      ? '<img class="domain-rune-icon" src="' + escapeHtml(img) + '" alt="" loading="lazy">'
+      ? '<span class="domain-rune-icon"><img src="' + escapeHtml(img) + '" alt="" loading="lazy"></span>'
       : '<span class="dot" style="background:' + domainColor(name) + '"></span>';
     return '<span class="domain-chip">' + icon + escapeHtml(name) + "</span>";
   }

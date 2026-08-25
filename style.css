@@ -339,8 +339,16 @@ textarea { resize: vertical; min-height: 90px; }
   border: 1px solid var(--line);
 }
 .domain-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+/* Zooms into just the rune glyph printed on that domain's Rune card,
+   instead of showing the whole card — the source images are full
+   744x1039 card art, so the inner img is scaled way up and shifted
+   with negative margins to crop tightly around the glyph. */
 .domain-chip .domain-rune-icon {
-  width: 15px; height: 15px; border-radius: 50%; flex: none; object-fit: cover; object-position: center 30%;
+  width: 15px; height: 15px; border-radius: 50%; flex: none; overflow: hidden;
+  display: inline-block; position: relative; background: var(--surface-raised);
+}
+.domain-chip .domain-rune-icon img {
+  width: 21px; height: 30px; margin-left: -3px; margin-top: 0;
 }
 
 .empty-state {
