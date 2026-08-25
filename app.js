@@ -2171,7 +2171,7 @@
     var google = wrap("google", googleId, "Sign in with Google");
     var discord = wrap("discord", discordId, "Sign in with Discord");
     var order = last === "discord" ? (discord + google) : (google + discord);
-    return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:8px;' + (center ? "justify-content:center;" : "") + '">' + order + "</div>";
+    return '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:8px;padding-right:6px;' + (center ? "justify-content:center;" : "") + '">' + order + "</div>";
   }
 
   function authRailHtml() {
