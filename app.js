@@ -375,7 +375,7 @@
     var shown = Math.min(cardsFilterState.limit || CARDS_PAGE_SIZE, total);
     var page = list.slice(0, shown);
 
-    var html = '<div class="view-head"><div><h1>Card database</h1><p>' + state.cards.length + ' cards loaded. Search, filter, and click a card to see the full text or log how many you own.</p></div></div>';
+    var html = '<div class="view-head"><div><h1>Explore Cards</h1><p>' + state.cards.length + ' cards loaded. Search, filter, and click a card to see the full text or log how many you own.</p></div></div>';
 
     html += '<div class="toolbar">' +
       field("Search", '<input type="search" id="cf-q" placeholder="Name or text…" value="' + escapeHtml(cardsFilterState.q) + '">') +
@@ -579,7 +579,7 @@
     var shown = Math.min(collFilterState.limit || COLL_PAGE_SIZE, total);
     var page = list.slice(0, shown);
 
-    var html = '<div class="view-head"><div><h1>Collection</h1><p>The cards you actually own — ' + uniqueOwned + " / " + state.cards.length + " unique cards (" + pct + '%). Browse <b>Cards</b> to find and add new ones.</p></div></div>';
+    var html = '<div class="view-head"><div><h1>Collection</h1><p>The cards you actually own — ' + uniqueOwned + " / " + state.cards.length + " unique cards (" + pct + '%). Browse <b>Explore Cards</b> to find and add new ones.</p></div></div>';
 
     html += '<div class="toolbar">' +
       field("Search", '<input type="search" id="cof-q" placeholder="Name or text…" value="' + escapeHtml(collFilterState.q) + '">') +
@@ -591,7 +591,7 @@
     if (!total) {
       html += uniqueOwned
         ? '<div class="empty-state"><h3>No owned cards match</h3><p>Adjust your filters.</p></div>'
-        : '<div class="empty-state"><h3>Nothing owned yet</h3><p>Head to <b>Cards</b>, click a card, and set an Owned/Foil count to add it here.</p></div>';
+        : '<div class="empty-state"><h3>Nothing owned yet</h3><p>Head to <b>Explore Cards</b>, click a card, and set an Owned/Foil count to add it here.</p></div>';
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
       html += '<div class="coll-grid">' + page.map(collectionTileHtml).join("") + "</div>";
@@ -1014,9 +1014,14 @@
     var html = '<div><h3 style="margin-bottom:10px;">Step 1 — Choose a Legend</h3>';
     if (!legends.length) html += '<div class="empty-state"><h3>No Legends in your card database</h3><p>Import some Legend cards first.</p></div>';
     html += '<div class="legend-picker">' + legends.map(function (l) {
+      var owned = getOwned(l.id) + getOwnedFoil(l.id);
       return '<div class="legend-card" data-legend="' + l.id + '">' +
         (l.imageUrl ? '<div class="lc-img"><img src="' + escapeHtml(l.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
-        '<div class="lc-name">' + escapeHtml(l.name) + "</div>" + domainChips(l.domains) + "</div>";
+        '<div class="lc-name">' + escapeHtml(l.name) + escapeHtml(variantLabel(l)) + "</div>" +
+        '<span class="coll-id-chip">' + escapeHtml(l.set) + " " + escapeHtml(l.collectorNumber || "") + "</span>" +
+        domainChips(l.domains) +
+        '<span class="pill ' + (owned ? "good" : "neutral") + '">' + (owned ? "Own " + owned : "Not owned") + "</span>" +
+        "</div>";
     }).join("") + "</div></div>";
     return html;
   }
@@ -1041,9 +1046,14 @@
       '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Legend: ' + escapeHtml(legend.name) + " · " + domainChips(deck.domains) + '</p>';
     if (!champs.length) html += '<div class="empty-state"><h3>No matching Champions</h3><p>Import Champion cards in ' + deck.domains.join("/") + ", or " + '<button class="btn small" data-back-legend>change Legend</button>.</p></div>';
     html += '<div class="legend-picker">' + champs.map(function (c) {
+      var owned = getOwned(c.id) + getOwnedFoil(c.id);
       return '<div class="legend-card" data-champ="' + c.id + '">' +
         (c.imageUrl ? '<div class="lc-img"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
-        '<div class="lc-name">' + escapeHtml(c.name) + "</div><div class=\"ct-meta\">" + c.cost + "⚡ / " + c.power + "★</div>" + domainChips(c.domains) + "</div>";
+        '<div class="lc-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</div><div class=\"ct-meta\">" + c.cost + "⚡ / " + c.power + "★</div>" +
+        '<span class="coll-id-chip">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
+        domainChips(c.domains) +
+        '<span class="pill ' + (owned ? "good" : "neutral") + '">' + (owned ? "Own " + owned : "Not owned") + "</span>" +
+        "</div>";
     }).join("") + "</div>" +
       '<button class="btn ghost small" style="margin-top:12px;" data-back-legend>← change Legend</button>' +
       "</div>";
@@ -1103,8 +1113,8 @@
       html += '<div class="field" style="margin-bottom:10px;"><input type="search" id="deck-card-filter" placeholder="Filter cards to add…" value="' + escapeHtml(state.builder.cardFilter) + '"></div>';
       html += '<div class="deck-picker-list">' + pickPool.map(function (c) {
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
-        return '<div class="pick-row"><div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + '</span>' +
-          '<span class="pr-meta"><span class="pr-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span><span>" + escapeHtml(c.type) + "</span><span>own " + getOwned(c.id) + "</span></span></div>" +
+        return '<div class="pick-row"><div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span>' +
+          '<span class="pr-meta"><span class="pr-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span><span>" + escapeHtml(c.type) + "</span><span>" + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span><span>own " + (getOwned(c.id) + getOwnedFoil(c.id)) + "</span></span></div>" +
           '<button class="btn small" data-add-main="' + c.id + '"' + (atLimit ? " disabled" : "") + ">" + (atLimit ? "at limit" : "+ add") + "</button>" +
           "</div>";
       }).join("") + "</div>";
@@ -1119,7 +1129,7 @@
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Choose ' + RULES.battlefieldCount + ' unique Battlefields.</p>';
       html += '<div class="deck-picker-list">' + battlefieldPool.map(function (c) {
         var chosen = (deck.battlefields || []).indexOf(c.id) !== -1;
-        return '<div class="pick-row"><div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + '</span><span class="pr-meta">' + escapeHtml(c.text || "") + '</span></div>' +
+        return '<div class="pick-row"><div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span><span class="pr-meta">' + escapeHtml(c.text || "") + '</span></div>' +
           '<button class="btn small' + (chosen ? " primary" : "") + '" data-toggle-bf="' + c.id + '">' + (chosen ? "✓ chosen" : "choose") + "</button></div>";
       }).join("") + "</div>";
       if (!battlefieldPool.length) html += '<div class="empty-state"><h3>No Battlefield cards yet</h3><p>Import some — Battlefields are colorless.</p></div>';
@@ -1127,8 +1137,8 @@
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Optional: 0 or exactly 8 cards, same domain and copy-limit rules as your main deck.</p>';
       html += '<div class="deck-picker-list">' + pickPool.map(function (c) {
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
-        return '<div class="pick-row"><div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + '</span>' +
-          '<span class="pr-meta"><span class="pr-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span><span>" + escapeHtml(c.type) + "</span></span></div>" +
+        return '<div class="pick-row"><div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span>' +
+          '<span class="pr-meta"><span class="pr-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span><span>" + escapeHtml(c.type) + "</span><span>" + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span></span></div>" +
           '<button class="btn small" data-add-sb="' + c.id + '"' + (atLimit ? " disabled" : "") + ">" + (atLimit ? "at limit" : "+ add") + "</button></div>";
       }).join("") + "</div>";
     } else if (state.builder.tab === "share") {
@@ -1160,7 +1170,7 @@
     mainEntries.forEach(function (e) {
       var c = state.cardsById[e.cardId];
       if (!c) return;
-      html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c.name) +
+      html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c.name) + escapeHtml(variantLabel(c)) +
         (deck.championId === c.id ? ' <span class="pill neutral" style="padding:0 5px;">CH</span>' : "") + "</span>" +
         '<span class="sl-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span>" +
         (deck.championId === c.id ? "" : '<button data-rm-main="' + c.id + '" title="Remove one">&times;</button>') +
@@ -1180,7 +1190,7 @@
       html += '<div><h3>Battlefields</h3>';
       deck.battlefields.forEach(function (id) {
         var c = state.cardsById[id];
-        html += '<div class="slot-line"><span class="sl-name">' + escapeHtml(c ? c.name : id) + "</span></div>";
+        html += '<div class="slot-line"><span class="sl-name">' + escapeHtml(c ? c.name : id) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
       });
       html += "</div>";
     }
@@ -1189,7 +1199,7 @@
       html += '<div><h3>Sideboard (' + sideboardCount(deck) + ")</h3>";
       deck.sideboard.forEach(function (e) {
         var c = state.cardsById[e.cardId];
-        html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + "</span>" +
+        html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + (c ? escapeHtml(variantLabel(c)) : "") + "</span>" +
           '<button data-rm-sb="' + e.cardId + '" title="Remove one">&times;</button></div>';
       });
       html += "</div>";
