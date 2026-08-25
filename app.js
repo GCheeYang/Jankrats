@@ -1515,10 +1515,11 @@
     var html = '<div class="view-head" style="margin-top:34px;"><div><h1 style="font-size:20px;">Speak your collection</h1>' +
       "<p>Read off the cards you own out loud (or type/paste a list) and it'll match each one against the card database and add it to your Collection.</p></div></div>";
 
+    var variantNote = "Some cards have more than one printing (alt art, or a signed/secret-rare parallel). Add a word like <b>signature</b>, <b>secret</b>, or <b>star</b> for that special parallel, or <b>alt</b>/<b>showcase</b> for the alternate art — say nothing and it picks the plain printing.";
     if (!supported) {
-      html += '<div class="callout" style="margin-bottom:14px;">Voice input isn\'t supported in this browser — try Chrome or Edge. You can still type or paste a list below (one card per line or comma-separated, e.g. "2 Bargain-Bin Baron, Sir Reginald Duct-Taped").</div>';
+      html += '<div class="callout" style="margin-bottom:14px;">Voice input isn\'t supported in this browser — try Chrome or Edge. You can still type or paste a list below (one card per line or comma-separated, e.g. "2 Bargain-Bin Baron, Sir Reginald Duct-Taped"). ' + variantNote + "</div>";
     } else {
-      html += '<div class="callout" style="margin-bottom:14px;">Click the mic, then say your cards one after another (e.g. "two Bargain-Bin Baron, Sir Reginald Duct-Taped, three Anchor Dump"). Say a number before a card to set its quantity — otherwise it assumes 1. Click the mic again when you\'re done, then review the matches before adding them.</div>';
+      html += '<div class="callout" style="margin-bottom:14px;">Click the mic, then say your cards one after another (e.g. "two Bargain-Bin Baron, Sir Reginald Duct-Taped, three Anchor Dump"). Say a number before a card to set its quantity — otherwise it assumes 1. Click the mic again when you\'re done, then review the matches before adding them.<br><br>' + variantNote + "</div>";
     }
 
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
@@ -1555,15 +1556,38 @@
     return html;
   }
 
+  // Some cards share a name with another printing at the same numbered slot
+  // (an alt-art variant, or a second parallel of an over-numbered secret
+  // slot) — distinguished only by a letter/asterisk suffix on the id, e.g.
+  // "OGN-066a/298" vs "OGN-066/298", or "VEN-194*/166" vs "VEN-194/166".
+  function variantSuffixOf(card) {
+    var m = card.id.match(/^[A-Za-z0-9]+-\d+([^\/]*)\//);
+    return m ? m[1] : "";
+  }
+
+  function variantLabel(card) {
+    var suf = variantSuffixOf(card);
+    return suf === "*" ? " ★" : suf === "a" ? " (alt)" : "";
+  }
+
   function cardSelectOptions(selectedId, sortedCards) {
     var html = '<option value=""' + (!selectedId ? " selected" : "") + ">— No match —</option>";
     sortedCards.forEach(function (c) {
-      html += '<option value="' + escapeHtml(c.id) + '"' + (c.id === selectedId ? " selected" : "") + ">" + escapeHtml(c.name) + "</option>";
+      var label = escapeHtml(c.name) + variantLabel(c) + " — " + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "");
+      html += '<option value="' + escapeHtml(c.id) + '"' + (c.id === selectedId ? " selected" : "") + ">" + label + "</option>";
     });
     return html;
   }
 
   var VOICE_NUMBER_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+
+  // Say one of these alongside a card name to pick a specific printing when
+  // a card has more than one (e.g. "one signature Defender of Tomorrow").
+  // Anything unrecognized/unsaid falls back to the plain/base printing.
+  var VOICE_VARIANT_HINTS = {
+    signature: "*", signed: "*", star: "*", special: "*", secret: "*",
+    alt: "a", alternate: "a", showcase: "a"
+  };
 
   function extractQtyAndName(phrase) {
     var words = phrase.trim().split(/\s+/).filter(Boolean);
@@ -1577,7 +1601,13 @@
       var xMatch = words[words.length - 1].toLowerCase().match(/^x(\d+)$/);
       if (xMatch) { qty = parseInt(xMatch[1], 10); words.pop(); }
     }
-    return { qty: clamp(qty || 1, 1, 999), name: words.join(" ") };
+    var variantHint = null;
+    words = words.filter(function (w) {
+      var key = w.toLowerCase().replace(/[^a-z]/g, "");
+      if (VOICE_VARIANT_HINTS[key] !== undefined) { variantHint = VOICE_VARIANT_HINTS[key]; return false; }
+      return true;
+    });
+    return { qty: clamp(qty || 1, 1, 999), name: words.join(" "), variantHint: variantHint };
   }
 
   var VOICE_QTY_WORD_RE = /\b(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/gi;
@@ -1640,21 +1670,36 @@
     return Math.max(wordScore, containScore, editScore);
   }
 
-  function bestCardMatch(nameQuery) {
+  // When several cards tie for the top score (same name, different
+  // printing), pick whichever matches the spoken/typed variant hint; with
+  // no hint, default to the plain/base printing rather than an arbitrary one.
+  function pickVariant(tied, variantHint) {
+    if (tied.length === 1) return tied[0];
+    if (variantHint) {
+      var wanted = tied.filter(function (c) { return variantSuffixOf(c) === variantHint; });
+      if (wanted.length) return wanted[0];
+    }
+    var plain = tied.filter(function (c) { return variantSuffixOf(c) === ""; });
+    return plain.length ? plain[0] : tied[0];
+  }
+
+  function bestCardMatch(nameQuery, variantHint) {
     var nq = normalizeForMatch(nameQuery);
     if (!nq) return null;
-    var best = null, bestScore = 0;
+    var bestScore = 0, tied = [];
     state.cards.forEach(function (c) {
       var score = cardNameSimilarity(nq, normalizeForMatch(c.name));
-      if (score > bestScore) { bestScore = score; best = c; }
+      if (score > bestScore + 1e-9) { bestScore = score; tied = [c]; }
+      else if (Math.abs(score - bestScore) < 1e-9 && score > 0) { tied.push(c); }
     });
-    return best && bestScore >= 0.55 ? { card: best, score: bestScore } : null;
+    if (!tied.length || bestScore < 0.55) return null;
+    return { card: pickVariant(tied, variantHint), score: bestScore };
   }
 
   function matchTranscriptToCards(text) {
     return splitTranscript(text).map(function (phrase) {
       var parsed = extractQtyAndName(phrase);
-      var match = bestCardMatch(parsed.name);
+      var match = bestCardMatch(parsed.name, parsed.variantHint);
       return { phrase: phrase, qty: parsed.qty, cardId: match ? match.card.id : null };
     });
   }
