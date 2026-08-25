@@ -5,7 +5,8 @@
       "name": "jankrats",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
       "runtimeArgs": [".claude\\static-server.js"],
-      "port": 8080
+      "port": 8080,
+      "autoPort": true
     }
   ]
 }

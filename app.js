@@ -153,6 +153,7 @@
       profileTargetId: null,   // whose profile the Profile view is showing
       profileData: null,
       profilePosts: null,
+      myActivityPosts: null,   // signed-in user's own posts, shown on the Dashboard
       pushEnabled: false,
       friendsProfiles: null,        // null = not loaded yet, [] = loaded & empty
       friendsMode: "mine",          // "mine" = added friends only, "add" = browse everyone
@@ -234,7 +235,9 @@
   }
 
   function openProfile(userId) {
-    state.social.profileTargetId = userId || (JVBackend.currentUserId ? JVBackend.currentUserId() : null);
+    var selfId = JVBackend.currentUserId ? JVBackend.currentUserId() : null;
+    if (!userId || userId === selfId) { navigate("dashboard"); return; }
+    state.social.profileTargetId = userId;
     state.social.profileData = null;
     state.social.profilePosts = null;
     navigate("profile");
@@ -283,20 +286,24 @@
   function renderDashboard() {
     var el = document.getElementById("view-dashboard");
     var uniqueOwned = Object.keys(state.collection).length;
-    var legalDecks = state.decks.filter(function (d) { return computeLegality(d).every(function (i) { return i.ok; }); }).length;
 
     var recentDecks = state.decks.slice().sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).slice(0, 5);
 
+    var banner = state.profile.banner;
+
     var html = "";
-    html += '<div class="view-head"><div><h1>Welcome' + (state.profile.name ? ", " + escapeHtml(state.profile.name) : "") + '.</h1>' +
-      '<p>Your ledger for tracking the Riftbound cards you own and the jank decks you keep building instead of the meta ones.</p></div>' +
+    html += '<div class="profile-banner">' +
+      (banner ? '<img class="profile-banner-img" src="' + splashUrl(banner.champ, banner.num) + '" data-fallback="' + splashUrlFallback(banner.champ, banner.num) + '" alt="">' : "") +
+      '<div class="profile-banner-overlay"><h1>Welcome' + (state.profile.name ? ", " + escapeHtml(state.profile.name) : "") + '.</h1>' +
+      '<button class="btn small" id="change-banner-btn">' + (banner ? "Change banner" : "Choose a banner") + "</button></div></div>";
+
+    html += '<div class="view-head"><div><p>Your ledger for tracking the Riftbound cards you own and the jank decks you keep building instead of the meta ones.</p></div>' +
       '<button class="btn primary" data-action="new-deck">+ New deck</button></div>';
 
     html += '<div class="stat-row">' +
       statCard(state.cards.length, "Cards in database") +
       statCard(uniqueOwned, "Unique cards owned") +
       statCard(state.decks.length, "Decks brewed") +
-      statCard(legalDecks + " / " + state.decks.length, "Tournament-legal") +
       "</div>";
 
     html += '<div class="section-block"><h2>Recent decks</h2>';
@@ -314,11 +321,158 @@
       'Everything you enter is stored only in this browser (nothing is sent anywhere). To share a deck with a friend, open it and use <b>Copy share code</b> — they paste it into their own Vault under Decks → Import code.' +
       "</div></div>";
 
+    var showActivity = JVBackend.isConfigured() && state.social.session;
+    if (showActivity) html += myActivityHtml();
+
     el.innerHTML = html;
 
+    wireImgFallback(el.querySelector(".profile-banner-img"));
     el.querySelector('[data-action="new-deck"]').addEventListener("click", function () { navigate("decks"); startNewDeck(); });
     el.querySelectorAll("[data-open-deck]").forEach(function (row) {
       row.addEventListener("click", function () { openDeck(row.getAttribute("data-open-deck")); navigate("decks"); });
+    });
+    el.querySelector("#change-banner-btn").addEventListener("click", openBannerPicker);
+
+    if (showActivity) {
+      wirePostCards(el);
+      var pushBtn = el.querySelector("#push-toggle-btn");
+      if (pushBtn) pushBtn.addEventListener("click", function () {
+        if (state.social.pushEnabled) {
+          JVBackend.disablePush().then(function () { state.social.pushEnabled = false; renderDashboard(); });
+        } else {
+          JVBackend.enablePush().then(function () { state.social.pushEnabled = true; toast("Notifications enabled."); renderDashboard(); })
+            .catch(function () { toast("Couldn't enable notifications — check your browser's notification permission."); });
+        }
+      });
+      if (state.social.myActivityPosts === null) {
+        JVBackend.listPosts({ authorId: JVBackend.currentUserId(), limit: 50 }).then(function (posts) {
+          state.social.myActivityPosts = posts;
+          if (state.route === "dashboard") renderDashboard();
+        });
+      }
+    }
+  }
+
+  function myActivityHtml() {
+    var html = "";
+    if (JVBackend.pushSupported()) {
+      html += '<div class="callout" style="margin-bottom:16px;">Get notified when someone you follow posts, or when someone comments on your post. ' +
+        '<button class="btn small" id="push-toggle-btn" style="margin-left:8px;">' + (state.social.pushEnabled ? "Notifications on" : "Enable notifications") + "</button></div>";
+    }
+    html += '<div class="section-block"><h2>Your activity</h2><div id="my-activity-host">';
+    if (state.social.myActivityPosts === null) {
+      html += '<p style="font-size:13px;color:var(--ink-faint);">Loading…</p>';
+    } else if (!state.social.myActivityPosts.length) {
+      html += '<div class="empty-state"><h3>No posts yet</h3><p>Nothing posted yet.</p></div>';
+    } else {
+      html += state.social.myActivityPosts.map(postCardHtml).join("");
+    }
+    html += "</div></div>";
+    return html;
+  }
+
+  /* ---- League of Legends champion splash banner picker ---- */
+
+  // "Centered" splash art keeps the champion in frame regardless of how the
+  // banner crops it — the original splash art varies wildly in composition
+  // (subject off to one side, high/low, etc.) so a fixed background-position
+  // can't reliably keep the character visible across thousands of images.
+  //
+  // Community Dragon's champion keys occasionally differ from Data Dragon's
+  // `id` field for historic reasons (e.g. Fiddlesticks was renamed at the
+  // API level but Community Dragon still keys it under the old spelling).
+  var CENTERED_ID_OVERRIDES = { Fiddlesticks: "FiddleSticks" };
+
+  function splashUrl(champId, num) {
+    var cdId = CENTERED_ID_OVERRIDES[champId] || champId;
+    return CHAMPION_SPLASH_CENTERED_BASE + cdId + "/splash-art/centered/skin/" + num;
+  }
+
+  // Community Dragon's centered-art generation lags behind brand-new skin
+  // releases by a bit, so very recent skins can 404 there even though the
+  // skin itself is live. Data Dragon's regular (uncentered) splash art is
+  // generated straight from the client patch, so it's always present as a
+  // fallback — the crop just isn't guaranteed to be centered.
+  function splashUrlFallback(champId, num) {
+    return CHAMPION_SPLASH_BASE + champId + "_" + num + ".jpg";
+  }
+
+  function wireImgFallback(img) {
+    if (!img) return;
+    img.addEventListener("error", function () {
+      var fb = img.getAttribute("data-fallback");
+      if (fb && img.src !== fb) img.src = fb;
+    }, { once: true });
+  }
+
+  function findChampSplashEntry(id) {
+    for (var i = 0; i < CHAMPION_SPLASHES.length; i++) if (CHAMPION_SPLASHES[i][0] === id) return CHAMPION_SPLASHES[i];
+    return null;
+  }
+
+  var bannerPickerState = { search: "", champId: null };
+
+  function openBannerPicker() {
+    bannerPickerState = { search: "", champId: null };
+    renderBannerPickerModal();
+  }
+
+  function renderBannerPickerModal() {
+    var root = document.getElementById("modal-root");
+    var html = '<div class="modal-backdrop" id="banner-modal"><div class="modal modal-wide">';
+    var entry = bannerPickerState.champId ? findChampSplashEntry(bannerPickerState.champId) : null;
+
+    if (!entry) {
+      html += '<div class="modal-head"><h2 style="font-size:19px;">Choose a banner — pick a champion</h2><button class="modal-close" data-close>&times;</button></div>';
+      html += '<input type="search" id="banner-champ-search" placeholder="Search champions…" value="' + escapeHtml(bannerPickerState.search) + '" style="margin-bottom:12px;width:100%;">';
+      var q = bannerPickerState.search.toLowerCase();
+      var champs = CHAMPION_SPLASHES.filter(function (c) { return !q || c[1].toLowerCase().indexOf(q) !== -1; });
+      html += '<div class="champ-picker-grid">' + champs.map(function (c) {
+        return '<button class="champ-tile" data-pick-champ="' + c[0] + '">' +
+          '<span class="champ-tile-img"><img src="' + splashUrl(c[0], 0) + '" data-fallback="' + splashUrlFallback(c[0], 0) + '" alt="" loading="lazy"></span>' +
+          '<span class="champ-tile-name">' + escapeHtml(c[1]) + "</span></button>";
+      }).join("") + "</div>";
+    } else {
+      html += '<div class="modal-head"><h2 style="font-size:19px;">' + escapeHtml(entry[1]) + ' — pick a skin</h2><button class="modal-close" data-close>&times;</button></div>';
+      html += '<button class="btn small ghost" id="banner-back-btn" style="margin-bottom:12px;">&larr; All champions</button>';
+      html += '<div class="champ-picker-grid skins">' + entry[2].map(function (s) {
+        return '<button class="champ-tile" data-pick-skin="' + s[0] + '">' +
+          '<span class="champ-tile-img"><img src="' + splashUrl(entry[0], s[0]) + '" data-fallback="' + splashUrlFallback(entry[0], s[0]) + '" alt="" loading="lazy"></span>' +
+          '<span class="champ-tile-name">' + escapeHtml(s[1]) + "</span></button>";
+      }).join("") + "</div>";
+    }
+
+    html += "</div></div>";
+    root.innerHTML = html;
+
+    root.querySelectorAll(".champ-tile-img img").forEach(wireImgFallback);
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    var backdrop = root.querySelector("#banner-modal");
+    backdrop.addEventListener("click", function (e) { if (e.target.id === "banner-modal") closeModal(); });
+
+    var search = root.querySelector("#banner-champ-search");
+    if (search) {
+      search.focus();
+      var caret = search.value.length;
+      search.setSelectionRange(caret, caret);
+      search.addEventListener("input", function () {
+        bannerPickerState.search = search.value;
+        rerenderSoft(null, renderBannerPickerModal);
+      });
+    }
+    root.querySelectorAll("[data-pick-champ]").forEach(function (b) {
+      b.addEventListener("click", function () { bannerPickerState.champId = b.getAttribute("data-pick-champ"); renderBannerPickerModal(); });
+    });
+    var backBtn = root.querySelector("#banner-back-btn");
+    if (backBtn) backBtn.addEventListener("click", function () { bannerPickerState.champId = null; bannerPickerState.search = ""; renderBannerPickerModal(); });
+    root.querySelectorAll("[data-pick-skin]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var num = parseInt(b.getAttribute("data-pick-skin"), 10);
+        state.profile.banner = { champ: entry[0], num: num };
+        persistProfile();
+        closeModal();
+        renderDashboard();
+      });
     });
   }
 
@@ -1919,8 +2073,7 @@
     document.querySelectorAll(".nav button[data-view]").forEach(function (b) {
       b.addEventListener("click", function () {
         var v = b.getAttribute("data-view");
-        if (v === "profile") openProfile(null);
-        else if (v === "friends") { state.social.friendsTargetId = null; navigate(v); }
+        if (v === "friends") { state.social.friendsTargetId = null; navigate(v); }
         else navigate(v);
       });
     });
@@ -1950,7 +2103,7 @@
         JVBackend.myProfile().then(function (p) {
           state.social.myProfile = p;
           renderRail();
-          if (state.route === "feed" || state.route === "profile") render();
+          if (state.route === "feed" || state.route === "profile" || state.route === "dashboard") render();
         });
         JVBackend.listFollowingIds().then(function (ids) { state.social.followingIds = ids; });
         if (!hadSession) syncCollectionOnSignIn();
@@ -1958,13 +2111,14 @@
         state.social.myProfile = null;
         state.social.followingIds = [];
         state.social.feedPosts = null;
+        state.social.myActivityPosts = null;
         state.social.friendsProfiles = null;
         state.social.friendsTargetId = null;
         state.social.friendsTargetProfile = null;
         state.social.friendsTargetCollection = null;
       }
       renderRail();
-      if (["feed", "profile", "topcards", "friends"].indexOf(state.route) !== -1) render();
+      if (["feed", "profile", "topcards", "friends", "dashboard"].indexOf(state.route) !== -1) render();
     });
   }
 
@@ -2392,10 +2546,10 @@
   function renderProfileView() {
     var el = document.getElementById("view-profile");
     if (!JVBackend.isConfigured()) { el.innerHTML = socialNotConfiguredHtml("Profiles aren't connected yet"); return; }
-    if (!state.social.session) { el.innerHTML = socialSignInPromptHtml("Sign in with Google to set up your profile."); wireSignInPrompt(el); return; }
+    if (!state.social.session) { el.innerHTML = socialSignInPromptHtml("Sign in with Google to see this player's profile."); wireSignInPrompt(el); return; }
 
-    var targetId = state.social.profileTargetId || JVBackend.currentUserId();
-    var isMe = targetId === JVBackend.currentUserId();
+    var targetId = state.social.profileTargetId;
+    if (!targetId || targetId === JVBackend.currentUserId()) { navigate("dashboard"); return; }
 
     var html = "";
     if (!state.social.profileData) {
@@ -2412,22 +2566,16 @@
     var bannerCard = profile.champion_banner_card_id ? state.cardsById[profile.champion_banner_card_id] : null;
     var isFollowing = state.social.followingIds.indexOf(targetId) !== -1;
 
-    html += '<div class="profile-banner" style="' + (bannerCard && bannerCard.imageUrl ? "background-image:url(" + JSON.stringify(bannerCard.imageUrl) + ")" : "") + '">' +
+    html += '<div class="profile-banner"' + (bannerCard && bannerCard.imageUrl ? " style=\"background-image:url('" + escapeHtml(bannerCard.imageUrl) + "')\"" : "") + '>' +
       '<div class="profile-banner-overlay"><h1>' + escapeHtml(profile.display_name || "Anonymous brewer") + "</h1>" +
-      (isMe ? '<button class="btn small" id="change-banner-btn">Change banner</button>' :
-        '<button class="btn small ' + (isFollowing ? "" : "primary") + '" id="follow-btn">' + (isFollowing ? "Following" : "Follow") + "</button>") +
+      '<button class="btn small ' + (isFollowing ? "" : "primary") + '" id="follow-btn">' + (isFollowing ? "Following" : "Follow") + "</button>" +
       "</div></div>";
-
-    if (isMe && JVBackend.pushSupported()) {
-      html += '<div class="callout" style="margin:16px 0;">Get notified when someone you follow posts, or when someone comments on your post. ' +
-        '<button class="btn small" id="push-toggle-btn" style="margin-left:8px;">' + (state.social.pushEnabled ? "Notifications on" : "Enable notifications") + "</button></div>";
-    }
 
     html += '<div class="section-block"><h2>Activity</h2><div id="profile-posts-host">';
     if (state.social.profilePosts === null) {
       html += '<p style="font-size:13px;color:var(--ink-faint);">Loading…</p>';
     } else if (!state.social.profilePosts.length) {
-      html += '<div class="empty-state"><h3>No posts yet</h3><p>' + (isMe ? "Post a deck or a pull from the Feed tab." : "This player hasn't posted anything yet.") + "</p></div>";
+      html += '<div class="empty-state"><h3>No posts yet</h3><p>This player hasn\'t posted anything yet.</p></div>';
     } else {
       html += state.social.profilePosts.map(postCardHtml).join("");
     }
@@ -2435,9 +2583,6 @@
 
     el.innerHTML = html;
     wirePostCards(el);
-
-    var changeBannerBtn = el.querySelector("#change-banner-btn");
-    if (changeBannerBtn) changeBannerBtn.addEventListener("click", openChampionBannerPicker);
 
     var followBtn = el.querySelector("#follow-btn");
     if (followBtn) followBtn.addEventListener("click", function () {
@@ -2449,49 +2594,12 @@
       });
     });
 
-    var pushBtn = el.querySelector("#push-toggle-btn");
-    if (pushBtn) pushBtn.addEventListener("click", function () {
-      if (state.social.pushEnabled) {
-        JVBackend.disablePush().then(function () { state.social.pushEnabled = false; renderProfileView(); });
-      } else {
-        JVBackend.enablePush().then(function () { state.social.pushEnabled = true; toast("Notifications enabled."); renderProfileView(); })
-          .catch(function () { toast("Couldn't enable notifications — check your browser's notification permission."); });
-      }
-    });
-
     if (state.social.profilePosts === null) {
       JVBackend.listPosts({ authorId: targetId, limit: 50 }).then(function (posts) {
         state.social.profilePosts = posts;
         if (state.route === "profile") renderProfileView();
       });
     }
-  }
-
-  function openChampionBannerPicker() {
-    var champs = state.cards.filter(isChampionEligible);
-    var html = '<div class="modal-backdrop" id="banner-modal"><div class="modal">' +
-      '<div class="modal-head"><h2 style="font-size:19px;">Choose your banner</h2><button class="modal-close" data-close>&times;</button></div>' +
-      '<div class="legend-picker">' + champs.map(function (c) {
-        return '<div class="legend-card" data-pick-banner="' + c.id + '">' +
-          (c.imageUrl ? '<div class="lc-img"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
-          '<div class="lc-name">' + escapeHtml(c.name) + "</div></div>";
-      }).join("") + "</div></div></div>";
-    document.getElementById("modal-root").innerHTML = html;
-    var root = document.getElementById("modal-root");
-    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
-    root.querySelector("#banner-modal").addEventListener("click", function (e) { if (e.target.id === "banner-modal") closeModal(); });
-    root.querySelectorAll("[data-pick-banner]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var cardId = b.getAttribute("data-pick-banner");
-        JVBackend.updateMyProfile({ champion_banner_card_id: cardId }).then(function (p) {
-          state.social.myProfile = p;
-          state.social.profileData = p;
-          closeModal();
-          renderProfileView();
-          renderRail();
-        }).catch(function () { toast("Couldn't update banner — try again."); });
-      });
-    });
   }
 
   function checkForSharedDeckInUrl() {
