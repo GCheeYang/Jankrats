@@ -448,6 +448,7 @@ textarea { resize: vertical; min-height: 90px; }
   background: var(--surface-raised); cursor: pointer; font-weight: 700; line-height: 1;
 }
 .stepper .val { min-width: 20px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+.stepper button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ---- Collection grid: card-art tiles with owned/foil steppers ---- */
 

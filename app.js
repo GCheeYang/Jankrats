@@ -1233,6 +1233,21 @@
       : '<div class="pr-img placeholder"></div>';
   }
 
+  function sectionQty(list, cardId) {
+    var e = (list || []).filter(function (e) { return e.cardId === cardId; })[0];
+    return e ? e.qty : 0;
+  }
+
+  // "-" removes one from this specific section (main or sideboard); "+" is
+  // disabled once the card hits the 3-copy limit across both sections.
+  function pickRowStepperHtml(cardId, qty, atLimit, addAttr, rmAttr) {
+    return '<div class="stepper" style="flex:none;">' +
+      '<button ' + rmAttr + '="' + cardId + '"' + (qty === 0 ? " disabled" : "") + '>−</button>' +
+      '<span class="val">' + qty + '</span>' +
+      '<button ' + addAttr + '="' + cardId + '"' + (atLimit ? " disabled" : "") + ">+</button>" +
+      "</div>";
+  }
+
   function builderMain(deck) {
     var legend = state.cardsById[deck.legendId];
     var champion = state.cardsById[deck.championId];
@@ -1274,7 +1289,7 @@
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
         return '<div class="pick-row">' + pickRowImgHtml(c) + '<div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span>' +
           '<span class="pr-meta"><span class="pr-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span><span>" + escapeHtml(c.type) + "</span><span>" + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span><span>own " + (getOwned(c.id) + getOwnedFoil(c.id)) + "</span></span></div>" +
-          '<button class="btn small" data-add-main="' + c.id + '"' + (atLimit ? " disabled" : "") + ">" + (atLimit ? "at limit" : "+ add") + "</button>" +
+          pickRowStepperHtml(c.id, sectionQty(deck.main, c.id), atLimit, "data-add-main", "data-rm-main") +
           "</div>";
       }).join("") + "</div>";
       if (!pickPool.length) html += '<div class="empty-state"><h3>No cards in these domains</h3><p>Import more cards for ' + deck.domains.join("/") + ".</p></div>";
@@ -1298,7 +1313,7 @@
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
         return '<div class="pick-row">' + pickRowImgHtml(c) + '<div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + '</span>' +
           '<span class="pr-meta"><span class="pr-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span><span>" + escapeHtml(c.type) + "</span><span>" + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span></span></div>" +
-          '<button class="btn small" data-add-sb="' + c.id + '"' + (atLimit ? " disabled" : "") + ">" + (atLimit ? "at limit" : "+ add") + "</button></div>";
+          pickRowStepperHtml(c.id, sectionQty(deck.sideboard, c.id), atLimit, "data-add-sb", "data-rm-sb") + "</div>";
       }).join("") + "</div>";
     } else if (state.builder.tab === "share") {
       html += shareTabHtml(deck);
