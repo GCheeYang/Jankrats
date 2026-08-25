@@ -341,14 +341,16 @@ textarea { resize: vertical; min-height: 90px; }
 .domain-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 /* Zooms into just the rune glyph printed on that domain's Rune card,
    instead of showing the whole card — the source images are full
-   744x1039 card art, so the inner img is scaled way up and shifted
-   with negative margins to crop tightly around the glyph. */
+   744x1039 card art. background-size/position crop to a fixed band
+   around the glyph (same across domains, since every Rune card uses
+   the same template), sized up enough that sub-pixel rounding at a
+   tiny final size doesn't visibly skew the crop. */
 .domain-chip .domain-rune-icon {
-  width: 15px; height: 15px; border-radius: 50%; flex: none; overflow: hidden;
-  display: inline-block; position: relative; background: var(--surface-raised);
-}
-.domain-chip .domain-rune-icon img {
-  width: 21px; height: 30px; margin-left: -3px; margin-top: 0;
+  width: 20px; height: 20px; border-radius: 50%; flex: none;
+  background-color: var(--surface-raised);
+  background-repeat: no-repeat;
+  background-size: 167% 278%;
+  background-position: 50% 12.5%;
 }
 
 .empty-state {
@@ -759,7 +761,8 @@ code.deckcode {
   cursor: pointer; overflow: hidden; padding: 0; display: flex; flex-direction: column; text-align: left;
 }
 .champ-tile:hover { border-color: var(--line-strong); }
-.champ-tile-img { display: block; aspect-ratio: 16 / 9; background: var(--surface-raised); overflow: hidden; }
+.champ-tile-img { display: block; aspect-ratio: 1 / 1; background: var(--surface-raised); overflow: hidden; }
+.champ-picker-grid.skins .champ-tile-img { aspect-ratio: 16 / 9; }
 .champ-tile-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .champ-tile-name { font-size: 12px; font-weight: 600; padding: 6px 8px; line-height: 1.3; }
 

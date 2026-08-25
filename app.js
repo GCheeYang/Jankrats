@@ -106,7 +106,7 @@
   function domainChip(name) {
     var img = domainRuneImage(name);
     var icon = img
-      ? '<span class="domain-rune-icon"><img src="' + escapeHtml(img) + '" alt="" loading="lazy"></span>'
+      ? '<span class="domain-rune-icon" style="background-image:url(\'' + escapeHtml(img) + '\')"></span>'
       : '<span class="dot" style="background:' + domainColor(name) + '"></span>';
     return '<span class="domain-chip">' + icon + escapeHtml(name) + "</span>";
   }
@@ -407,6 +407,15 @@
     return CHAMPION_SPLASH_CENTERED_BASE + cdId + "/splash-art/centered/skin/" + num;
   }
 
+  // A small (128x128) square portrait instead of full splash art — used for
+  // the first-step champion grid (173 of them) so it doesn't have to pull
+  // down ~170 multi-hundred-KB splash images just to list the champions.
+  // Full splash art is still used once you're picking a specific skin.
+  function splashSquareUrl(champId) {
+    var cdId = CENTERED_ID_OVERRIDES[champId] || champId;
+    return CHAMPION_SPLASH_CENTERED_BASE + cdId + "/square";
+  }
+
   // Community Dragon's centered-art generation lags behind brand-new skin
   // releases by a bit, so very recent skins can 404 there even though the
   // skin itself is live. Data Dragon's regular (uncentered) splash art is
@@ -448,7 +457,7 @@
       var champs = CHAMPION_SPLASHES.filter(function (c) { return !q || c[1].toLowerCase().indexOf(q) !== -1; });
       html += '<div class="champ-picker-grid">' + champs.map(function (c) {
         return '<button class="champ-tile" data-pick-champ="' + c[0] + '">' +
-          '<span class="champ-tile-img"><img src="' + splashUrl(c[0], 0) + '" data-fallback="' + splashUrlFallback(c[0], 0) + '" alt="" loading="lazy"></span>' +
+          '<span class="champ-tile-img"><img src="' + splashSquareUrl(c[0]) + '" data-fallback="' + splashUrlFallback(c[0], 0) + '" alt="" loading="lazy"></span>' +
           '<span class="champ-tile-name">' + escapeHtml(c[1]) + "</span></button>";
       }).join("") + "</div>";
     } else {
