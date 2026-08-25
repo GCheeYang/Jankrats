@@ -236,8 +236,9 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 
 main {
   padding: 32px 40px 64px;
-  max-width: 1180px;
+  max-width: 1640px;
   width: 100%;
+  margin: 0 auto;
 }
 
 .view { display: none; }

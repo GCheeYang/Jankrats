@@ -570,14 +570,16 @@
 
   function renderCollectionView() {
     var el = document.getElementById("view-collection");
-    var list = sortCards(filteredCards(collFilterState), collFilterState.sort);
+    var list = sortCards(filteredCards(collFilterState), collFilterState.sort).filter(function (c) {
+      return getOwned(c.id) + getOwnedFoil(c.id) > 0;
+    });
     var uniqueOwned = Object.keys(state.collection).length;
     var pct = state.cards.length ? Math.round((uniqueOwned / state.cards.length) * 100) : 0;
     var total = list.length;
     var shown = Math.min(collFilterState.limit || COLL_PAGE_SIZE, total);
     var page = list.slice(0, shown);
 
-    var html = '<div class="view-head"><div><h1>Collection</h1><p>Log what you actually own. ' + uniqueOwned + " / " + state.cards.length + " unique cards (" + pct + "%).</p></div></div>";
+    var html = '<div class="view-head"><div><h1>Collection</h1><p>The cards you actually own — ' + uniqueOwned + " / " + state.cards.length + " unique cards (" + pct + '%). Browse <b>Cards</b> to find and add new ones.</p></div></div>';
 
     html += '<div class="toolbar">' +
       field("Search", '<input type="search" id="cof-q" placeholder="Name or text…" value="' + escapeHtml(collFilterState.q) + '">') +
@@ -587,7 +589,9 @@
       "</div>";
 
     if (!total) {
-      html += '<div class="empty-state"><h3>No cards match</h3><p>Adjust your filters.</p></div>';
+      html += uniqueOwned
+        ? '<div class="empty-state"><h3>No owned cards match</h3><p>Adjust your filters.</p></div>'
+        : '<div class="empty-state"><h3>Nothing owned yet</h3><p>Head to <b>Cards</b>, click a card, and set an Owned/Foil count to add it here.</p></div>';
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
       html += '<div class="coll-grid">' + page.map(collectionTileHtml).join("") + "</div>";
