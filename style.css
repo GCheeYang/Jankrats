@@ -674,14 +674,18 @@ code.deckcode {
   border-radius: 999px; padding: 2px 9px; white-space: nowrap; pointer-events: none;
 }
 
-.friends-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.friends-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 .friend-tile {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px; min-width: 0;
   background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px;
   padding: 12px 14px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left;
 }
 .friend-tile:hover { border-color: var(--line-strong); }
-.friend-tile .social-avatar-sm { width: 30px; height: 30px; }
+.friend-tile .social-avatar-sm { width: 30px; height: 30px; flex: none; }
+.friend-tile .friend-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.friend-tile .btn { flex: none; }
 
 .composer {
   background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px;

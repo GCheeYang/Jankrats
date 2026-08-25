@@ -886,7 +886,7 @@
         var isFriend = s.followingIds.indexOf(p.id) !== -1;
         return '<div class="friend-tile">' +
           (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
-          '<span style="flex:1;">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span>" +
+          '<span class="friend-name">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span>" +
           '<button class="btn small ' + (isFriend ? "" : "primary") + '" data-toggle-friend="' + p.id + '">' + (isFriend ? "Remove" : "+ Add") + "</button>" +
           "</div>";
       }).join("") + "</div>";
@@ -894,7 +894,7 @@
       html += '<div class="friends-grid">' + list.map(function (p) {
         return '<button class="friend-tile" data-open-friend="' + p.id + '">' +
           (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
-          '<span>' + escapeHtml(p.display_name || "Anonymous brewer") + "</span></button>";
+          '<span class="friend-name">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span></button>";
       }).join("") + "</div>";
     }
 
