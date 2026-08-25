@@ -334,13 +334,6 @@
     }
     html += "</div>";
 
-    html += '<div class="section-block"><h2>How this vault works</h2><div class="callout">' +
-      (REAL_CARDS.length
-        ? '<b>Card database:</b> all ' + REAL_CARDS.length + ' officially printed Riftbound cards (Origins, Unleashed, Vendetta, Spiritforged, Proving Grounds) are loaded — name, set, type, rarity, domain, energy cost, power, and art. Ability text isn\'t included, and card art is linked to Riot\'s own site rather than copied here. '
-        : '<b>No card data loaded.</b> Go to <b>Import</b> to load a card list as CSV or JSON. ') +
-      'Everything you enter is stored only in this browser (nothing is sent anywhere). To share a deck with a friend, open it and use <b>Copy share code</b> — they paste it into their own Vault under Decks → Import code.' +
-      "</div></div>";
-
     var showActivity = JVBackend.isConfigured() && state.social.session;
     if (showActivity) html += myActivityHtml();
 
