@@ -49,6 +49,23 @@ out an OAuth client ID.
 6. Copy the **Client ID** again → send me this (the secret stays in
    Supabase — I never need it, don't send it to me).
 
+## 3b. Set up Discord sign-in (optional, in addition to Google)
+
+1. Go to discord.com/developers/applications → **New Application**.
+2. **OAuth2** tab (left sidebar) → copy the **Client ID** and (click "Reset
+   Secret" if needed) the **Client Secret**.
+3. Back in Supabase: **Authentication → Providers → Discord**, toggle it on.
+   This page shows the same **redirect URL** as Google
+   (`https://<your-project>.supabase.co/auth/v1/callback`) — add it under
+   **Redirects** on the Discord OAuth2 page.
+4. Paste the Client ID and Client Secret into that Supabase Discord provider
+   page. Save.
+5. Copy the **Client ID** again → send me this (the secret stays in
+   Supabase, same as Google).
+
+Note: signing in with Google and signing in with Discord create separate
+accounts even if they share an email — there's no automatic merging.
+
 ## 4. Push notifications (VAPID keys + Edge Function)
 
 Web Push needs its own keypair (separate from Google/Supabase) that proves
@@ -101,6 +118,7 @@ hand you a ready-to-drop/push folder.
 ---
 
 **What to send back when you're done:** Supabase Project URL, Supabase anon
-key, Google OAuth Client ID, and which hosting option you picked. You don't
-need to touch `config.js` yourself — send me those values and I'll fill it
-in and rebuild the deploy folder.
+key, Google OAuth Client ID, Discord OAuth Client ID (if you set that up
+too), and which hosting option you picked. You don't need to touch
+`config.js` yourself — send me those values and I'll fill it in and
+rebuild the deploy folder.

@@ -1998,7 +1998,10 @@
     if (!JVBackend.isConfigured()) return "";
     var s = state.social;
     if (!s.session) {
-      return '<div class="social-auth"><button class="btn small" id="auth-signin">Sign in with Google</button></div>';
+      return '<div class="social-auth" style="display:flex;gap:6px;flex-wrap:wrap;">' +
+        '<button class="btn small" id="auth-signin">Sign in with Google</button>' +
+        '<button class="btn small" id="auth-signin-discord">Sign in with Discord</button>' +
+        "</div>";
     }
     var name = (s.myProfile && s.myProfile.display_name) || (s.session.user && s.session.user.email) || "Signed in";
     return '<div class="social-auth signed-in"><button class="social-auth-me" data-open-my-profile>' +
@@ -2010,6 +2013,8 @@
   function wireAuthRail(el) {
     var signin = el.querySelector("#auth-signin");
     if (signin) signin.addEventListener("click", function () { JVBackend.signInWithGoogle(); });
+    var signinDiscord = el.querySelector("#auth-signin-discord");
+    if (signinDiscord) signinDiscord.addEventListener("click", function () { JVBackend.signInWithDiscord(); });
     var signout = el.querySelector("#auth-signout");
     if (signout) signout.addEventListener("click", function () { JVBackend.signOut(); });
     var meBtn = el.querySelector("[data-open-my-profile]");
@@ -2024,13 +2029,18 @@
 
   function socialSignInPromptHtml(message) {
     var html = '<div class="empty-state"><h3>Sign in to continue</h3><p>' + escapeHtml(message || "Sign in with Google to see and post to the feed.") + '</p>';
-    html += '<button class="btn primary" id="empty-signin" style="margin-top:10px;">Sign in with Google</button></div>';
+    html += '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px;">' +
+      '<button class="btn primary" id="empty-signin">Sign in with Google</button>' +
+      '<button class="btn primary" id="empty-signin-discord">Sign in with Discord</button>' +
+      "</div></div>";
     return html;
   }
 
   function wireSignInPrompt(el) {
     var b = el.querySelector("#empty-signin");
     if (b) b.addEventListener("click", function () { JVBackend.signInWithGoogle(); });
+    var bd = el.querySelector("#empty-signin-discord");
+    if (bd) bd.addEventListener("click", function () { JVBackend.signInWithDiscord(); });
   }
 
   /* ---- shared post-card rendering (used by Feed and Profile) ---- */

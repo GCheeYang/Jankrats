@@ -62,6 +62,15 @@
     });
   }
 
+  function signInWithDiscord() {
+    var c = client_();
+    if (!c) return Promise.reject(new Error("Backend not configured"));
+    return c.auth.signInWithOAuth({
+      provider: "discord",
+      options: { redirectTo: window.location.origin + window.location.pathname }
+    });
+  }
+
   function signOut() {
     var c = client_();
     if (!c) return Promise.resolve();
@@ -357,6 +366,7 @@
     currentUserId: currentUserId,
     onAuthChange: onAuthChange,
     signInWithGoogle: signInWithGoogle,
+    signInWithDiscord: signInWithDiscord,
     signOut: signOut,
     myProfile: myProfile,
     getProfile: getProfile,
