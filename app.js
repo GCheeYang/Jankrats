@@ -256,11 +256,23 @@
 
   var VIEWS = ["dashboard", "cards", "collection", "friends", "decks", "profile", "import", "shared"];
 
+  // Maps a route name to/from a clean URL path, e.g. "collection" <->
+  // "/collection", with "dashboard" living at the bare root "/".
+  function pathToView(pathname) {
+    var seg = (pathname || "").replace(/^\/+|\/+$/g, "");
+    if (!seg) return "dashboard";
+    return VIEWS.indexOf(seg) !== -1 ? seg : null;
+  }
+  function viewToPath(view) {
+    return view === "dashboard" ? "/" : "/" + view;
+  }
+
   function navigate(view) {
     if (VIEWS.indexOf(view) === -1) view = "dashboard";
     if (view !== "import" && voiceImportState.listening) stopVoiceListening();
     state.route = view;
-    window.location.hash = "#" + view;
+    var path = viewToPath(view);
+    if (window.location.pathname !== path) window.history.pushState({ view: view }, "", path);
     render();
   }
 
@@ -1640,9 +1652,7 @@
     el.querySelector('[data-action="import-shared"]').addEventListener("click", function () {
       var d = importDeckFromPayload(payload);
       toast('Imported "' + d.name + '".');
-      window.location.hash = "#decks";
-      state.route = "decks";
-      render();
+      navigate("decks");
     });
   }
 
@@ -2127,11 +2137,11 @@
     nameInput.addEventListener("change", function () { state.profile.name = nameInput.value; persistProfile(); renderRail(); });
     var themeBtn = document.getElementById("theme-toggle");
     if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
-    window.addEventListener("hashchange", function () {
-      var h = (window.location.hash || "").replace("#", "");
-      if (h && VIEWS.indexOf(h) !== -1) {
-        if (h !== "import" && voiceImportState.listening) stopVoiceListening();
-        state.route = h;
+    window.addEventListener("popstate", function () {
+      var v = pathToView(window.location.pathname);
+      if (v) {
+        if (v !== "import" && voiceImportState.listening) stopVoiceListening();
+        state.route = v;
         render();
       }
     });
@@ -2708,8 +2718,19 @@
     wireAuth();
     var hadShared = checkForSharedDeckInUrl();
     if (!hadShared) {
-      var h = (window.location.hash || "").replace("#", "");
-      state.route = (h && VIEWS.indexOf(h) !== -1) ? h : "dashboard";
+      // A bare "/" always resolves to dashboard via pathToView, which would
+      // otherwise shadow an old-style "/#view" bookmark/link before its hash
+      // ever gets consulted -- so check that legacy hash case first.
+      var legacyHash = (window.location.hash || "").replace("#", "");
+      var v;
+      if ((window.location.pathname === "/" || window.location.pathname === "") && VIEWS.indexOf(legacyHash) !== -1) {
+        v = legacyHash;
+      } else {
+        v = pathToView(window.location.pathname) || "dashboard";
+      }
+      state.route = v;
+      var path = viewToPath(v);
+      if (window.location.pathname !== path || window.location.hash) window.history.replaceState({ view: v }, "", path);
     }
     render();
   }

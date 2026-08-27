@@ -27,6 +27,17 @@ http.createServer((req, res) => {
   }
   fs.readFile(filePath, (err, data) => {
     if (err) {
+      // SPA fallback: a clean route like /collection has no matching file,
+      // so serve index.html and let the app's own router take over --
+      // mirrors the _redirects/vercel.json rule used on real hosting.
+      if (path.extname(filePath) === '') {
+        fs.readFile(path.join(root, 'index.html'), (err2, indexData) => {
+          if (err2) { res.writeHead(404); res.end('Not found'); return; }
+          res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' });
+          res.end(indexData);
+        });
+        return;
+      }
       res.writeHead(404);
       res.end('Not found');
       return;
