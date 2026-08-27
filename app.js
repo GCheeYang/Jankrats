@@ -729,10 +729,26 @@
 
   var COLL_PAGE_SIZE = 100;
 
-  function collectionTileHtml(c) {
-    var owned = getOwned(c.id), foil = getOwnedFoil(c.id);
+  // opts.collection lets this render someone else's collection map instead
+  // of your own (used by the Friends view); opts.editable = false swaps the
+  // +/- steppers for plain read-only counts, since you can't edit a
+  // friend's collection.
+  function collectionTileHtml(c, opts) {
+    opts = opts || {};
+    var coll = opts.collection || state.collection;
+    var editable = opts.editable !== false;
+    var entry = coll[c.id];
+    var owned = entry ? (entry.qty || 0) : 0;
+    var foil = entry ? (entry.foil || 0) : 0;
     var totalOwned = owned + foil;
     var primaryDomain = (c.domains && c.domains[0]) || null;
+    var steppersHtml = editable
+      ? '<div class="coll-stepper-row"><span class="csr-label">Owned</span><div class="stepper" data-cid="' + c.id + '" data-kind="qty">' +
+        '<button data-step="-1">−</button><span class="val">' + owned + "</span><button data-step=\"1\">+</button></div></div>" +
+        '<div class="coll-stepper-row"><span class="csr-label">Foil</span><div class="stepper" data-cid="' + c.id + '" data-kind="foil">' +
+        '<button data-step="-1">−</button><span class="val">' + foil + "</span><button data-step=\"1\">+</button></div></div>"
+      : '<div class="coll-stepper-row"><span class="csr-label">Owned</span><span class="val">' + owned + "</span></div>" +
+        '<div class="coll-stepper-row"><span class="csr-label">Foil</span><span class="val">' + foil + "</span></div>";
     return '<div class="coll-tile" data-card-id="' + c.id + '" style="border-left:4px solid ' + domainColor(primaryDomain) + ';">' +
       '<div class="ct-img" data-open-card="' + c.id + '">' +
       (c.imageUrl ? '<img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
@@ -744,12 +760,7 @@
       "</div>" +
       '<span class="coll-id-chip">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
       "<div>" + domainChips(c.domains) + "</div>" +
-      '<div class="coll-steppers">' +
-      '<div class="coll-stepper-row"><span class="csr-label">Owned</span><div class="stepper" data-cid="' + c.id + '" data-kind="qty">' +
-      '<button data-step="-1">−</button><span class="val">' + owned + "</span><button data-step=\"1\">+</button></div></div>" +
-      '<div class="coll-stepper-row"><span class="csr-label">Foil</span><div class="stepper" data-cid="' + c.id + '" data-kind="foil">' +
-      '<button data-step="-1">−</button><span class="val">' + foil + "</span><button data-step=\"1\">+</button></div></div>" +
-      "</div></div></div>";
+      '<div class="coll-steppers">' + steppersHtml + "</div></div></div>";
   }
 
   function renderCollectionView() {
@@ -783,7 +794,7 @@
         : '<div class="empty-state"><h3>Nothing owned yet</h3><p>Head to <b>Explore Cards</b>, click a card, and set an Owned/Foil count to add it here.</p></div>';
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
-      html += '<div class="coll-grid">' + page.map(collectionTileHtml).join("") + "</div>";
+      html += '<div class="coll-grid">' + page.map(function (c) { return collectionTileHtml(c); }).join("") + "</div>";
       if (shown < total) html += '<div style="text-align:center;margin-top:18px;"><button class="btn" id="cof-load-more">Show ' + Math.min(COLL_PAGE_SIZE, total - shown) + ' more (' + (total - shown) + ' left)</button></div>';
     }
 
@@ -824,7 +835,7 @@
      RENDER: friends (view other signed-in players' collections)
      ================================================================ */
 
-  var friendsFilterState = { q: "", domain: "", type: "", rarity: "", ownedOnly: true, sort: "name", limit: 100 };
+  var friendsFilterState = { q: "", domain: "", type: "", rarity: "", sort: "name", limit: 100 };
   var FRIENDS_PAGE_SIZE = 100;
 
   function openFriend(userId) {
@@ -936,51 +947,33 @@
 
     var theirCollection = s.friendsTargetCollection;
     var theirName = s.friendsTargetProfile.display_name || "Anonymous brewer";
+    var uniqueOwned = Object.keys(theirCollection).length;
 
-    var list = sortCards(filteredCards(friendsFilterState), friendsFilterState.sort);
-    if (friendsFilterState.ownedOnly) {
-      list = list.filter(function (c) {
-        var mine = getOwned(c.id) + getOwnedFoil(c.id);
-        var e = theirCollection[c.id];
-        var theirs = e ? ((e.qty || 0) + (e.foil || 0)) : 0;
-        return mine > 0 || theirs > 0;
-      });
-    }
+    var list = sortCards(filteredCards(friendsFilterState), friendsFilterState.sort).filter(function (c) {
+      var e = theirCollection[c.id];
+      return e && (e.qty || 0) + (e.foil || 0) > 0;
+    });
     var total = list.length;
     var shown = Math.min(friendsFilterState.limit || FRIENDS_PAGE_SIZE, total);
     var page = list.slice(0, shown);
 
     var html = '<div class="view-head"><div><h1>' + escapeHtml(theirName) + "&rsquo;s collection</h1>" +
-      '<p>Side by side with your own.</p></div><div><button class="btn small ghost" id="friends-back">&larr; All friends</button></div></div>';
+      "<p>" + uniqueOwned + " unique cards owned.</p></div><div><button class=\"btn small ghost\" id=\"friends-back\">&larr; All friends</button></div></div>";
 
     html += '<div class="toolbar">' +
       field("Search", '<input type="search" id="frf-q" placeholder="Name or text…" value="' + escapeHtml(friendsFilterState.q) + '">') +
       field("Domain", selectHtml("frf-domain", optionList(["", "Any"], DOMAIN_NAMES, friendsFilterState.domain))) +
       field("Type", selectHtml("frf-type", optionList(["", "Any"], CARD_TYPES, friendsFilterState.type))) +
       field("Rarity", selectHtml("frf-rarity", optionList(["", "Any"], uniqueValues("rarity"), friendsFilterState.rarity))) +
-      field("", '<label style="display:flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;"><input type="checkbox" id="frf-owned-only" ' + (friendsFilterState.ownedOnly ? "checked" : "") + '> Owned by either</label>') +
       "</div>";
 
     if (!total) {
-      html += '<div class="empty-state"><h3>No cards match</h3><p>Adjust your filters.</p></div>';
+      html += uniqueOwned
+        ? '<div class="empty-state"><h3>No owned cards match</h3><p>Adjust your filters.</p></div>'
+        : '<div class="empty-state"><h3>Nothing owned yet</h3><p>' + escapeHtml(theirName) + " hasn't logged any cards.</p></div>";
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
-      html += '<div style="overflow-x:auto;"><table class="coll-table"><thead><tr>' +
-        "<th>Card</th><th>Domain</th><th>Type</th><th>You</th><th>" + escapeHtml(theirName) + "</th>" +
-        "</tr></thead><tbody>" +
-        page.map(function (c) {
-          var mineQ = getOwned(c.id), mineF = getOwnedFoil(c.id);
-          var e = theirCollection[c.id];
-          var theirQ = e ? (e.qty || 0) : 0, theirF = e ? (e.foil || 0) : 0;
-          return "<tr>" +
-            "<td>" + escapeHtml(c.name) + '<div style="font-size:11px;color:var(--ink-faint);">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</div></td>" +
-            "<td>" + domainChips(c.domains) + "</td>" +
-            "<td>" + escapeHtml(c.type) + "</td>" +
-            '<td class="tabular">' + mineQ + (mineF ? " +" + mineF + " foil" : "") + "</td>" +
-            '<td class="tabular">' + theirQ + (theirF ? " +" + theirF + " foil" : "") + "</td>" +
-            "</tr>";
-        }).join("") +
-        "</tbody></table></div>";
+      html += '<div class="coll-grid">' + page.map(function (c) { return collectionTileHtml(c, { collection: theirCollection, editable: false }); }).join("") + "</div>";
       if (shown < total) html += '<div style="text-align:center;margin-top:18px;"><button class="btn" id="frf-load-more">Show ' + Math.min(FRIENDS_PAGE_SIZE, total - shown) + ' more (' + (total - shown) + ' left)</button></div>';
     }
 
@@ -993,10 +986,11 @@
       var sel = el.querySelector("#frf-" + k);
       if (sel) sel.addEventListener("change", function () { friendsFilterState[k] = sel.value; friendsFilterState.limit = FRIENDS_PAGE_SIZE; renderFriendCollection(); });
     });
-    var ownedOnly = el.querySelector("#frf-owned-only");
-    if (ownedOnly) ownedOnly.addEventListener("change", function () { friendsFilterState.ownedOnly = ownedOnly.checked; friendsFilterState.limit = FRIENDS_PAGE_SIZE; renderFriendCollection(); });
     var loadMore = el.querySelector("#frf-load-more");
     if (loadMore) loadMore.addEventListener("click", function () { friendsFilterState.limit = (friendsFilterState.limit || FRIENDS_PAGE_SIZE) + FRIENDS_PAGE_SIZE; renderFriendCollection(); });
+    el.querySelectorAll("[data-open-card]").forEach(function (img) {
+      img.addEventListener("click", function () { openCardDetail(img.getAttribute("data-open-card")); });
+    });
   }
 
   /* ================================================================
