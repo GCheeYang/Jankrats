@@ -287,10 +287,14 @@ create table if not exists public.card_prices (
   card_id text primary key,
   en_price_usd numeric,
   en_foil_price_usd numeric,
-  cn_price_cny numeric,
-  cn_foil_price_cny numeric,
   updated_at timestamptz not null default now()
 );
+
+-- USD only -- CN pricing was dropped after the first pass; these clean up
+-- an already-created table (create table above won't retroactively alter
+-- one that already has them).
+alter table public.card_prices drop column if exists cn_price_cny;
+alter table public.card_prices drop column if exists cn_foil_price_cny;
 
 alter table public.card_prices enable row level security;
 

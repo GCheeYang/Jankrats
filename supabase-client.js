@@ -170,15 +170,13 @@
   function listCardPrices() {
     var c = client_();
     if (!c) return Promise.resolve({});
-    return c.from("card_prices").select("card_id, en_price_usd, en_foil_price_usd, cn_price_cny, cn_foil_price_cny, updated_at")
+    return c.from("card_prices").select("card_id, en_price_usd, en_foil_price_usd, updated_at")
       .then(function (r) {
         var map = {};
         (r.data || []).forEach(function (row) {
           map[row.card_id] = {
             en: row.en_price_usd,
             enFoil: row.en_foil_price_usd,
-            cn: row.cn_price_cny,
-            cnFoil: row.cn_foil_price_cny,
             updatedAt: row.updated_at
           };
         });

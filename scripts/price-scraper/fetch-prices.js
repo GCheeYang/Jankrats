@@ -1,8 +1,8 @@
-// Pulls every card's price off Bilgewater Market's own browse listing
-// (https://bilgewatermarket.com/cards) by rendering it in a real headless
-// browser and scrolling through it, the same way a person would -- rather
-// than calling any internal endpoint directly. Upserts the result into the
-// `card_prices` Supabase table (see supabase/schema.sql).
+// Pulls every card's USD (EN) price off Bilgewater Market's own browse
+// listing (https://bilgewatermarket.com/cards) by rendering it in a real
+// headless browser and scrolling through it, the same way a person would --
+// rather than calling any internal endpoint directly. Upserts the result
+// into the `card_prices` Supabase table (see supabase/schema.sql).
 //
 // Usage:
 //   node --env-file=.env fetch-prices.js
@@ -39,7 +39,6 @@ async function collectRows(page) {
         const id = badges[0] || null;
         const isFoil = /print_variation=foiled/.test(href) || badges.slice(1).some((b) => /foil/i.test(b));
 
-        let cn = null;
         let en = null;
         const priceRows = a.querySelectorAll(".p-3 .flex.items-center.justify-between");
         priceRows.forEach((row) => {
@@ -47,11 +46,10 @@ async function collectRows(page) {
           if (spans.length < 2) return;
           const label = spans[0].textContent.trim();
           const value = spans[1].textContent.trim();
-          if (label === "CN") cn = value;
-          else if (label === "EN") en = value;
+          if (label === "EN") en = value;
         });
 
-        return { id, isFoil, cn, en };
+        return { id, isFoil, en };
       })
       .filter((r) => r.id);
   });
@@ -89,20 +87,15 @@ function reduceToCardPrices(rows) {
       byId.set(row.id, {
         card_id: row.id,
         en_price_usd: null,
-        en_foil_price_usd: null,
-        cn_price_cny: null,
-        cn_foil_price_cny: null
+        en_foil_price_usd: null
       });
     }
     const entry = byId.get(row.id);
     const en = parseMoney(row.en);
-    const cn = parseMoney(row.cn);
     if (row.isFoil) {
       if (en !== null) entry.en_foil_price_usd = en;
-      if (cn !== null) entry.cn_foil_price_cny = cn;
     } else {
       if (en !== null) entry.en_price_usd = en;
-      if (cn !== null) entry.cn_price_cny = cn;
     }
   }
   const now = new Date().toISOString();

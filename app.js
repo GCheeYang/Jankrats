@@ -707,13 +707,13 @@
 
   function cardDetailPriceHtml(c) {
     if (!c.price) return "";
-    var parts = [];
-    if (c.price.en !== null && c.price.en !== undefined) parts.push("EN " + formatUsd(c.price.en));
-    if (c.price.enFoil !== null && c.price.enFoil !== undefined) parts.push("EN Foil " + formatUsd(c.price.enFoil));
-    if (c.price.cn !== null && c.price.cn !== undefined) parts.push("CN ¥" + Number(c.price.cn).toFixed(2));
-    if (c.price.cnFoil !== null && c.price.cnFoil !== undefined) parts.push("CN Foil ¥" + Number(c.price.cnFoil).toFixed(2));
-    if (!parts.length) return "";
-    return '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px;">' + parts.map(escapeHtml).join(" · ") + "</div>";
+    var hasEn = c.price.en !== null && c.price.en !== undefined;
+    var hasFoil = c.price.enFoil !== null && c.price.enFoil !== undefined;
+    if (!hasEn && !hasFoil) return "";
+    return '<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap;">' +
+      (hasEn ? '<span style="font-family:\'IBM Plex Mono\',monospace;font-weight:700;font-size:24px;color:var(--ink);">' + formatUsd(c.price.en) + "</span>" : "") +
+      (hasFoil ? '<span style="font-size:13px;color:var(--ink-soft);">Foil ' + formatUsd(c.price.enFoil) + "</span>" : "") +
+      "</div>";
   }
 
   function openCardDetail(cardId) {
