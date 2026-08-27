@@ -163,6 +163,29 @@
     return Promise.resolve(c.from("collection_entries").upsert(rows, { onConflict: "user_id,card_id" }));
   }
 
+  /* ---------------- card prices (public, no auth needed) ---------------- */
+
+  // card_prices is populated by scripts/price-scraper (a daily GitHub
+  // Action), not by any signed-in user -- this is a plain public read.
+  function listCardPrices() {
+    var c = client_();
+    if (!c) return Promise.resolve({});
+    return c.from("card_prices").select("card_id, en_price_usd, en_foil_price_usd, cn_price_cny, cn_foil_price_cny, updated_at")
+      .then(function (r) {
+        var map = {};
+        (r.data || []).forEach(function (row) {
+          map[row.card_id] = {
+            en: row.en_price_usd,
+            enFoil: row.en_foil_price_usd,
+            cn: row.cn_price_cny,
+            cnFoil: row.cn_foil_price_cny,
+            updatedAt: row.updated_at
+          };
+        });
+        return map;
+      });
+  }
+
   /* ---------------- decks (shared with friends) ---------------- */
 
   function deckRowToLocal(row) {
@@ -427,6 +450,7 @@
     listCollectionFor: listCollectionFor,
     upsertCollectionEntry: upsertCollectionEntry,
     bulkUpsertCollection: bulkUpsertCollection,
+    listCardPrices: listCardPrices,
     listDecksFor: listDecksFor,
     bulkUpsertDecks: bulkUpsertDecks,
     deleteDeckRemote: deleteDeckRemote,

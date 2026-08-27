@@ -679,9 +679,16 @@
     }, 120);
   }
 
+  function formatUsd(n) {
+    return "$" + Number(n).toFixed(2);
+  }
+
   function cardTileHtml(c) {
     var primaryDomain = (c.domains && c.domains[0]) || null;
     var owned = getOwned(c.id) + getOwnedFoil(c.id);
+    var priceLabel = (c.price && c.price.en !== null && c.price.en !== undefined)
+      ? formatUsd(c.price.en) + " ↗"
+      : "Price ↗";
     return '<div class="card-tile-wrap">' +
       '<button class="card-tile" style="border-left-color:' + domainColor(primaryDomain) + '" data-card-id="' + c.id + '">' +
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
@@ -694,8 +701,19 @@
       (c.power !== null && c.power !== undefined ? '<span class="ct-power">' + c.power + "★</span>" : "") +
       "</div>" +
       "</button>" +
-      '<a class="ct-price-link" href="' + escapeHtml(bilgewaterUrl(c)) + '" target="_blank" rel="noopener noreferrer" title="Check price on Bilgewater Market">Price ↗</a>' +
+      '<a class="ct-price-link" href="' + escapeHtml(bilgewaterUrl(c)) + '" target="_blank" rel="noopener noreferrer" title="Check price on Bilgewater Market">' + escapeHtml(priceLabel) + "</a>" +
       "</div>";
+  }
+
+  function cardDetailPriceHtml(c) {
+    if (!c.price) return "";
+    var parts = [];
+    if (c.price.en !== null && c.price.en !== undefined) parts.push("EN " + formatUsd(c.price.en));
+    if (c.price.enFoil !== null && c.price.enFoil !== undefined) parts.push("EN Foil " + formatUsd(c.price.enFoil));
+    if (c.price.cn !== null && c.price.cn !== undefined) parts.push("CN ¥" + Number(c.price.cn).toFixed(2));
+    if (c.price.cnFoil !== null && c.price.cnFoil !== undefined) parts.push("CN Foil ¥" + Number(c.price.cnFoil).toFixed(2));
+    if (!parts.length) return "";
+    return '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:8px;">' + parts.map(escapeHtml).join(" · ") + "</div>";
   }
 
   function openCardDetail(cardId) {
@@ -721,6 +739,7 @@
       "<span>" + escapeHtml(c.rarity || "") + "</span>" +
       "<span>" + escapeHtml(c.setName || c.set || "") + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
       "</div>" +
+      cardDetailPriceHtml(c) +
       '<a class="btn small ghost" href="' + escapeHtml(bilgewaterUrl(c)) + '" target="_blank" rel="noopener noreferrer" style="margin-bottom:12px;">Check price on Bilgewater Market ↗</a>' +
       (c.tags && c.tags.length ? '<div style="margin-bottom:12px;">' + c.tags.map(function (t) { return '<span class="pill neutral" style="margin:0 4px 4px 0;">' + escapeHtml(t) + "</span>"; }).join("") + "</div>" : "") +
       (c.text ? '<p style="color:var(--ink-soft);line-height:1.6;">' + escapeHtml(c.text) + "</p>" : "") +
@@ -2895,11 +2914,28 @@
     applyTheme();
   }
 
+  // Prices come from a daily-refreshed Supabase table (see
+  // scripts/price-scraper), not the card data bundle -- fetch once at
+  // startup and merge onto the already-loaded cards, then re-render so
+  // whatever's on screen picks them up.
+  function loadCardPrices() {
+    if (!JVBackend.isConfigured()) return;
+    JVBackend.listCardPrices().then(function (prices) {
+      var any = false;
+      Object.keys(prices).forEach(function (cardId) {
+        var c = state.cardsById[cardId];
+        if (c) { c.price = prices[cardId]; any = true; }
+      });
+      if (any) render();
+    });
+  }
+
   function init() {
     loadAll();
     applyTheme();
     wireShell();
     wireAuth();
+    loadCardPrices();
     var hadShared = checkForSharedDeckInUrl();
     if (!hadShared) {
       // A bare "/" always resolves to dashboard via pathToView, which would

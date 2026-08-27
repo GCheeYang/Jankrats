@@ -277,6 +277,30 @@ create policy "users manage their own push subscriptions"
 -- anyway — this policy is belt-and-suspenders documentation, not required).
 
 -- ---------------------------------------------------------------------------
+-- card_prices: Bilgewater Market prices, one row per card_id, refreshed
+-- daily by scripts/price-scraper (see its README) via the service role key.
+-- Not user-owned, so no per-row auth.uid() check -- readable by everyone,
+-- writable only by the service key (which bypasses RLS), same as
+-- push_subscriptions above.
+-- ---------------------------------------------------------------------------
+create table if not exists public.card_prices (
+  card_id text primary key,
+  en_price_usd numeric,
+  en_foil_price_usd numeric,
+  cn_price_cny numeric,
+  cn_foil_price_cny numeric,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.card_prices enable row level security;
+
+drop policy if exists "card prices are publicly readable" on public.card_prices;
+create policy "card prices are publicly readable"
+  on public.card_prices for select
+  to anon, authenticated
+  using (true);
+
+-- ---------------------------------------------------------------------------
 -- top_cards: usage-derived leaderboard, computed from every post's card_ids.
 -- ---------------------------------------------------------------------------
 create or replace view public.top_cards as

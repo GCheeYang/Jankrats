@@ -1,0 +1,36 @@
+name: Update card prices
+
+on:
+  schedule:
+    # 11:00 UTC = 7am during EDT (~Mar-Nov). Drifts to 6am ET during EST
+    # (~Nov-Mar) since GitHub Actions cron doesn't observe DST -- not worth
+    # a second cron line to chase an hour of drift twice a year.
+    - cron: "0 11 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scripts/price-scraper
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/price-scraper/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Fetch and upsert prices
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node fetch-prices.js
