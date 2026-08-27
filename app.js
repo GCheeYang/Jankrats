@@ -86,6 +86,12 @@
     }
   }
 
+  // Bilgewater Market's card URLs use the same id as ours minus the
+  // "/<setSize>" suffix, e.g. our "OGN-066a/298" -> their "/cards/OGN-066a".
+  function bilgewaterUrl(card) {
+    return "https://bilgewatermarket.com/cards/" + encodeURIComponent(String(card.id).split("/")[0]);
+  }
+
   function domainColor(name) {
     return (DOMAINS[name] && DOMAINS[name].color) || "var(--d-none)";
   }
@@ -640,7 +646,8 @@
   function cardTileHtml(c) {
     var primaryDomain = (c.domains && c.domains[0]) || null;
     var owned = getOwned(c.id) + getOwnedFoil(c.id);
-    return '<button class="card-tile" style="border-left-color:' + domainColor(primaryDomain) + '" data-card-id="' + c.id + '">' +
+    return '<div class="card-tile-wrap">' +
+      '<button class="card-tile" style="border-left-color:' + domainColor(primaryDomain) + '" data-card-id="' + c.id + '">' +
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
       (c.imageUrl ? '<div class="ct-img"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span>" +
@@ -650,7 +657,9 @@
       '<div class="ct-meta"><span>' + escapeHtml(c.type) + "</span><span>·</span><span>" + escapeHtml(c.rarity || "") + "</span>" +
       (c.power !== null && c.power !== undefined ? '<span class="ct-power">' + c.power + "★</span>" : "") +
       "</div>" +
-      "</button>";
+      "</button>" +
+      '<a class="ct-price-link" href="' + escapeHtml(bilgewaterUrl(c)) + '" target="_blank" rel="noopener noreferrer" title="Check price on Bilgewater Market">Price ↗</a>' +
+      "</div>";
   }
 
   function openCardDetail(cardId) {
@@ -676,6 +685,7 @@
       "<span>" + escapeHtml(c.rarity || "") + "</span>" +
       "<span>" + escapeHtml(c.setName || c.set || "") + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
       "</div>" +
+      '<a class="btn small ghost" href="' + escapeHtml(bilgewaterUrl(c)) + '" target="_blank" rel="noopener noreferrer" style="margin-bottom:12px;">Check price on Bilgewater Market ↗</a>' +
       (c.tags && c.tags.length ? '<div style="margin-bottom:12px;">' + c.tags.map(function (t) { return '<span class="pill neutral" style="margin:0 4px 4px 0;">' + escapeHtml(t) + "</span>"; }).join("") + "</div>" : "") +
       (c.text ? '<p style="color:var(--ink-soft);line-height:1.6;">' + escapeHtml(c.text) + "</p>" : "") +
       (c.isPlaceholder ? '<p class="pill neutral" style="margin-top:8px;">Demo card</p>' : "") +

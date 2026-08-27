@@ -372,6 +372,9 @@ textarea { resize: vertical; min-height: 90px; }
   gap: 12px;
 }
 
+.card-tile-wrap { position: relative; }
+.card-tile-wrap .card-tile { width: 100%; height: 100%; }
+
 .card-tile {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -387,6 +390,15 @@ textarea { resize: vertical; min-height: 90px; }
   position: relative;
 }
 .card-tile:hover { border-color: var(--line-strong); }
+
+.ct-price-link {
+  position: absolute; bottom: 10px; right: 10px; z-index: 2;
+  background: var(--accent); color: var(--accent-ink); text-decoration: none;
+  font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  opacity: 0; pointer-events: none; transition: opacity 0.15s ease;
+}
+.card-tile-wrap:hover .ct-price-link { opacity: 1; pointer-events: auto; }
+.ct-price-link:hover { background: var(--accent-strong); }
 
 .card-tile .ct-top {
   display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;
