@@ -88,8 +88,16 @@
 
   // Bilgewater Market's card URLs use the same id as ours minus the
   // "/<setSize>" suffix, e.g. our "OGN-066a/298" -> their "/cards/OGN-066a".
+  // Bilgewater 404s on a bare id whenever the card's only printing is a
+  // special variant -- it needs an explicit ?print_variation matching the
+  // suffix on our own id (verified against their live pages): "*" is their
+  // "signature" parallel, a lone "a" is their "showcase"/alt-art print.
   function bilgewaterUrl(card) {
-    return "https://bilgewatermarket.com/cards/" + encodeURIComponent(String(card.id).split("/")[0]);
+    var base = "https://bilgewatermarket.com/cards/" + encodeURIComponent(String(card.id).split("/")[0]);
+    var suf = variantSuffixOf(card);
+    if (suf === "*") return base + "?print_variation=signature";
+    if (suf === "a") return base + "?print_variation=showcase";
+    return base;
   }
 
   function domainColor(name) {
