@@ -90,6 +90,45 @@ create policy "users manage their own collection entries"
   with check (auth.uid() = user_id);
 
 -- ---------------------------------------------------------------------------
+-- decks: each player's saved decks, one row per deck, keyed by the client-
+-- generated deck id (so upserts don't need a separate id-mapping step).
+-- This is what powers the Friends tab's "Decks" view — every signed-in
+-- player's decks are readable by every other signed-in player.
+-- ---------------------------------------------------------------------------
+create table if not exists public.decks (
+  id text not null,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  name text not null default 'New deck',
+  legend_id text,
+  champion_id text,
+  domains text[] not null default '{}',
+  main jsonb not null default '[]',
+  runes jsonb not null default '{}',
+  battlefields text[] not null default '{}',
+  sideboard jsonb not null default '[]',
+  notes text not null default '',
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id)
+);
+
+create index if not exists decks_user_idx on public.decks (user_id);
+
+alter table public.decks enable row level security;
+
+drop policy if exists "decks are publicly readable" on public.decks;
+create policy "decks are publicly readable"
+  on public.decks for select
+  to authenticated
+  using (true);
+
+drop policy if exists "users manage their own decks" on public.decks;
+create policy "users manage their own decks"
+  on public.decks for all
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
 -- posts: the two post types (deck / pull) live in one table.
 -- ---------------------------------------------------------------------------
 create table if not exists public.posts (

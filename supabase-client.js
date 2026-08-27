@@ -163,6 +163,57 @@
     return Promise.resolve(c.from("collection_entries").upsert(rows, { onConflict: "user_id,card_id" }));
   }
 
+  /* ---------------- decks (shared with friends) ---------------- */
+
+  function deckRowToLocal(row) {
+    return {
+      id: row.id,
+      name: row.name,
+      legendId: row.legend_id,
+      championId: row.champion_id,
+      domains: row.domains || [],
+      main: row.main || [],
+      runes: row.runes || {},
+      battlefields: row.battlefields || [],
+      sideboard: row.sideboard || [],
+      notes: row.notes || "",
+      updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : Date.now()
+    };
+  }
+
+  function deckToRow(uid, deck) {
+    return {
+      id: deck.id, user_id: uid, name: deck.name || "New deck",
+      legend_id: deck.legendId || null, champion_id: deck.championId || null,
+      domains: deck.domains || [], main: deck.main || [], runes: deck.runes || {},
+      battlefields: deck.battlefields || [], sideboard: deck.sideboard || [],
+      notes: deck.notes || "", updated_at: new Date().toISOString()
+    };
+  }
+
+  function listDecksFor(userId) {
+    var c = client_();
+    if (!c) return Promise.resolve([]);
+    return c.from("decks").select("*").eq("user_id", userId).order("updated_at", { ascending: false })
+      .then(function (r) { return (r.data || []).map(deckRowToLocal); });
+  }
+
+  // Used both for a single deck save and, with an array, to migrate a
+  // local-only set of decks (built before signing in) up into the account.
+  function bulkUpsertDecks(decks) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    if (!decks || !decks.length) return Promise.resolve();
+    var rows = decks.map(function (d) { return deckToRow(uid, d); });
+    return Promise.resolve(c.from("decks").upsert(rows, { onConflict: "user_id,id" }));
+  }
+
+  function deleteDeckRemote(deckId) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return Promise.resolve(c.from("decks").delete().eq("user_id", uid).eq("id", deckId));
+  }
+
   /* ---------------- posts / feed ---------------- */
 
   // opts: { limit, beforeCreatedAt, authorId }
@@ -376,6 +427,9 @@
     listCollectionFor: listCollectionFor,
     upsertCollectionEntry: upsertCollectionEntry,
     bulkUpsertCollection: bulkUpsertCollection,
+    listDecksFor: listDecksFor,
+    bulkUpsertDecks: bulkUpsertDecks,
+    deleteDeckRemote: deleteDeckRemote,
     listPosts: listPosts,
     createDeckPost: createDeckPost,
     createPullPost: createPullPost,

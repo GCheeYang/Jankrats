@@ -187,9 +187,12 @@
       pushEnabled: false,
       friendsProfiles: null,        // null = not loaded yet, [] = loaded & empty
       friendsMode: "mine",          // "mine" = added friends only, "add" = browse everyone
-      friendsTargetId: null,        // whose collection the Friends view is showing
+      friendsTargetId: null,        // whose collection/decks the Friends view is showing
       friendsTargetProfile: null,
-      friendsTargetCollection: null // cardId -> {qty, foil} for friendsTargetId
+      friendsTargetCollection: null, // cardId -> {qty, foil} for friendsTargetId
+      friendsTargetDecks: null,      // that friend's decks, or [] once loaded & empty
+      friendsDetailTab: "collection", // "collection" | "decks", within a friend's page
+      friendsViewingDeckId: null     // set once you drill into one of their decks
     }
   };
 
@@ -209,7 +212,20 @@
 
   function persistCards() { saveJSON(KEYS.cards, state.cards); }
   function persistCollection() { saveJSON(KEYS.collection, state.collection); }
-  function persistDecks() { saveJSON(KEYS.decks, state.decks); }
+  function persistDecks() {
+    saveJSON(KEYS.decks, state.decks);
+    syncDecksToCloud();
+  }
+
+  // Fire-and-forget, mirroring syncCollectionEntryToCloud: keeps the
+  // signed-in player's cloud decks (what the Friends tab reads) in step
+  // with every local deck edit.
+  function syncDecksToCloud() {
+    if (!JVBackend.isConfigured() || !JVBackend.currentUserId() || !state.decks.length) return;
+    JVBackend.bulkUpsertDecks(state.decks).catch(function () {
+      toast("Couldn't sync your decks to your account.");
+    });
+  }
   function persistProfile() { saveJSON(KEYS.profile, state.profile); }
 
   /* ---------------- collection helpers ---------------- */
@@ -872,6 +888,9 @@
     state.social.friendsTargetId = userId;
     state.social.friendsTargetProfile = null;
     state.social.friendsTargetCollection = null;
+    state.social.friendsTargetDecks = null;
+    state.social.friendsDetailTab = "collection";
+    state.social.friendsViewingDeckId = null;
     friendsFilterState.limit = FRIENDS_PAGE_SIZE;
     render();
   }
@@ -888,7 +907,7 @@
       return;
     }
     if (!state.social.friendsTargetId) renderFriendsList();
-    else renderFriendCollection();
+    else renderFriendDetail();
   }
 
   function renderFriendsList() {
@@ -959,22 +978,60 @@
     });
   }
 
-  function renderFriendCollection() {
+  function renderFriendDetail() {
     var el = document.getElementById("view-friends");
     var s = state.social;
-    if (!s.friendsTargetProfile || !s.friendsTargetCollection) {
+    if (!s.friendsTargetProfile || !s.friendsTargetCollection || !s.friendsTargetDecks) {
       el.innerHTML = '<div class="view-head"><div><h1>Friends</h1><p>Loading…</p></div></div>';
       Promise.all([
         JVBackend.getProfile(s.friendsTargetId),
-        JVBackend.listCollectionFor(s.friendsTargetId)
+        JVBackend.listCollectionFor(s.friendsTargetId),
+        JVBackend.listDecksFor(s.friendsTargetId)
       ]).then(function (r) {
         s.friendsTargetProfile = r[0] || { display_name: "Anonymous brewer" };
         s.friendsTargetCollection = r[1] || {};
-        if (state.route === "friends" && s.friendsTargetId) renderFriendCollection();
+        s.friendsTargetDecks = r[2] || [];
+        if (state.route === "friends" && s.friendsTargetId) renderFriendDetail();
       });
       return;
     }
 
+    var theirName = s.friendsTargetProfile.display_name || "Anonymous brewer";
+    var tab = s.friendsDetailTab === "decks" ? "decks" : "collection";
+    var viewingDeck = tab === "decks" && s.friendsViewingDeckId
+      ? s.friendsTargetDecks.filter(function (d) { return d.id === s.friendsViewingDeckId; })[0]
+      : null;
+
+    var html = '<div class="view-head"><div><h1>' + escapeHtml(theirName) + "&rsquo;s " + (tab === "decks" ? "decks" : "collection") + "</h1>" +
+      (tab === "collection"
+        ? "<p>" + Object.keys(s.friendsTargetCollection).length + " unique cards owned.</p>"
+        : "<p>" + s.friendsTargetDecks.length + " deck" + (s.friendsTargetDecks.length === 1 ? "" : "s") + " brewed.</p>") +
+      '</div><div><button class="btn small ghost" id="friends-back">&larr; All friends</button></div></div>';
+
+    if (!viewingDeck) {
+      html += '<div class="tabs" style="margin-bottom:16px;">' +
+        '<button class="' + (tab === "collection" ? "active" : "") + '" data-friend-tab="collection">Collection</button>' +
+        '<button class="' + (tab === "decks" ? "active" : "") + '" data-friend-tab="decks">Decks</button>' +
+        "</div>";
+    }
+
+    html += tab === "collection" ? friendCollectionSectionHtml(s) : friendDecksSectionHtml(s, viewingDeck);
+
+    el.innerHTML = html;
+    var back = el.querySelector("#friends-back");
+    if (back) back.addEventListener("click", function () { openFriend(null); });
+    el.querySelectorAll("[data-friend-tab]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        s.friendsDetailTab = b.getAttribute("data-friend-tab");
+        s.friendsViewingDeckId = null;
+        renderFriendDetail();
+      });
+    });
+    if (tab === "collection") wireFriendCollectionSection(el);
+    else wireFriendDecksSection(el, viewingDeck);
+  }
+
+  function friendCollectionSectionHtml(s) {
     var theirCollection = s.friendsTargetCollection;
     var theirName = s.friendsTargetProfile.display_name || "Anonymous brewer";
     var uniqueOwned = Object.keys(theirCollection).length;
@@ -987,10 +1044,7 @@
     var shown = Math.min(friendsFilterState.limit || FRIENDS_PAGE_SIZE, total);
     var page = list.slice(0, shown);
 
-    var html = '<div class="view-head"><div><h1>' + escapeHtml(theirName) + "&rsquo;s collection</h1>" +
-      "<p>" + uniqueOwned + " unique cards owned.</p></div><div><button class=\"btn small ghost\" id=\"friends-back\">&larr; All friends</button></div></div>";
-
-    html += '<div class="toolbar">' +
+    var html = '<div class="toolbar">' +
       field("Search", '<input type="search" id="frf-q" placeholder="Name or text…" value="' + escapeHtml(friendsFilterState.q) + '">') +
       field("Domain", selectHtml("frf-domain", optionList(["", "Any"], DOMAIN_NAMES, friendsFilterState.domain))) +
       field("Type", selectHtml("frf-type", optionList(["", "Any"], CARD_TYPES, friendsFilterState.type))) +
@@ -1006,20 +1060,120 @@
       html += '<div class="coll-grid">' + page.map(function (c) { return collectionTileHtml(c, { collection: theirCollection, editable: false }); }).join("") + "</div>";
       if (shown < total) html += '<div style="text-align:center;margin-top:18px;"><button class="btn" id="frf-load-more">Show ' + Math.min(FRIENDS_PAGE_SIZE, total - shown) + ' more (' + (total - shown) + ' left)</button></div>';
     }
+    return html;
+  }
 
-    el.innerHTML = html;
-    var back = el.querySelector("#friends-back");
-    if (back) back.addEventListener("click", function () { openFriend(null); });
+  function wireFriendCollectionSection(el) {
     var q = el.querySelector("#frf-q");
-    if (q) q.addEventListener("input", function () { friendsFilterState.q = q.value; friendsFilterState.limit = FRIENDS_PAGE_SIZE; rerenderSoft(el, renderFriendCollection); });
+    if (q) q.addEventListener("input", function () { friendsFilterState.q = q.value; friendsFilterState.limit = FRIENDS_PAGE_SIZE; rerenderSoft(el, renderFriendDetail); });
     ["domain", "type", "rarity"].forEach(function (k) {
       var sel = el.querySelector("#frf-" + k);
-      if (sel) sel.addEventListener("change", function () { friendsFilterState[k] = sel.value; friendsFilterState.limit = FRIENDS_PAGE_SIZE; renderFriendCollection(); });
+      if (sel) sel.addEventListener("change", function () { friendsFilterState[k] = sel.value; friendsFilterState.limit = FRIENDS_PAGE_SIZE; renderFriendDetail(); });
     });
     var loadMore = el.querySelector("#frf-load-more");
-    if (loadMore) loadMore.addEventListener("click", function () { friendsFilterState.limit = (friendsFilterState.limit || FRIENDS_PAGE_SIZE) + FRIENDS_PAGE_SIZE; renderFriendCollection(); });
+    if (loadMore) loadMore.addEventListener("click", function () { friendsFilterState.limit = (friendsFilterState.limit || FRIENDS_PAGE_SIZE) + FRIENDS_PAGE_SIZE; renderFriendDetail(); });
     el.querySelectorAll("[data-open-card]").forEach(function (img) {
       img.addEventListener("click", function () { openCardDetail(img.getAttribute("data-open-card")); });
+    });
+  }
+
+  function friendDecksSectionHtml(s, viewingDeck) {
+    if (viewingDeck) return friendDeckDetailHtml(viewingDeck);
+    var decks = s.friendsTargetDecks;
+    var theirName = s.friendsTargetProfile.display_name || "Anonymous brewer";
+    if (!decks.length) return '<div class="empty-state"><h3>No decks yet</h3><p>' + escapeHtml(theirName) + " hasn't brewed anything.</p></div>";
+    return '<div class="deck-row-list">' + decks.map(function (d) {
+      return '<div class="deck-row" data-view-friend-deck="' + d.id + '">' +
+        '<div class="drn">' + escapeHtml(d.name) + "</div>" +
+        '<div class="drdomains">' + (d.domains || []).map(domainChip).join("") + "</div>" +
+        '<div class="drspacer"></div>' +
+        '<div class="drmeta">' + mainDeckCount(d) + "/" + RULES.mainDeckSize + "</div>" +
+        "</div>";
+    }).join("") + "</div>";
+  }
+
+  function friendDeckDetailHtml(deck) {
+    var legend = deck.legendId ? state.cardsById[deck.legendId] : null;
+    var champion = deck.championId ? state.cardsById[deck.championId] : null;
+    var issues = computeLegality(deck);
+    var legal = issues.every(function (i) { return i.ok; });
+
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
+      '<h2 style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;">' + escapeHtml(deck.name) + "</h2>" +
+      '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Tournament legal" : issues.filter(function (i) { return !i.ok; }).length + " issue(s)") + "</span>" +
+      "</div>";
+    html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' +
+      (legend ? escapeHtml(legend.name) : "No legend") + (champion ? " · Champion: " + escapeHtml(champion.name) : "") + " · " + domainChips(deck.domains) +
+      ' <button class="btn ghost small" id="friend-deck-back">&larr; All decks</button></p>';
+
+    html += '<div class="builder-grid"><div>';
+    html += '<h3 style="margin-bottom:10px;">Main deck (' + mainDeckCount(deck) + "/" + RULES.mainDeckSize + ")</h3>";
+    var mainEntries = (deck.main || []).slice().sort(function (a, b) {
+      var ca = state.cardsById[a.cardId], cb = state.cardsById[b.cardId];
+      return (ca ? ca.cost || 0 : 0) - (cb ? cb.cost || 0 : 0);
+    });
+    if (!mainEntries.length) html += '<p style="font-size:12.5px;color:var(--ink-faint);">No cards yet.</p>';
+    html += '<div class="deck-picker-list">' + mainEntries.map(function (e) {
+      var c = state.cardsById[e.cardId];
+      if (!c) return "";
+      return '<div class="pick-row">' + pickRowImgHtml(c) + '<div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) +
+        (deck.championId === c.id ? ' <span class="pill neutral" style="padding:0 5px;">CH</span>' : "") + "</span>" +
+        '<span class="pr-meta"><span class="pr-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span><span>" + escapeHtml(c.type) + "</span></span></div>" +
+        '<span class="pill neutral" style="flex:none;">×' + e.qty + "</span></div>";
+    }).join("") + "</div>";
+    html += "</div>";
+    html += deckPanelReadOnlyHtml(deck, issues);
+    html += "</div>";
+    return html;
+  }
+
+  function deckPanelReadOnlyHtml(deck, issues) {
+    var html = '<div class="deck-panel">';
+    html += "<div>" + curveChartHtml(deck) + "</div>";
+    if (Object.keys(deck.runes || {}).length) {
+      html += '<div><h3>Runes (' + runeCount(deck) + ")</h3>";
+      Object.keys(deck.runes).forEach(function (d) {
+        html += '<div class="slot-line"><span class="sl-qty">' + deck.runes[d] + "×</span><span class=\"sl-name\">" + domainChip(d) + "</span></div>";
+      });
+      html += "</div>";
+    }
+    if ((deck.battlefields || []).length) {
+      html += '<div><h3>Battlefields</h3>';
+      deck.battlefields.forEach(function (id) {
+        var c = state.cardsById[id];
+        html += '<div class="slot-line"><span class="sl-name">' + escapeHtml(c ? c.name : id) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
+      });
+      html += "</div>";
+    }
+    if ((deck.sideboard || []).length) {
+      html += '<div><h3>Sideboard (' + sideboardCount(deck) + ")</h3>";
+      deck.sideboard.forEach(function (e) {
+        var c = state.cardsById[e.cardId];
+        html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
+      });
+      html += "</div>";
+    }
+    html += '<div><h3>Legality</h3><div class="legality-list">' + issues.map(function (i) {
+      return '<div class="leg-item ' + (i.ok ? "ok" : "bad") + '"><span class="li-icon">' + (i.ok ? "✓" : "✕") + "</span><span class=\"li-text\"><b>" + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
+    }).join("") + "</div></div>";
+    html += "</div>";
+    return html;
+  }
+
+  function wireFriendDecksSection(el, viewingDeck) {
+    if (viewingDeck) {
+      var back2 = el.querySelector("#friend-deck-back");
+      if (back2) back2.addEventListener("click", function () { state.social.friendsViewingDeckId = null; renderFriendDetail(); });
+      el.querySelectorAll("[data-open-card]").forEach(function (img) {
+        img.addEventListener("click", function () { openCardDetail(img.getAttribute("data-open-card")); });
+      });
+      return;
+    }
+    el.querySelectorAll("[data-view-friend-deck]").forEach(function (row) {
+      row.addEventListener("click", function () {
+        state.social.friendsViewingDeckId = row.getAttribute("data-view-friend-deck");
+        renderFriendDetail();
+      });
     });
   }
 
@@ -1135,6 +1289,11 @@
     persistDecks();
     if (state.builder.deckId === id) state.builder.deckId = null;
     renderDecksView();
+    if (JVBackend.isConfigured() && JVBackend.currentUserId()) {
+      JVBackend.deleteDeckRemote(id).catch(function () {
+        toast("Couldn't remove that deck from your account.");
+      });
+    }
   }
 
   function addToMain(deck, cardId) {
@@ -2169,7 +2328,7 @@
           if (state.route === "feed" || state.route === "profile" || state.route === "dashboard") render();
         });
         JVBackend.listFollowingIds().then(function (ids) { state.social.followingIds = ids; });
-        if (!hadSession) syncCollectionOnSignIn();
+        if (!hadSession) { syncCollectionOnSignIn(); syncDecksOnSignIn(); }
       } else if (hadSession) {
         state.social.myProfile = null;
         state.social.followingIds = [];
@@ -2179,6 +2338,7 @@
         state.social.friendsTargetId = null;
         state.social.friendsTargetProfile = null;
         state.social.friendsTargetCollection = null;
+        state.social.friendsTargetDecks = null;
         // Collection is account-bound once signed in — clear it on sign-out
         // rather than leaving the previous account's cards visible/editable
         // to whoever uses this browser next.
@@ -2213,6 +2373,30 @@
           toast("Couldn't back up your local collection to your account.");
         });
       }
+    });
+  }
+
+  // Runs once right after sign-in, alongside the collection sync. Decks
+  // aren't gated behind sign-in (unlike Collection, they've always worked
+  // fully offline), so this merges rather than replaces: any deck that
+  // exists on only one side is kept, and one that exists on both keeps
+  // whichever copy was edited more recently.
+  function syncDecksOnSignIn() {
+    JVBackend.listDecksFor(JVBackend.currentUserId()).then(function (cloud) {
+      var byId = {};
+      state.decks.forEach(function (d) { byId[d.id] = d; });
+      cloud.forEach(function (cd) {
+        var local = byId[cd.id];
+        if (!local || (cd.updatedAt || 0) > (local.updatedAt || 0)) byId[cd.id] = cd;
+      });
+      state.decks = Object.keys(byId).map(function (id) { return byId[id]; });
+      saveJSON(KEYS.decks, state.decks);
+      if (state.decks.length) {
+        JVBackend.bulkUpsertDecks(state.decks).catch(function () {
+          toast("Couldn't sync your decks to your account.");
+        });
+      }
+      if (state.route === "decks") renderDecksView();
     });
   }
 
