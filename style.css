@@ -663,6 +663,19 @@ code.deckcode {
   main { padding: 20px; }
 }
 
+@media (max-width: 600px) {
+  .card-grid, .coll-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .card-tile { padding: 9px 9px 34px; gap: 6px; }
+  .card-tile .ct-name { font-size: 13px; }
+  .ct-price-link {
+    left: 9px; right: 9px; bottom: 8px; width: auto;
+    text-align: center; font-size: 12.5px; padding: 5px 7px;
+  }
+}
+
 /* ============================================================
    Social layer: auth, feed, composer, profile, top cards
    ============================================================ */
