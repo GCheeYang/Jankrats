@@ -1963,9 +1963,9 @@
 
     var variantNote = "Some cards have more than one printing (alt art, or a signed/secret-rare parallel). Add a word like <b>signature</b>, <b>secret</b>, or <b>star</b> for that special parallel, or <b>alt</b>/<b>showcase</b> for the alternate art — say nothing and it picks the plain printing.";
     if (!supported) {
-      html += '<div class="callout" style="margin-bottom:14px;">Voice input isn\'t supported in this browser — try Chrome or Edge. You can still type or paste a list below (one card per line or comma-separated, e.g. "2 Bargain-Bin Baron, Sir Reginald Duct-Taped"). ' + variantNote + "</div>";
+      html += '<div class="callout" style="margin-bottom:14px;">Voice input isn\'t supported in this browser — try Chrome or Edge. You can still type or paste a list below (one card per line or comma-separated, e.g. "2 Bargain-Bin Baron, Sir Reginald Duct-Taped" or "1 of SFD 10"). ' + variantNote + "</div>";
     } else {
-      html += '<div class="callout" style="margin-bottom:14px;">Click the mic, then say your cards one after another (e.g. "two Bargain-Bin Baron, Sir Reginald Duct-Taped, three Anchor Dump"). Say a number before a card to set its quantity — otherwise it assumes 1. Click the mic again when you\'re done, then review the matches before adding them.<br><br>' + variantNote + "</div>";
+      html += '<div class="callout" style="margin-bottom:14px;">Click the mic, then say your cards one after another (e.g. "two Bargain-Bin Baron, Sir Reginald Duct-Taped, three Anchor Dump"). Say a number before a card to set its quantity — otherwise it assumes 1. You can also say the set and card number instead of the name, in the form "<b>qty of SET number</b>" — e.g. "1 of SFD 10". Click the mic again when you\'re done, then review the matches before adding them.<br><br>' + variantNote + "</div>";
     }
 
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
@@ -2069,12 +2069,38 @@
     while ((m = re.exec(text)) !== null) {
       var idx = m.index;
       if (idx === 0) continue; // nothing before the very first token to separate
-      if (/[,\n]\s*$/.test(text.slice(0, idx))) continue; // already at a boundary
+      var before = text.slice(0, idx);
+      if (/[,\n]\s*$/.test(before)) continue; // already at a boundary
+      // "1 of SFD 10" — the trailing number is a collector number, not the
+      // start of a new card mention, so don't split "SFD" from "10".
+      if (/\bof\s+[a-z]{2,6}\s*$/i.test(before)) continue;
       out += text.slice(lastIndex, idx).replace(/\s+$/, "") + ", ";
       lastIndex = idx;
     }
     out += text.slice(lastIndex);
     return out.replace(/,\s*,+/g, ",").replace(/[ \t]{2,}/g, " ").trim();
+  }
+
+  // "1 of SFD 10" style card reference: quantity, set code, collector number.
+  var CARD_REF_RE = /^(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s+of\s+([a-z]{2,6})\s+(\d{1,4}[a-z]?|one|two|three|four|five|six|seven|eight|nine|ten)\b\s*$/i;
+
+  function normalizeCollectorNumber(s) {
+    return String(s || "").toLowerCase().trim().replace(/^0+(?=\d)/, "");
+  }
+
+  function matchBySetNumber(phrase) {
+    var m = CARD_REF_RE.exec(phrase.trim());
+    if (!m) return null;
+    var qtyToken = m[1].toLowerCase();
+    var qty = /^\d+$/.test(qtyToken) ? parseInt(qtyToken, 10) : VOICE_NUMBER_WORDS[qtyToken];
+    var setQuery = m[2].toLowerCase();
+    var numToken = m[3].toLowerCase();
+    var numQuery = normalizeCollectorNumber(/^\d/.test(numToken) ? numToken : VOICE_NUMBER_WORDS[numToken]);
+    var card = state.cards.filter(function (c) {
+      return String(c.set || "").toLowerCase() === setQuery && normalizeCollectorNumber(c.collectorNumber) === numQuery;
+    })[0];
+    if (!card) return null;
+    return { qty: clamp(qty || 1, 1, 999), card: card };
   }
 
   function splitTranscript(text) {
@@ -2144,6 +2170,8 @@
 
   function matchTranscriptToCards(text) {
     return splitTranscript(text).map(function (phrase) {
+      var refMatch = matchBySetNumber(phrase);
+      if (refMatch) return { phrase: phrase, qty: refMatch.qty, cardId: refMatch.card.id };
       var parsed = extractQtyAndName(phrase);
       var match = bestCardMatch(parsed.name, parsed.variantHint);
       return { phrase: phrase, qty: parsed.qty, cardId: match ? match.card.id : null };
