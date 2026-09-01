@@ -432,8 +432,15 @@ textarea { resize: vertical; min-height: 90px; }
   border-radius: 10px;
   overflow: hidden;
   background: var(--surface-raised);
+  aspect-ratio: 744 / 1039;
 }
-.cd-img img { width: 100%; display: block; }
+.cd-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Battlefield card art is scanned landscape — rotate it upright in the
+   portrait-shaped slots every other card type uses. Since a rotated
+   landscape (1039x744) image has the exact same aspect ratio as a normal
+   portrait card (744x1039), it fills the same box with nothing cropped. */
+.rot90 { transform: rotate(90deg); }
 
 /* ============================================================
    Modal / drawer

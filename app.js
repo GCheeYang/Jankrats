@@ -61,6 +61,11 @@
 
   function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
+  // Battlefield card art is scanned landscape (rotated 90deg from every
+  // other card type), so it needs a matching rotation wherever we render it
+  // in a portrait-shaped slot, or it shows up sideways and cropped.
+  function isLandscapeCard(c) { return !!c && c.type === "Battlefield"; }
+
   function safeParse(str, fallback) {
     try { var v = JSON.parse(str); return v === undefined ? fallback : v; }
     catch (e) { return fallback; }
@@ -692,7 +697,7 @@
     return '<div class="card-tile-wrap">' +
       '<button class="card-tile" style="border-left-color:' + domainColor(primaryDomain) + '" data-card-id="' + c.id + '">' +
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
-      (c.imageUrl ? '<div class="ct-img"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
+      (c.imageUrl ? '<div class="ct-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span>" +
       (c.cost !== null && c.cost !== undefined ? '<span class="ct-cost">' + c.cost + "⚡</span>" : "") +
       "</div>" +
@@ -730,7 +735,7 @@
       '<div style="margin-top:6px;">' + domainChips(c.domains) + "</div></div>" +
       '<button class="modal-close" data-close>&times;</button></div>' +
       '<div style="display:flex;gap:18px;flex-wrap:wrap;">' +
-      (c.imageUrl ? '<div class="cd-img"><img src="' + escapeHtml(c.imageUrl) + '" alt=""></div>' : "") +
+      (c.imageUrl ? '<div class="cd-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt=""></div>' : "") +
       '<div style="flex:1;min-width:200px;">' +
       '<div style="display:flex;gap:14px;margin-bottom:12px;font-size:13px;color:var(--ink-soft);flex-wrap:wrap;">' +
       "<span><b>" + escapeHtml(c.type) + "</b></span>" +
@@ -816,7 +821,7 @@
         '<div class="coll-stepper-row"><span class="csr-label">Foil</span><span class="val">' + foil + "</span></div>";
     return '<div class="coll-tile" data-card-id="' + c.id + '" style="border-left:4px solid ' + domainColor(primaryDomain) + ';">' +
       '<div class="ct-img" data-open-card="' + c.id + '">' +
-      (c.imageUrl ? '<img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
+      (c.imageUrl ? '<img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
       '<span class="coll-owned-badge" style="' + (totalOwned ? "" : "display:none;") + '">×' + totalOwned + "</span>" +
       "</div>" +
       '<div class="coll-body">' +
@@ -1405,7 +1410,7 @@
     html += '<div class="legend-picker">' + legends.map(function (l) {
       var owned = getOwned(l.id) + getOwnedFoil(l.id);
       return '<div class="legend-card" data-legend="' + l.id + '">' +
-        (l.imageUrl ? '<div class="lc-img"><img src="' + escapeHtml(l.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
+        (l.imageUrl ? '<div class="lc-img"><img class="' + (isLandscapeCard(l) ? "rot90" : "") + '" src="' + escapeHtml(l.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
         '<div class="lc-name">' + escapeHtml(l.name) + escapeHtml(variantLabel(l)) + "</div>" +
         '<span class="coll-id-chip">' + escapeHtml(l.set) + " " + escapeHtml(l.collectorNumber || "") + "</span>" +
         domainChips(l.domains) +
@@ -1437,7 +1442,7 @@
     html += '<div class="legend-picker">' + champs.map(function (c) {
       var owned = getOwned(c.id) + getOwnedFoil(c.id);
       return '<div class="legend-card" data-champ="' + c.id + '">' +
-        (c.imageUrl ? '<div class="lc-img"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
+        (c.imageUrl ? '<div class="lc-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
         '<div class="lc-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</div><div class=\"ct-meta\">" + c.cost + "⚡ / " + c.power + "★</div>" +
         '<span class="coll-id-chip">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
         domainChips(c.domains) +
@@ -1465,7 +1470,7 @@
 
   function pickRowImgHtml(c) {
     return c.imageUrl
-      ? '<div class="pr-img"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>'
+      ? '<div class="pr-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>'
       : '<div class="pr-img placeholder"></div>';
   }
 
@@ -2840,7 +2845,7 @@
         var name = c ? c.name : row.card_id;
         return '<div class="top-card-row">' +
           '<span class="tcr-rank">#' + (i + 1) + "</span>" +
-          (c && c.imageUrl ? '<img class="tcr-img" src="' + escapeHtml(c.imageUrl) + '" alt="">' : '<span class="tcr-img placeholder"></span>') +
+          (c && c.imageUrl ? '<img class="tcr-img' + (isLandscapeCard(c) ? " rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="">' : '<span class="tcr-img placeholder"></span>') +
           '<span class="tcr-name">' + escapeHtml(name) + "</span>" +
           '<span class="tcr-count">' + row.post_count + " post" + (row.post_count === 1 ? "" : "s") + "</span>" +
           "</div>";
