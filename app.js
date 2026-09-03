@@ -739,7 +739,7 @@
     var locked = JVBackend.isConfigured() && !state.social.session;
     var trackingHtml = locked
       ? '<div style="flex:1;min-width:220px;"><p style="font-size:13px;color:var(--ink-faint);margin-bottom:10px;">Sign in to track how many you own.</p>' +
-        providerSignInButtonsHtml("cd-signin", "btn small primary", false) + "</div>"
+        providerSignInButtonsHtml("cd-signin", { compact: true }) + "</div>"
       : ownedStepperHtml(cardId, "Owned", owned, "qty") + ownedStepperHtml(cardId, "Foil", foil, "foil");
     var html = '<div class="modal-backdrop" id="card-modal"><div class="modal">' +
       '<div class="modal-head"><div><h2 style="font-size:19px;">' + escapeHtml(c.name) + "</h2>" +
@@ -781,7 +781,7 @@
     var root = document.getElementById("modal-root");
     root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
     root.querySelector("#card-modal").addEventListener("click", function (e) { if (e.target.id === "card-modal") closeModal(); });
-    wireSignInToggle(root, "cd-signin");
+    wireSignInButtons(root, "cd-signin");
     root.querySelectorAll("[data-step]").forEach(function (b) {
       b.addEventListener("click", function () {
         var kind = b.getAttribute("data-kind");
@@ -2364,9 +2364,6 @@
         render();
       }
     });
-    document.addEventListener("click", function () {
-      document.querySelectorAll(".signin-menu:not([hidden])").forEach(function (m) { m.hidden = true; });
-    });
   }
 
   /* ================================================================
@@ -2463,45 +2460,29 @@
     });
   }
 
-  // A single "Sign in" button that opens a small dropdown to pick Google
-  // or Discord, rather than showing both provider buttons side by side.
+  // Both provider buttons, shown directly — no extra click to reveal them.
   // Whichever provider the browser last signed in with is tagged so
   // returning players don't accidentally create a second account by
   // picking the other one.
-  function providerSignInButtonsHtml(baseId, baseClass, center) {
+  function providerSignInButtonsHtml(baseId, opts) {
+    opts = opts || {};
     var info = loadJSON(KEYS.lastAuthProvider, null);
     var last = info && info.provider;
     function item(provider, id, label) {
-      var tag = provider === last ? '<span class="signin-menu-tag">Last used</span>' : "";
-      return '<button type="button" class="signin-menu-item" id="' + id + '">' + label + tag + "</button>";
+      var tag = provider === last ? '<span class="signin-option-tag">Last used</span>' : "";
+      return '<button type="button" class="signin-option' + (opts.compact ? " compact" : "") + '" id="' + id + '">' + label + tag + "</button>";
     }
     var google = item("google", baseId, "Continue with Google");
     var discord = item("discord", baseId + "-discord", "Continue with Discord");
     var order = last === "discord" ? (discord + google) : (google + discord);
-    return '<div class="signin-menu-wrap' + (center ? " center" : "") + '">' +
-      '<button type="button" class="' + baseClass + '" id="' + baseId + '-toggle">Sign in</button>' +
-      '<div class="signin-menu" id="' + baseId + '-menu" hidden>' + order + "</div>" +
-      "</div>";
+    return '<div class="signin-options' + (opts.center ? " center" : "") + '">' + order + "</div>";
   }
 
-  // Wires the toggle+menu markup from providerSignInButtonsHtml: opening/
-  // closing the dropdown and firing the actual sign-in on a provider pick.
-  // Closing on an outside click is handled once, globally, in wireShell.
-  function wireSignInToggle(el, baseId) {
-    var toggle = el.querySelector("#" + baseId + "-toggle");
-    var menu = el.querySelector("#" + baseId + "-menu");
-    if (toggle && menu) {
-      toggle.addEventListener("click", function (e) {
-        e.stopPropagation();
-        var willOpen = menu.hidden;
-        document.querySelectorAll(".signin-menu").forEach(function (m) { m.hidden = true; });
-        menu.hidden = !willOpen;
-      });
-    }
+  function wireSignInButtons(el, baseId) {
     var google = el.querySelector("#" + baseId);
-    if (google) google.addEventListener("click", function () { if (menu) menu.hidden = true; JVBackend.signInWithGoogle(); });
+    if (google) google.addEventListener("click", function () { JVBackend.signInWithGoogle(); });
     var discord = el.querySelector("#" + baseId + "-discord");
-    if (discord) discord.addEventListener("click", function () { if (menu) menu.hidden = true; JVBackend.signInWithDiscord(); });
+    if (discord) discord.addEventListener("click", function () { JVBackend.signInWithDiscord(); });
   }
 
   function authRailHtml() {
@@ -2509,7 +2490,7 @@
     var s = state.social;
     if (!s.session) {
       return '<div class="social-auth">' +
-        providerSignInButtonsHtml("auth-signin", "btn small", false) +
+        providerSignInButtonsHtml("auth-signin", { compact: true }) +
         "</div>";
     }
     var name = (s.myProfile && s.myProfile.display_name) || (s.session.user && s.session.user.email) || "Signed in";
@@ -2520,7 +2501,7 @@
   }
 
   function wireAuthRail(el) {
-    wireSignInToggle(el, "auth-signin");
+    wireSignInButtons(el, "auth-signin");
     var signout = el.querySelector("#auth-signout");
     if (signout) signout.addEventListener("click", function () { JVBackend.signOut(); });
     var meBtn = el.querySelector("[data-open-my-profile]");
@@ -2536,13 +2517,13 @@
   function socialSignInPromptHtml(message) {
     var html = '<div class="empty-state"><h3>Sign in to continue</h3><p>' + escapeHtml(message || "Sign in with Google to see and post to the feed.") + '</p>';
     html += '<div style="margin-top:10px;">' +
-      providerSignInButtonsHtml("empty-signin", "btn primary", true) +
+      providerSignInButtonsHtml("empty-signin", { center: true }) +
       "</div></div>";
     return html;
   }
 
   function wireSignInPrompt(el) {
-    wireSignInToggle(el, "empty-signin");
+    wireSignInButtons(el, "empty-signin");
   }
 
   // a handful of cards, spread across the loaded set rather than the first

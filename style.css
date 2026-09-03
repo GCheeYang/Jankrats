@@ -221,7 +221,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   flex: none;
 }
 
-.profile-name-input {
+#profile-name.profile-name-input {
   width: 140px;
   background: var(--surface-raised);
   border: 1px solid var(--line);
@@ -755,37 +755,20 @@ code.deckcode {
 }
 .social-avatar-sm.placeholder { display: inline-block; }
 
-.signin-menu-wrap { position: relative; display: inline-block; }
-.signin-menu-wrap.center { display: flex; justify-content: center; }
+.signin-options { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.signin-options.center { justify-content: center; }
 
-.signin-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  min-width: 200px;
-  background: var(--surface-raised);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  z-index: 60;
-}
-.signin-menu-wrap.center .signin-menu { left: 50%; transform: translateX(-50%); }
-.signin-menu[hidden] { display: none; }
-
-.signin-menu-item {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  background: var(--surface); border: 1px solid var(--line-strong); text-align: left; white-space: nowrap;
-  padding: 8px 12px; border-radius: 8px; cursor: pointer;
+.signin-option {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface-raised); border: 1px solid var(--line-strong); white-space: nowrap;
+  padding: 8px 14px; border-radius: 8px; cursor: pointer;
   color: var(--ink); font-size: 13px; font-weight: 600;
   transition: background 0.12s ease;
 }
-.signin-menu-item:hover { background: var(--surface-raised); }
+.signin-option:hover { background: var(--surface); }
+.signin-option.compact { padding: 6px 10px; font-size: 12.5px; gap: 6px; }
 
-.signin-menu-tag {
+.signin-option-tag {
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
   color: var(--good); background: var(--good-soft); padding: 2px 6px; border-radius: 999px;
 }
