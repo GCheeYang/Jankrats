@@ -373,6 +373,14 @@
       statCard(state.decks.length, "Decks brewed") +
       "</div>";
 
+    if (!uniqueOwned) {
+      var starter = sampleCards(6);
+      if (starter.length) {
+        html += '<div class="section-block"><h2>Start exploring</h2>' +
+          '<div class="card-grid">' + starter.map(cardTileHtml).join("") + "</div></div>";
+      }
+    }
+
     html += '<div class="section-block"><h2>Recent decks</h2>';
     if (!recentDecks.length) {
       html += '<div class="empty-state"><h3>No decks yet</h3><p>Pick a Legend and start brewing — even a bad idea deserves a decklist.</p></div>';
@@ -392,6 +400,9 @@
       row.addEventListener("click", function () { openDeck(row.getAttribute("data-open-deck")); navigate("decks"); });
     });
     el.querySelector("#change-banner-btn").addEventListener("click", openBannerPicker);
+    el.querySelectorAll("[data-card-id]").forEach(function (t) {
+      t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
+    });
 
     if (showActivity) {
       wirePostCards(el);
@@ -836,7 +847,7 @@
   function renderCollectionView() {
     var el = document.getElementById("view-collection");
     if (JVBackend.isConfigured() && !state.social.session) {
-      el.innerHTML = socialSignInPromptHtml("Sign in to track your collection — it'll sync to your account and follow you across devices.");
+      el.innerHTML = signInGateHtml("Sign in to track your collection — it'll sync to your account and follow you across devices.");
       wireSignInPrompt(el);
       return;
     }
@@ -2515,6 +2526,31 @@
     if (b) b.addEventListener("click", function () { JVBackend.signInWithGoogle(); });
     var bd = el.querySelector("#empty-signin-discord");
     if (bd) bd.addEventListener("click", function () { JVBackend.signInWithDiscord(); });
+  }
+
+  // a handful of cards, spread across the loaded set rather than the first
+  // N alphabetically, so a sign-in gate or empty dashboard has something to
+  // look at instead of blank space. Picked once and cached — re-picking on
+  // every render would make the backdrop flicker between different cards.
+  var _sampleCardsCache = null;
+  function sampleCards(n) {
+    if (!_sampleCardsCache) {
+      var pool = state.cards.filter(function (c) { return c.imageUrl && !c.isPlaceholder; });
+      var step = Math.max(1, Math.floor(pool.length / 24));
+      var picked = [];
+      for (var i = 0; i < pool.length && picked.length < 24; i += step) picked.push(pool[i]);
+      _sampleCardsCache = picked;
+    }
+    return _sampleCardsCache.slice(0, n);
+  }
+
+  function signInGateHtml(message) {
+    var preview = sampleCards(12);
+    var previewHtml = preview.length
+      ? '<div class="gate-preview"><div class="card-grid">' + preview.map(cardTileHtml).join("") + "</div></div>"
+      : "";
+    return '<div class="gate-wrap">' + previewHtml +
+      '<div class="gate-overlay">' + socialSignInPromptHtml(message) + "</div></div>";
   }
 
   /* ---- shared post-card rendering (used by Feed and Profile) ---- */

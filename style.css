@@ -131,29 +131,35 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
    ============================================================ */
 
 #app {
-  display: grid;
-  grid-template-columns: 240px 1fr;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
 }
 
-.rail {
+.topbar {
   background: var(--surface);
-  border-right: 1px solid var(--line);
-  padding: 22px 16px;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 24px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 8px;
   position: sticky;
   top: 0;
-  height: 100vh;
-  overflow-y: auto;
+  z-index: 40;
+}
+
+.topbar-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .wordmark {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 4px;
+  flex: none;
 }
 
 .wordmark .glyph {
@@ -171,14 +177,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   font-size: 19px;
 }
 
-.wordmark .tag {
-  font-size: 11px;
-  color: var(--ink-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-top: 2px;
-}
-
 .theme-toggle {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border-radius: 8px;
@@ -189,51 +187,58 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 
 .nav {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   gap: 2px;
 }
 
 .nav button {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: none;
   border: none;
   text-align: left;
-  padding: 9px 10px;
+  padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
   color: var(--ink-soft);
   font-size: 14px;
   font-weight: 500;
+  white-space: nowrap;
+  flex: none;
 }
 
 .nav button:hover { background: var(--surface-raised); color: var(--ink); }
 .nav button.active { background: var(--rift-soft); color: var(--rift); font-weight: 600; }
 .nav button .n-icon { width: 18px; text-align: center; opacity: 0.85; }
 
-.rail-stats {
-  margin-top: auto;
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
+.topbar-right {
+  margin-left: auto;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--ink-faint);
+  align-items: center;
+  gap: 10px;
+  flex: none;
 }
-.rail-stats b { color: var(--ink-soft); font-family: 'IBM Plex Mono', monospace; }
 
-.profile-field {
-  display: flex; flex-direction: column; gap: 4px;
-}
-.profile-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
-.profile-field input {
+.profile-name-input {
+  width: 140px;
   background: var(--surface-raised);
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 6px 8px;
   font-size: 13px;
+}
+
+.topbar-right .social-auth {
+  padding: 0;
+  border-bottom: none;
+  margin-bottom: 0;
+}
+.topbar-right .social-auth > div {
+  flex-wrap: nowrap !important;
+  padding-top: 0 !important;
+  padding-right: 0 !important;
 }
 
 main {
@@ -274,6 +279,7 @@ main {
   font-weight: 600;
   font-size: 13.5px;
   cursor: pointer;
+  white-space: nowrap;
   transition: transform 0.08s ease, background 0.12s ease;
 }
 .btn:hover { background: var(--surface); }
@@ -377,6 +383,37 @@ textarea { resize: vertical; min-height: 90px; }
 .card-tile-wrap { position: relative; }
 .card-tile-wrap .card-tile { width: 100%; height: 100%; }
 
+/* ---- sign-in gate: a blurred backdrop of real cards so a gated page
+   doesn't read as a broken/empty screen ---- */
+.gate-wrap {
+  position: relative;
+  min-height: calc(100vh - 220px);
+  overflow: hidden;
+  border-radius: 14px;
+}
+.gate-preview {
+  filter: blur(6px) brightness(0.55) saturate(0.85);
+  pointer-events: none;
+  user-select: none;
+  padding: 4px;
+}
+.gate-preview .card-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.gate-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 8, 16, 0.45);
+}
+.gate-overlay .empty-state {
+  background: var(--surface-raised);
+  border-style: solid;
+  box-shadow: var(--shadow);
+  max-width: 420px;
+}
+
 .card-tile {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -439,10 +476,33 @@ textarea { resize: vertical; min-height: 90px; }
 .cd-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* Battlefield card art is scanned landscape — rotate it upright in the
-   portrait-shaped slots every other card type uses. Since a rotated
-   landscape (1039x744) image has the exact same aspect ratio as a normal
-   portrait card (744x1039), it fills the same box with nothing cropped. */
-.rot90 { transform: rotate(90deg); }
+   portrait-shaped slots every other card type uses. A plain rotate(90deg)
+   swaps the image's own box to landscape, which no longer fits inside its
+   portrait container (it used to spill out past overflow:hidden). Sizing
+   the image in container-query units *before* rotating — 100cqh wide,
+   100cqw tall — means the box is already landscape pre-rotation, so after
+   rotating it lands exactly back on the container's portrait footprint,
+   with nothing cropped and nothing overflowing. */
+.card-tile .ct-img,
+.cd-img,
+.legend-card .lc-img,
+.pick-row .pr-img {
+  position: relative;
+  container-type: size;
+}
+
+.card-tile .ct-img img.rot90,
+.cd-img img.rot90,
+.legend-card .lc-img img.rot90,
+.pick-row .pr-img img.rot90 {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100cqh;
+  height: 100cqw;
+  max-width: none;
+  transform: translate(-50%, -50%) rotate(90deg);
+}
 
 /* ============================================================
    Modal / drawer
@@ -665,10 +725,9 @@ code.deckcode {
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(-4px); }
 
 @media (max-width: 760px) {
-  #app { grid-template-columns: 1fr; }
-  .rail { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; }
-  .rail-stats { display: none; }
-  .nav { flex-direction: row; flex-wrap: wrap; }
+  .topbar { padding: 10px 16px; }
+  .topbar-main { flex-wrap: wrap; row-gap: 8px; }
+  .profile-name-input { display: none; }
   main { padding: 20px; }
 }
 

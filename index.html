@@ -11,25 +11,24 @@
 </head>
 <body>
 <div id="app">
-  <nav class="rail">
-    <div class="wordmark"><img class="glyph" src="assets/logo.png" alt=""><span class="name">Jankrats</span><span style="flex:1;"></span><button class="theme-toggle" id="theme-toggle" title="Toggle light/dark" type="button">☾</button></div>
-    <div class="wordmark tag" style="margin-top:-14px;">Riftbound collection &amp; deck ledger</div>
-    <div class="nav">
+  <header class="topbar">
+    <div class="topbar-main">
+      <div class="wordmark" title="Riftbound collection &amp; deck ledger"><img class="glyph" src="assets/logo.png" alt=""><span class="name">Jankrats</span></div>
+      <div class="topbar-right">
+        <div id="social-auth-host"></div>
+        <input type="text" id="profile-name" class="profile-name-input" placeholder="Your name" aria-label="Your name">
+        <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark" type="button">☾</button>
+      </div>
+    </div>
+    <nav class="nav">
       <button data-view="dashboard"><span class="n-icon">⌂</span>Dashboard</button>
       <button data-view="cards"><span class="n-icon">▤</span>Explore Cards</button>
       <button data-view="collection"><span class="n-icon">✦</span>Collection</button>
       <button data-view="friends"><span class="n-icon">◇</span>Friends</button>
       <button data-view="decks"><span class="n-icon">⚔</span>Decks</button>
       <button data-view="import"><span class="n-icon">⇩</span>Import</button>
-    </div>
-    <div class="rail-stats">
-      <div id="social-auth-host"></div>
-      <div class="profile-field">
-        <label>Your name</label>
-        <input type="text" id="profile-name" placeholder="Anonymous brewer">
-      </div>
-    </div>
-  </nav>
+    </nav>
+  </header>
   <main>
     <div class="view" id="view-dashboard"></div>
     <div class="view" id="view-cards"></div>
