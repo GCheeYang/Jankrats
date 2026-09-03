@@ -235,11 +235,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   border-bottom: none;
   margin-bottom: 0;
 }
-.topbar-right .social-auth > div {
-  flex-wrap: nowrap !important;
-  padding-top: 0 !important;
-  padding-right: 0 !important;
-}
 
 main {
   padding: 32px 40px 64px;
@@ -760,11 +755,38 @@ code.deckcode {
 }
 .social-avatar-sm.placeholder { display: inline-block; }
 
-.last-used-wrap { position: relative; display: inline-block; }
-.last-used-badge {
-  position: absolute; top: -9px; right: -6px;
-  font-size: 10px; font-weight: 600; color: var(--good); background: var(--good-soft);
-  border-radius: 999px; padding: 2px 9px; white-space: nowrap; pointer-events: none;
+.signin-menu-wrap { position: relative; display: inline-block; }
+.signin-menu-wrap.center { display: flex; justify-content: center; }
+
+.signin-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 200px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 60;
+}
+.signin-menu-wrap.center .signin-menu { left: 50%; transform: translateX(-50%); }
+.signin-menu[hidden] { display: none; }
+
+.signin-menu-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: none; border: none; text-align: left; white-space: nowrap;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer;
+  color: var(--ink); font-size: 13px; font-weight: 600;
+}
+.signin-menu-item:hover { background: var(--surface); }
+
+.signin-menu-tag {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--good); background: var(--good-soft); padding: 2px 6px; border-radius: 999px;
 }
 
 .friends-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
