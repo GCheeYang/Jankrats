@@ -356,13 +356,15 @@
 
     var recentDecks = state.decks.slice().sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).slice(0, 5);
 
-    var banner = state.profile.banner;
+    // Classic Ahri until the player picks their own, so the dashboard never
+    // opens on a bare empty banner strip.
+    var banner = state.profile.banner || { champ: "Ahri", num: 0 };
 
     var html = "";
     html += '<div class="profile-banner">' +
-      (banner ? '<img class="profile-banner-img" src="' + splashUrl(banner.champ, banner.num) + '" data-fallback="' + splashUrlFallback(banner.champ, banner.num) + '" alt="">' : "") +
+      '<img class="profile-banner-img" src="' + splashUrl(banner.champ, banner.num) + '" data-fallback="' + splashUrlFallback(banner.champ, banner.num) + '" alt="">' +
       '<div class="profile-banner-overlay"><h1>Welcome' + (state.profile.name ? ", " + escapeHtml(state.profile.name) : "") + '.</h1>' +
-      '<button class="btn small" id="change-banner-btn">' + (banner ? "Change banner" : "Choose a banner") + "</button></div></div>";
+      '<button class="btn small" id="change-banner-btn">' + (state.profile.banner ? "Change banner" : "Choose a banner") + "</button></div></div>";
 
     html += '<div class="view-head"><div><p>Your ledger for tracking the Riftbound cards you own and the jank decks you keep building instead of the meta ones.</p></div>' +
       '<button class="btn primary" data-action="new-deck">+ New deck</button></div>';
