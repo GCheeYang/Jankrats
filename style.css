@@ -744,14 +744,19 @@ code.deckcode {
    ============================================================ */
 
 .social-auth { padding: 10px 0; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
-.social-auth.signed-in { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.social-auth.signed-in { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
 .social-auth-me {
-  display: flex; align-items: center; gap: 6px; background: none; border: none; cursor: pointer;
-  color: var(--ink); font-size: 12.5px; font-weight: 600; padding: 0; text-align: left;
+  display: flex; align-items: center; gap: 8px; flex: none; max-width: 190px;
+  background: var(--surface-raised); border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 12px 4px 4px; cursor: pointer;
+  color: var(--ink); font-size: 13px; font-weight: 600; text-align: left;
+  transition: border-color 0.12s ease;
 }
+.social-auth-me:hover { border-color: var(--line-strong); }
+.social-auth-me span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .social-avatar-sm {
-  width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none;
-  background: var(--surface-raised); border: 1px solid var(--line);
+  width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex: none;
+  background: var(--surface); border: 1px solid var(--line);
 }
 .social-avatar-sm.placeholder { display: inline-block; }
 
