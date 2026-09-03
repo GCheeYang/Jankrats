@@ -767,10 +767,10 @@ code.deckcode {
   border: 1px solid var(--line);
   border-radius: 10px;
   box-shadow: var(--shadow);
-  padding: 6px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   z-index: 60;
 }
 .signin-menu-wrap.center .signin-menu { left: 50%; transform: translateX(-50%); }
@@ -778,11 +778,12 @@ code.deckcode {
 
 .signin-menu-item {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  background: none; border: none; text-align: left; white-space: nowrap;
-  padding: 8px 10px; border-radius: 7px; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line-strong); text-align: left; white-space: nowrap;
+  padding: 8px 12px; border-radius: 8px; cursor: pointer;
   color: var(--ink); font-size: 13px; font-weight: 600;
+  transition: background 0.12s ease;
 }
-.signin-menu-item:hover { background: var(--surface); }
+.signin-menu-item:hover { background: var(--surface-raised); }
 
 .signin-menu-tag {
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
