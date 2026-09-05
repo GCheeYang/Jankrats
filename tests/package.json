@@ -1,0 +1,15 @@
+{
+  "name": "jankrats-e2e-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Playwright end-to-end tests for jankrats.com. Lives in its own folder with its own dependencies, same pattern as scripts/price-scraper -- the site itself stays no-build/no-dependencies.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}
