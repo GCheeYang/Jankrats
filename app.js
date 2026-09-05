@@ -661,7 +661,7 @@
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
       html += '<div class="card-grid">' + page.map(cardTileHtml).join("") + "</div>";
-      if (shown < total) html += '<div style="text-align:center;margin-top:18px;"><button class="btn" id="cf-load-more">Show ' + Math.min(CARDS_PAGE_SIZE, total - shown) + ' more (' + (total - shown) + ' left)</button></div>';
+      if (shown < total) html += '<div id="cf-load-sentinel" class="load-sentinel">Loading more…</div>';
     }
 
     el.innerHTML = html;
@@ -669,8 +669,7 @@
     el.querySelectorAll("[data-card-id]").forEach(function (t) {
       t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
     });
-    var loadMoreBtn = document.getElementById("cf-load-more");
-    if (loadMoreBtn) loadMoreBtn.addEventListener("click", function () { cardsFilterState.limit = (cardsFilterState.limit || CARDS_PAGE_SIZE) + CARDS_PAGE_SIZE; renderCardsView(); });
+    wireInfiniteScroll(el, "cf-load-sentinel", cardsFilterState, CARDS_PAGE_SIZE, renderCardsView);
   }
 
   function sortCards(list, sort) {
@@ -713,6 +712,21 @@
       var sel = el.querySelector("#cf-" + k);
       if (sel) sel.addEventListener("change", function () { cardsFilterState[k] = sel.value; cardsFilterState.limit = CARDS_PAGE_SIZE; rerender(); });
     });
+  }
+
+  // Loads the next page automatically once its sentinel scrolls near the
+  // viewport, instead of making the user click a "Show more" button.
+  function wireInfiniteScroll(el, sentinelId, filterState, pageSize, rerender) {
+    var sentinel = el.querySelector("#" + sentinelId);
+    if (!sentinel) return;
+    var io = new IntersectionObserver(function (entries) {
+      if (entries[0].isIntersecting) {
+        io.disconnect();
+        filterState.limit = (filterState.limit || pageSize) + pageSize;
+        rerender();
+      }
+    }, { rootMargin: "400px 0px" });
+    io.observe(sentinel);
   }
 
   // avoid losing focus/caret on every keystroke: only re-render the grid portion
@@ -909,7 +923,7 @@
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
       html += '<div class="coll-grid">' + page.map(function (c) { return collectionTileHtml(c); }).join("") + "</div>";
-      if (shown < total) html += '<div style="text-align:center;margin-top:18px;"><button class="btn" id="cof-load-more">Show ' + Math.min(COLL_PAGE_SIZE, total - shown) + ' more (' + (total - shown) + ' left)</button></div>';
+      if (shown < total) html += '<div id="cof-load-sentinel" class="load-sentinel">Loading more…</div>';
     }
 
     el.innerHTML = html;
@@ -919,8 +933,7 @@
       var sel = el.querySelector("#cof-" + k);
       if (sel) sel.addEventListener("change", function () { collFilterState[k] = sel.value; collFilterState.limit = COLL_PAGE_SIZE; renderCollectionView(); });
     });
-    var loadMoreBtn2 = document.getElementById("cof-load-more");
-    if (loadMoreBtn2) loadMoreBtn2.addEventListener("click", function () { collFilterState.limit = (collFilterState.limit || COLL_PAGE_SIZE) + COLL_PAGE_SIZE; renderCollectionView(); });
+    wireInfiniteScroll(el, "cof-load-sentinel", collFilterState, COLL_PAGE_SIZE, renderCollectionView);
     el.querySelectorAll("[data-open-card]").forEach(function (img) {
       img.addEventListener("click", function () { openCardDetail(img.getAttribute("data-open-card")); });
     });
@@ -1126,7 +1139,7 @@
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
       html += '<div class="coll-grid">' + page.map(function (c) { return collectionTileHtml(c, { collection: theirCollection, editable: false }); }).join("") + "</div>";
-      if (shown < total) html += '<div style="text-align:center;margin-top:18px;"><button class="btn" id="frf-load-more">Show ' + Math.min(FRIENDS_PAGE_SIZE, total - shown) + ' more (' + (total - shown) + ' left)</button></div>';
+      if (shown < total) html += '<div id="frf-load-sentinel" class="load-sentinel">Loading more…</div>';
     }
     return html;
   }
@@ -1138,8 +1151,7 @@
       var sel = el.querySelector("#frf-" + k);
       if (sel) sel.addEventListener("change", function () { friendsFilterState[k] = sel.value; friendsFilterState.limit = FRIENDS_PAGE_SIZE; renderFriendDetail(); });
     });
-    var loadMore = el.querySelector("#frf-load-more");
-    if (loadMore) loadMore.addEventListener("click", function () { friendsFilterState.limit = (friendsFilterState.limit || FRIENDS_PAGE_SIZE) + FRIENDS_PAGE_SIZE; renderFriendDetail(); });
+    wireInfiniteScroll(el, "frf-load-sentinel", friendsFilterState, FRIENDS_PAGE_SIZE, renderFriendDetail);
     el.querySelectorAll("[data-open-card]").forEach(function (img) {
       img.addEventListener("click", function () { openCardDetail(img.getAttribute("data-open-card")); });
     });
