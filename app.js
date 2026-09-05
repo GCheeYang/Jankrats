@@ -367,7 +367,7 @@
     var html = '<div class="view-head"><div><h1>What are you here to do?</h1>' +
       "<p>Jankrats has two jobs: help you find any Riftbound card, and keep track of what you actually own.</p></div></div>";
     html += '<div class="feature-grid">' +
-      featureTileHtml("cards", "▤", "Search Cards", "Browse all " + state.cards.length + " Riftbound cards, filter by domain, type, or rarity, and check live prices.", "Explore Cards", backdropCards.slice(0, 10)) +
+      featureTileHtml("cards", "▤", "Trade / Search for Cards", "Browse all " + state.cards.length + " Riftbound cards, filter by domain, type, or rarity, and check live prices.", "Explore Cards", backdropCards.slice(0, 10)) +
       featureTileHtml("collection", "✦", "Add to Collection", "Log what you own, track owned and foil counts, and see how close you are to a complete set.", "Go to Collection", backdropCards.slice(10, 20)) +
       "</div>";
     el.innerHTML = html;
