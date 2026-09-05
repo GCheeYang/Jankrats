@@ -8,12 +8,16 @@ test.describe('home page', () => {
     await expect(page.locator('.home-hero-ctas [data-nav="collection"]')).toContainText('Add to Collection');
   });
 
-  test('shows a trending-cards rail with real, clickable cards', async ({ page }) => {
+  // This fixture blocks Supabase (see ../fixtures), so no price data ever
+  // loads -- exactly what a self-hosted deployment without card_prices
+  // configured sees. The rail should degrade to a plain message, not an
+  // empty/broken-looking section. The populated, sorted-by-price case is
+  // covered separately in home-valuable-cards.spec.js with mocked prices.
+  test('"Most valuable cards" degrades gracefully with no price data', async ({ page }) => {
     await page.goto('/');
-    const tiles = page.locator('.home-trending-rail .card-tile');
-    await expect(tiles.first()).toBeVisible();
-    await tiles.first().click();
-    await expect(page.locator('#card-modal')).toBeVisible();
+    await expect(page.locator('.home-trending')).toContainText('Most valuable cards');
+    await expect(page.locator('.home-trending-rail .card-tile')).toHaveCount(0);
+    await expect(page.locator('.home-trending')).toContainText('Price data is still loading');
   });
 
   test('"Trade / Search for Cards" button navigates to Explore Cards', async ({ page }) => {

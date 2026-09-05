@@ -345,9 +345,20 @@
      RENDER: home — the two things Jankrats is actually for
      ================================================================ */
 
+  // Highest current market price first. Price data streams in async
+  // (loadCardPrices, after the initial render), so this can come back
+  // empty on the very first paint -- renderHomeView() re-runs once
+  // prices land because loadCardPrices() calls render() on that fetch.
+  function mostValuableCards(n) {
+    return state.cards
+      .filter(function (c) { return c.imageUrl && c.price && c.price.en !== null && c.price.en !== undefined; })
+      .sort(function (a, b) { return b.price.en - a.price.en; })
+      .slice(0, n);
+  }
+
   function renderHomeView() {
     var el = document.getElementById("view-home");
-    var trending = sampleCards(14);
+    var mostValuable = mostValuableCards(14);
 
     var html = '<div class="home-hero">' +
       '<div class="home-hero-dots"></div>' +
@@ -360,11 +371,13 @@
       '<button type="button" class="btn ghost-outline" data-nav="collection"><span class="n-icon">✦</span>Add to Collection</button>' +
       "</div></div></div>";
 
-    html += '<div class="home-trending"><div class="view-head" style="margin-bottom:14px;"><h2 style="font-size:19px;">Recently added cards</h2>' +
+    html += '<div class="home-trending"><div class="view-head" style="margin-bottom:14px;"><h2 style="font-size:19px;">Most valuable cards</h2>' +
       '<span class="home-trending-hint">scroll →</span></div>' +
-      '<div class="home-trending-rail-wrap"><div class="home-trending-rail">' +
-      trending.map(cardTileHtml).join("") +
-      "</div></div></div>";
+      '<div class="home-trending-rail-wrap">' +
+      (mostValuable.length
+        ? '<div class="home-trending-rail">' + mostValuable.map(cardTileHtml).join("") + "</div>"
+        : '<p style="color:var(--ink-faint);font-size:13px;">Price data is still loading…</p>') +
+      "</div></div>";
 
     el.innerHTML = html;
     el.querySelectorAll("[data-nav]").forEach(function (b) {
