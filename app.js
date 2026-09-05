@@ -345,33 +345,44 @@
      RENDER: home — the two things Jankrats is actually for
      ================================================================ */
 
-  function featureTileHtml(view, icon, title, desc, ctaLabel, backdropCards) {
-    var backdrop = backdropCards.filter(function (c) { return c.imageUrl; }).map(function (c) {
-      return '<div class="ft-thumb"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>';
-    }).join("");
-    return '<button type="button" class="feature-tile" data-nav="' + view + '">' +
-      (backdrop ? '<div class="feature-tile-backdrop">' + backdrop + "</div>" : "") +
-      '<div class="feature-tile-scrim"></div>' +
-      '<div class="feature-tile-body">' +
-      '<span class="ft-icon">' + icon + "</span>" +
-      "<h2>" + escapeHtml(title) + "</h2>" +
-      "<p>" + escapeHtml(desc) + "</p>" +
-      '<span class="btn primary">' + escapeHtml(ctaLabel) + "</span>" +
-      "</div></button>";
-  }
-
   function renderHomeView() {
     var el = document.getElementById("view-home");
-    var backdropCards = sampleCards(20);
-    var html = '<div class="view-head"><div><h1>What are you here to do?</h1>' +
-      "<p>Jankrats has two jobs: help you find any Riftbound card, and keep track of what you actually own.</p></div></div>";
-    html += '<div class="feature-grid">' +
-      featureTileHtml("cards", "▤", "Trade / Search for Cards", "Browse all " + state.cards.length + " Riftbound cards, filter by domain, type, or rarity, and check live prices.", "Explore Cards", backdropCards.slice(0, 10)) +
-      featureTileHtml("collection", "✦", "Add to Collection", "Log what you own, track owned and foil counts, and see how close you are to a complete set.", "Go to Collection", backdropCards.slice(10, 20)) +
-      "</div>";
+    var trending = sampleCards(14);
+
+    var html = '<div class="home-hero">' +
+      '<div class="home-hero-dots"></div>' +
+      '<div class="home-hero-body">' +
+      '<div class="home-hero-kicker">Riftbound Collection &amp; Deck Ledger</div>' +
+      "<h1>Everything Riftbound,<br>in one vault.</h1>" +
+      '<p>Search the full ' + state.cards.length + '-card database or log what you already own — Jankrats keeps both in one place.</p>' +
+      '<div class="home-hero-search">' +
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="6"/><path d="M14.5 14.5 20 20"/></svg>' +
+      '<input type="search" id="home-search" placeholder="Search ' + state.cards.length + ' cards by name, type, or text…">' +
+      "</div>" +
+      '<div class="home-hero-ctas">' +
+      '<button type="button" class="btn primary" data-nav="cards"><span class="n-icon">▤</span>Trade / Search for Cards</button>' +
+      '<button type="button" class="btn ghost-outline" data-nav="collection"><span class="n-icon">✦</span>Add to Collection</button>' +
+      "</div></div></div>";
+
+    html += '<div class="home-trending"><div class="view-head" style="margin-bottom:14px;"><h2 style="font-size:19px;">Recently added cards</h2>' +
+      '<span class="home-trending-hint">scroll →</span></div>' +
+      '<div class="home-trending-rail-wrap"><div class="home-trending-rail">' +
+      trending.map(cardTileHtml).join("") +
+      "</div></div></div>";
+
     el.innerHTML = html;
     el.querySelectorAll("[data-nav]").forEach(function (b) {
       b.addEventListener("click", function () { navigate(b.getAttribute("data-nav")); });
+    });
+    el.querySelectorAll("[data-card-id]").forEach(function (t) {
+      t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
+    });
+    var searchInput = el.querySelector("#home-search");
+    searchInput.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      cardsFilterState.q = searchInput.value.trim();
+      cardsFilterState.limit = CARDS_PAGE_SIZE;
+      navigate("cards");
     });
   }
 

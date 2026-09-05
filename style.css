@@ -365,55 +365,70 @@ textarea { resize: vertical; min-height: 90px; }
   max-width: 420px;
 }
 
-/* ---- home page: two big feature tiles ---- */
-.feature-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-@media (max-width: 800px) { .feature-grid { grid-template-columns: 1fr; } }
-
-.feature-tile {
+/* ---- home page: illustrated hero band + a trending-cards rail ---- */
+.home-hero {
   position: relative;
   overflow: hidden;
-  min-height: 320px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  text-align: left;
-  padding: 28px;
+  border-radius: 20px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  padding: 56px 48px;
+  margin-bottom: 34px;
+  background:
+    radial-gradient(520px 320px at 15% 20%, rgba(228, 185, 91, 0.14), transparent 60%),
+    radial-gradient(600px 380px at 85% 80%, rgba(148, 140, 224, 0.18), transparent 60%),
+    linear-gradient(135deg, #241f38 0%, var(--surface) 55%, var(--ground) 100%);
+}
+.home-hero-dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(237, 231, 245, 0.06) 1.4px, transparent 1.4px);
+  background-size: 26px 26px;
+  opacity: 0.6;
+}
+.home-hero-body { position: relative; z-index: 1; max-width: 640px; }
+.home-hero-kicker {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent-strong); margin-bottom: 14px;
+}
+.home-hero-body h1 { font-size: 38px; line-height: 1.1; margin-bottom: 14px; }
+.home-hero-body p { font-size: 15px; color: var(--ink-soft); max-width: 46ch; margin: 0 0 26px; }
+
+.home-hero-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 520px;
+  margin-bottom: 18px;
+  color: var(--ink-faint);
+}
+.home-hero-search svg { position: absolute; left: 18px; pointer-events: none; }
+#home-search {
+  width: 100%;
   background: var(--surface);
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
+  border: 1.5px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px 16px 14px 48px;
+  font-size: 15px;
+  color: var(--ink);
+  box-shadow: 0 0 0 4px rgba(228, 185, 91, 0.12);
 }
-.feature-tile:hover { border-color: var(--line-strong); }
+#home-search::placeholder { color: var(--ink-faint); }
+#home-search:focus { outline: none; border-color: var(--accent-strong); }
 
-.feature-tile-backdrop {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
-  gap: 6px;
-  padding: 6px;
-  filter: blur(5px) brightness(0.45) saturate(0.9);
+.home-hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+.home-hero-ctas .btn { padding: 12px 20px; font-size: 14.5px; border-radius: 10px; }
+
+.btn.ghost-outline { background: transparent; border: 1.5px solid var(--line-strong); color: var(--ink); }
+.btn.ghost-outline:hover { background: var(--surface-raised); }
+
+.home-trending-hint { font-size: 12.5px; color: var(--ink-faint); }
+.home-trending-rail-wrap { position: relative; }
+.home-trending-rail { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+.home-trending-rail .card-tile-wrap { flex: none; width: 160px; }
+.home-trending-rail-wrap::after {
+  content: ""; position: absolute; top: 0; right: 0; bottom: 8px; width: 60px;
+  background: linear-gradient(to right, transparent, var(--ground)); pointer-events: none;
 }
-.ft-thumb { aspect-ratio: 744 / 1039; border-radius: 8px; overflow: hidden; background: var(--surface-raised); }
-.ft-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-.feature-tile-scrim {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to top, rgba(10,8,16,0.92) 15%, rgba(10,8,16,0.45) 65%, rgba(10,8,16,0.2));
-}
-
-.feature-tile-body { position: relative; z-index: 1; }
-.feature-tile .ft-icon { display: block; font-size: 26px; margin-bottom: 10px; opacity: 0.9; color: #fff; }
-.feature-tile h2 { font-size: 24px; color: #fff; margin-bottom: 8px; }
-.feature-tile p { font-size: 14px; color: rgba(255,255,255,0.75); max-width: 42ch; margin: 0 0 18px; }
-.feature-tile .btn { pointer-events: none; }
 
 .card-tile {
   background: var(--surface);
@@ -730,6 +745,8 @@ code.deckcode {
   .topbar-main { flex-wrap: wrap; row-gap: 8px; }
   .profile-name-input { display: none; }
   main { padding: 20px; }
+  .home-hero { padding: 32px 24px; }
+  .home-hero-body h1 { font-size: 28px; }
 }
 
 @media (max-width: 600px) {
