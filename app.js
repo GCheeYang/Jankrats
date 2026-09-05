@@ -173,7 +173,7 @@
     collection: {},
     decks: [],
     profile: { name: "" },
-    route: "dashboard",
+    route: "home",
     builder: { deckId: null, tab: "main", cardFilter: "" },
     sharedDeck: null,
     social: {
@@ -274,21 +274,21 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["dashboard", "cards", "collection", "friends", "decks", "profile", "import", "shared"];
+  var VIEWS = ["home", "cards", "collection", "friends", "decks", "dashboard", "profile", "import", "shared"];
 
   // Maps a route name to/from a clean URL path, e.g. "collection" <->
-  // "/collection", with "dashboard" living at the bare root "/".
+  // "/collection", with "home" living at the bare root "/".
   function pathToView(pathname) {
     var seg = (pathname || "").replace(/^\/+|\/+$/g, "");
-    if (!seg) return "dashboard";
+    if (!seg) return "home";
     return VIEWS.indexOf(seg) !== -1 ? seg : null;
   }
   function viewToPath(view) {
-    return view === "dashboard" ? "/" : "/" + view;
+    return view === "home" ? "/" : "/" + view;
   }
 
   function navigate(view) {
-    if (VIEWS.indexOf(view) === -1) view = "dashboard";
+    if (VIEWS.indexOf(view) === -1) view = "home";
     if (view !== "import" && voiceImportState.listening) stopVoiceListening();
     state.route = view;
     var path = viewToPath(view);
@@ -321,6 +321,7 @@
       var el = document.getElementById("view-" + v);
       if (el) el.classList.toggle("active", v === state.route);
     });
+    if (state.route === "home") renderHomeView();
     if (state.route === "dashboard") renderDashboard();
     if (state.route === "cards") renderCardsView();
     if (state.route === "collection") renderCollectionView();
@@ -339,6 +340,40 @@
     if (nameInput && document.activeElement !== nameInput) nameInput.value = state.profile.name || "";
     var authHost = document.getElementById("social-auth-host");
     if (authHost) { authHost.innerHTML = authRailHtml(); wireAuthRail(authHost); }
+  }
+
+  /* ================================================================
+     RENDER: home — the two things Jankrats is actually for
+     ================================================================ */
+
+  function featureTileHtml(view, icon, title, desc, ctaLabel, backdropCards) {
+    var backdrop = backdropCards.filter(function (c) { return c.imageUrl; }).map(function (c) {
+      return '<div class="ft-thumb"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>';
+    }).join("");
+    return '<button type="button" class="feature-tile" data-nav="' + view + '">' +
+      (backdrop ? '<div class="feature-tile-backdrop">' + backdrop + "</div>" : "") +
+      '<div class="feature-tile-scrim"></div>' +
+      '<div class="feature-tile-body">' +
+      '<span class="ft-icon">' + icon + "</span>" +
+      "<h2>" + escapeHtml(title) + "</h2>" +
+      "<p>" + escapeHtml(desc) + "</p>" +
+      '<span class="btn primary">' + escapeHtml(ctaLabel) + "</span>" +
+      "</div></button>";
+  }
+
+  function renderHomeView() {
+    var el = document.getElementById("view-home");
+    var backdropCards = sampleCards(20);
+    var html = '<div class="view-head"><div><h1>What are you here to do?</h1>' +
+      "<p>Jankrats has two jobs: help you find any Riftbound card, and keep track of what you actually own.</p></div></div>";
+    html += '<div class="feature-grid">' +
+      featureTileHtml("cards", "▤", "Search Cards", "Browse all " + state.cards.length + " Riftbound cards, filter by domain, type, or rarity, and check live prices.", "Explore Cards", backdropCards.slice(0, 10)) +
+      featureTileHtml("collection", "✦", "Add to Collection", "Log what you own, track owned and foil counts, and see how close you are to a complete set.", "Go to Collection", backdropCards.slice(10, 20)) +
+      "</div>";
+    el.innerHTML = html;
+    el.querySelectorAll("[data-nav]").forEach(function (b) {
+      b.addEventListener("click", function () { navigate(b.getAttribute("data-nav")); });
+    });
   }
 
   /* ================================================================
@@ -2989,7 +3024,7 @@
     loadCardPrices();
     var hadShared = checkForSharedDeckInUrl();
     if (!hadShared) {
-      // A bare "/" always resolves to dashboard via pathToView, which would
+      // A bare "/" always resolves to home via pathToView, which would
       // otherwise shadow an old-style "/#view" bookmark/link before its hash
       // ever gets consulted -- so check that legacy hash case first.
       var legacyHash = (window.location.hash || "").replace("#", "");
@@ -2997,7 +3032,7 @@
       if ((window.location.pathname === "/" || window.location.pathname === "") && VIEWS.indexOf(legacyHash) !== -1) {
         v = legacyHash;
       } else {
-        v = pathToView(window.location.pathname) || "dashboard";
+        v = pathToView(window.location.pathname) || "home";
       }
       state.route = v;
       var path = viewToPath(v);
