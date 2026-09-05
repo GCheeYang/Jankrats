@@ -34,3 +34,23 @@ test.describe('responsive top bar', () => {
     await expect(page.locator('.nav button[data-view="home"]')).toBeVisible();
   });
 });
+
+test.describe('global search (top bar, next to the logo)', () => {
+  test('is present next to the logo on every page, not just Home', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.wordmark + .topbar-search-wrap #global-search')).toBeVisible();
+    for (const view of ['cards', 'collection', 'friends', 'decks', 'dashboard']) {
+      await page.locator(`.nav button[data-view="${view}"]`).click();
+      await expect(page.locator('#global-search')).toBeVisible();
+    }
+  });
+
+  test('searching from a non-Home page still jumps to Explore Cards with that filter applied', async ({ page }) => {
+    await page.goto('/collection');
+    await page.fill('#global-search', 'Abandoned Hall');
+    await page.press('#global-search', 'Enter');
+    await expect(page).toHaveURL(/\/cards$/);
+    await expect(page.locator('#cf-q')).toHaveValue('Abandoned Hall');
+    await expect(page.locator('#view-cards .card-tile')).toHaveCount(1);
+  });
+});

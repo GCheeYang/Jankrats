@@ -138,6 +138,28 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   font-size: 19px;
 }
 
+.topbar-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 140px;
+  max-width: 480px;
+  color: var(--ink-faint);
+}
+.topbar-search-wrap svg { position: absolute; left: 12px; pointer-events: none; }
+#global-search {
+  width: 100%;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px 7px 34px;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+#global-search::placeholder { color: var(--ink-faint); }
+#global-search:focus { outline: none; border-color: var(--line-strong); }
+
 .nav {
   display: flex;
   flex-direction: row;
@@ -392,28 +414,6 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .home-hero-body h1 { font-size: 38px; line-height: 1.1; margin-bottom: 14px; }
 .home-hero-body p { font-size: 15px; color: var(--ink-soft); max-width: 46ch; margin: 0 0 26px; }
-
-.home-hero-search {
-  position: relative;
-  display: flex;
-  align-items: center;
-  max-width: 520px;
-  margin-bottom: 18px;
-  color: var(--ink-faint);
-}
-.home-hero-search svg { position: absolute; left: 18px; pointer-events: none; }
-#home-search {
-  width: 100%;
-  background: var(--surface);
-  border: 1.5px solid var(--accent);
-  border-radius: 12px;
-  padding: 14px 16px 14px 48px;
-  font-size: 15px;
-  color: var(--ink);
-  box-shadow: 0 0 0 4px rgba(228, 185, 91, 0.12);
-}
-#home-search::placeholder { color: var(--ink-faint); }
-#home-search:focus { outline: none; border-color: var(--accent-strong); }
 
 .home-hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; }
 .home-hero-ctas .btn { padding: 12px 20px; font-size: 14.5px; border-radius: 10px; }
@@ -743,6 +743,9 @@ code.deckcode {
 @media (max-width: 760px) {
   .topbar { padding: 10px 16px; }
   .topbar-main { flex-wrap: wrap; row-gap: 8px; }
+  .wordmark { order: 1; }
+  .topbar-right { order: 2; }
+  .topbar-search-wrap { order: 3; flex-basis: 100%; max-width: none; }
   .profile-name-input { display: none; }
   main { padding: 20px; }
   .home-hero { padding: 32px 24px; }

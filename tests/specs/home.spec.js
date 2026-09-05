@@ -1,10 +1,9 @@
 const { test, expect } = require('../fixtures');
 
 test.describe('home page', () => {
-  test('shows the hero with a search bar and both action buttons', async ({ page }) => {
+  test('shows the hero with both action buttons (search bar lives in the top nav, not here)', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.home-hero h1')).toContainText('Everything Riftbound');
-    await expect(page.locator('#home-search')).toBeVisible();
     await expect(page.locator('.home-hero-ctas [data-nav="cards"]')).toContainText('Trade / Search for Cards');
     await expect(page.locator('.home-hero-ctas [data-nav="collection"]')).toContainText('Add to Collection');
   });
@@ -15,15 +14,6 @@ test.describe('home page', () => {
     await expect(tiles.first()).toBeVisible();
     await tiles.first().click();
     await expect(page.locator('#card-modal')).toBeVisible();
-  });
-
-  test('the hero search bar searches cards on Enter', async ({ page }) => {
-    await page.goto('/');
-    await page.fill('#home-search', 'Abandoned Hall');
-    await page.press('#home-search', 'Enter');
-    await expect(page).toHaveURL(/\/cards$/);
-    await expect(page.locator('#cf-q')).toHaveValue('Abandoned Hall');
-    await expect(page.locator('#view-cards .card-tile')).toHaveCount(1);
   });
 
   test('"Trade / Search for Cards" button navigates to Explore Cards', async ({ page }) => {
