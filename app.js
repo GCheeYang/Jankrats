@@ -274,7 +274,7 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["home", "cards", "collection", "friends", "decks", "dashboard", "profile", "import", "shared"];
+  var VIEWS = ["home", "cards", "collection", "friends", "decks", "dashboard", "profile", "shared"];
 
   // Maps a route name to/from a clean URL path, e.g. "collection" <->
   // "/collection", with "home" living at the bare root "/".
@@ -289,7 +289,7 @@
 
   function navigate(view) {
     if (VIEWS.indexOf(view) === -1) view = "home";
-    if (view !== "import" && voiceImportState.listening) stopVoiceListening();
+    if (voiceImportState.listening) stopVoiceListening();
     state.route = view;
     var path = viewToPath(view);
     if (window.location.pathname !== path) window.history.pushState({ view: view }, "", path);
@@ -328,7 +328,6 @@
     if (state.route === "friends") renderFriendsView();
     if (state.route === "decks") renderDecksView();
     if (state.route === "profile") renderProfileView();
-    if (state.route === "import") renderImportView();
     if (state.route === "shared") renderSharedView();
   }
 
@@ -657,7 +656,7 @@
       "</div>";
 
     if (!total) {
-      html += '<div class="empty-state"><h3>No cards match</h3><p>Try clearing a filter, or head to Import to add cards.</p></div>';
+      html += '<div class="empty-state"><h3>No cards match</h3><p>Try clearing a filter.</p></div>';
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
       html += '<div class="card-grid">' + page.map(cardTileHtml).join("") + "</div>";
@@ -907,7 +906,8 @@
     var shown = Math.min(collFilterState.limit || COLL_PAGE_SIZE, total);
     var page = list.slice(0, shown);
 
-    var html = '<div class="view-head"><div><h1>Collection</h1><p>The cards you actually own — ' + uniqueOwned + " / " + state.cards.length + " unique cards (" + pct + '%). Browse <b>Explore Cards</b> to find and add new ones.</p></div></div>';
+    var html = '<div class="view-head"><div><h1>Collection</h1><p>The cards you actually own — ' + uniqueOwned + " / " + state.cards.length + " unique cards (" + pct + '%). Browse <b>Explore Cards</b> to find and add new ones.</p></div>' +
+      '<button class="btn primary" id="open-import-btn">Import cards</button></div>';
 
     html += '<div class="toolbar">' +
       field("Search", '<input type="search" id="cof-q" placeholder="Name or text…" value="' + escapeHtml(collFilterState.q) + '">') +
@@ -919,7 +919,7 @@
     if (!total) {
       html += uniqueOwned
         ? '<div class="empty-state"><h3>No owned cards match</h3><p>Adjust your filters.</p></div>'
-        : '<div class="empty-state"><h3>Nothing owned yet</h3><p>Head to <b>Explore Cards</b>, click a card, and set an Owned/Foil count to add it here.</p></div>';
+        : '<div class="empty-state"><h3>Nothing owned yet</h3><p>Head to <b>Explore Cards</b> and set an Owned/Foil count on a card, or use <b>Import cards</b> above to bring in a whole list at once.</p></div>';
     } else {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Showing ' + shown + ' of ' + total + "</p>";
       html += '<div class="coll-grid">' + page.map(function (c) { return collectionTileHtml(c); }).join("") + "</div>";
@@ -927,6 +927,7 @@
     }
 
     el.innerHTML = html;
+    el.querySelector("#open-import-btn").addEventListener("click", openImportModal);
     var q = el.querySelector("#cof-q");
     if (q) q.addEventListener("input", function () { collFilterState.q = q.value; collFilterState.limit = COLL_PAGE_SIZE; rerenderSoft(el, renderCollectionView); });
     ["domain", "type", "rarity"].forEach(function (k) {
@@ -1902,39 +1903,51 @@
   var SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition || null;
   var voiceImportState = { listening: false, recognition: null, transcript: "", results: [] };
 
-  function renderImportView() {
-    var el = document.getElementById("view-import");
+  // Import lives inside Collection now (opened from an "Import cards"
+  // button there) rather than as its own nav tab, since it's just another
+  // way to fill in the same data Collection shows.
+  function openImportModal() {
+    var root = document.getElementById("modal-root");
+    root.innerHTML = '<div class="modal-backdrop" id="import-modal"><div class="modal modal-wide">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">Import to Collection</h2><button class="modal-close" data-close>&times;</button></div>' +
+      importBodyHtml() +
+      "</div></div>";
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#import-modal").addEventListener("click", function (e) { if (e.target.id === "import-modal") closeModal(); });
+    wireImportBody(root);
+  }
+
+  function importBodyHtml() {
     if (JVBackend.isConfigured() && !state.social.session) {
-      el.innerHTML = socialSignInPromptHtml("Sign in to import cards into your collection — it'll sync to your account and follow you across devices.");
-      wireSignInPrompt(el);
-      return;
+      return socialSignInPromptHtml("Sign in to import cards into your collection — it'll sync to your account and follow you across devices.");
     }
-
-    var html = '<div class="view-head"><div><h1>Import to Collection</h1><p>Bring in a list of cards you own. Nothing is fetched automatically — paste or upload JSON or CSV you\'ve put together yourself, and it sets how many of each you own, matched against the existing card database.</p></div></div>';
-
+    var html = '<p style="color:var(--ink-soft);margin-bottom:14px;">Pick how you\'d rather bring in a list of cards you own — nothing is fetched automatically, this just sets how many of each you own, matched against the card database.</p>';
     html += '<div class="tabs">' + tabBtn2("json", "JSON") + tabBtn2("csv", "CSV") + "</div>";
     html += '<div id="import-schema"></div>';
 
     html += '<div class="field" style="margin-top:14px;"><label>Upload a file</label><input type="file" id="import-file" accept=".json,.csv,application/json,text/csv"></div>';
-    html += '<div class="field" style="margin-top:14px;"><label>Or paste data</label><textarea id="import-text" rows="10" placeholder="Paste JSON array or CSV here…"></textarea></div>';
+    html += '<div class="field" style="margin-top:14px;"><label>Or paste data</label><textarea id="import-text" rows="8" placeholder="Paste JSON array or CSV here…"></textarea></div>';
     html += '<div style="display:flex;gap:8px;margin-top:10px;">' +
       '<button class="btn primary" id="import-run">Import</button>' +
       "</div>";
     html += '<div id="import-result" style="margin-top:14px;"></div>';
 
     html += renderVoiceImportSection();
+    return html;
+  }
 
-    el.innerHTML = html;
+  function wireImportBody(root) {
+    if (JVBackend.isConfigured() && !state.social.session) { wireSignInPrompt(root); return; }
     renderImportSchema("json");
-    wireVoiceImport(el);
+    wireVoiceImport(root);
     function setImportTab(key) {
-      el.querySelectorAll("[data-tab2]").forEach(function (x) { x.classList.toggle("active", x.getAttribute("data-tab2") === key); });
+      root.querySelectorAll("[data-tab2]").forEach(function (x) { x.classList.toggle("active", x.getAttribute("data-tab2") === key); });
       renderImportSchema(key);
     }
-    el.querySelectorAll("[data-tab2]").forEach(function (b) {
+    root.querySelectorAll("[data-tab2]").forEach(function (b) {
       b.addEventListener("click", function () { setImportTab(b.getAttribute("data-tab2")); });
     });
-    document.getElementById("import-file").addEventListener("change", function (e) {
+    root.querySelector("#import-file").addEventListener("change", function (e) {
       var file = e.target.files[0];
       if (!file) return;
       if (/\.csv$/i.test(file.name)) setImportTab("csv");
@@ -1944,8 +1957,8 @@
       reader.onerror = function () { toast("Couldn't read that file."); };
       reader.readAsText(file);
     });
-    document.getElementById("import-run").addEventListener("click", function () {
-      var mode = el.querySelector("[data-tab2].active").getAttribute("data-tab2");
+    root.querySelector("#import-run").addEventListener("click", function () {
+      var mode = root.querySelector("[data-tab2].active").getAttribute("data-tab2");
       var text = document.getElementById("import-text").value;
       runImport(mode, text);
     });
@@ -2009,6 +2022,7 @@
 
     resultEl.innerHTML = '<div class="pill good" style="font-size:13px;padding:6px 12px;">' + applied + " card" + (applied === 1 ? "" : "s") + " updated in your collection</div>" + (errors.length ? errorList(errors) : "");
     renderRail();
+    if (state.route === "collection") renderCollectionView();
     toast("Collection import complete.");
   }
 
@@ -2355,6 +2369,8 @@
         });
         if (!added) { toast("Nothing checked to add."); return; }
         toast("Added " + added + " card" + (added === 1 ? "" : "s") + " to your collection.");
+        renderRail();
+        if (state.route === "collection") renderCollectionView();
         voiceImportState.results = [];
         voiceImportState.transcript = "";
         var transcriptEl = document.getElementById("voice-transcript");
@@ -2405,7 +2421,7 @@
     window.addEventListener("popstate", function () {
       var v = pathToView(window.location.pathname);
       if (v) {
-        if (v !== "import" && voiceImportState.listening) stopVoiceListening();
+        if (voiceImportState.listening) stopVoiceListening();
         state.route = v;
         render();
       }
