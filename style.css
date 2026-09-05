@@ -2,13 +2,12 @@
    Jankrats — design tokens
    Concept: an arcane ledger / rune vault for cataloguing your
    Riftbound collection and brewing decks worth bragging about.
-   Light = ledger parchment. Dark = obsidian vault lit by runes.
+   Dark-only: an obsidian vault lit by runes.
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,560;9..144,680&family=Libre+Franklin:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* ---- obsidian vault (dark) palette — the default look ---- */
   --ground: #14121C;
   --surface: #1B1826;
   --surface-raised: #232030;
@@ -44,44 +43,6 @@
   --d-none: #837A9B;
 
   color-scheme: dark;
-}
-
-:root[data-theme="light"] {
-  /* ---- ledger (light) palette — opt-in via the theme toggle ---- */
-  --ground: #ECE6D6;
-  --surface: #F7F3E7;
-  --surface-raised: #FFFDF6;
-  --ink: #241E14;
-  --ink-soft: #5B5340;
-  --ink-faint: #8A806A;
-  --line: #D9D0B8;
-  --line-strong: #C3B896;
-
-  --accent: #A9761E;       /* brass / wax-seal gold */
-  --accent-strong: #8A5F14;
-  --accent-ink: #FFF8E8;
-
-  --rift: #5B57A6;
-  --rift-soft: #EFEEF9;
-
-  --good: #3F7D4D;
-  --good-soft: #E4EFE2;
-  --warn: #A8631B;
-  --warn-soft: #F5E8D6;
-  --bad: #AA3B34;
-  --bad-soft: #F6E2DF;
-
-  --shadow: 0 1px 2px rgba(36,30,20,0.06), 0 6px 20px -8px rgba(36,30,20,0.18);
-
-  --d-fury: #B8402F;
-  --d-calm: #3E7D4F;
-  --d-mind: #2E63A6;
-  --d-chaos: #7A4FA3;
-  --d-body: #B5701F;
-  --d-order: #A6871E;
-  --d-none: #8A806A;
-
-  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -176,14 +137,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   font-weight: 680;
   font-size: 19px;
 }
-
-.theme-toggle {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border-radius: 8px;
-  background: var(--surface-raised); border: 1px solid var(--line);
-  color: var(--ink-soft); cursor: pointer; font-size: 14px; flex: none;
-}
-.theme-toggle:hover { border-color: var(--line-strong); color: var(--ink); }
 
 .nav {
   display: flex;

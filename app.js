@@ -14,7 +14,6 @@
     collection: STORAGE_PREFIX + "collection",
     decks: STORAGE_PREFIX + "decks",
     profile: STORAGE_PREFIX + "profile",
-    theme: STORAGE_PREFIX + "theme",
     lastAuthProvider: STORAGE_PREFIX + "lastAuthProvider"
   };
 
@@ -2356,8 +2355,6 @@
     });
     var nameInput = document.getElementById("profile-name");
     nameInput.addEventListener("change", function () { state.profile.name = nameInput.value; persistProfile(); renderRail(); });
-    var themeBtn = document.getElementById("theme-toggle");
-    if (themeBtn) themeBtn.addEventListener("click", toggleTheme);
     window.addEventListener("popstate", function () {
       var v = pathToView(window.location.pathname);
       if (v) {
@@ -2969,20 +2966,6 @@
     return true;
   }
 
-  function applyTheme() {
-    var saved = loadJSON(KEYS.theme, null);
-    var theme = saved === "light" ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", theme);
-    var btn = document.getElementById("theme-toggle");
-    if (btn) btn.textContent = theme === "light" ? "☀" : "☾";
-  }
-
-  function toggleTheme() {
-    var current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
-    saveJSON(KEYS.theme, current === "light" ? "dark" : "light");
-    applyTheme();
-  }
-
   // Prices come from a daily-refreshed Supabase table (see
   // scripts/price-scraper), not the card data bundle -- fetch once at
   // startup and merge onto the already-loaded cards, then re-render so
@@ -3001,7 +2984,6 @@
 
   function init() {
     loadAll();
-    applyTheme();
     wireShell();
     wireAuth();
     loadCardPrices();
