@@ -43,11 +43,26 @@ function extractJson(text: string): unknown {
   }
 }
 
+// The browser calls this function directly (not server-to-server like
+// send-push), so it needs to answer the CORS preflight and echo these
+// headers on every response, or the browser blocks the request before it
+// ever reaches the code below — that shows up client-side as "failed to
+// send a request to the Edge Function", not as any error from this file.
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 function jsonResponse(body: Record<string, unknown>, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+  });
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   if (req.method !== "POST") return jsonResponse({ ok: false, error: "POST only" }, 405);
 
   try {
