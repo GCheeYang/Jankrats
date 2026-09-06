@@ -99,6 +99,28 @@ To actually send push messages when someone posts or comments:
 That's it — new posts notify a poster's followers, new comments notify the
 post's author.
 
+## 4b. AI card scanning (photo/video → collection import)
+
+The "Scan a pack" tool in the Import modal lets you upload a photo or short
+video of a pull and has an AI read off the card names, instead of typing or
+speaking them. This needs its own Edge Function plus an API key from
+**console.anthropic.com** — a separate account/bill from a claude.ai (Claude
+Pro) subscription; Pro doesn't include API access.
+
+1. Get an API key at console.anthropic.com (Settings → API Keys) and add
+   billing there — usage is pay-as-you-go, a few cents per scan at most.
+2. Set it as a function secret (never put this in `config.js` — that file is
+   public):
+   ```
+   npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   ```
+3. Deploy the function: `npx supabase functions deploy identify-cards`
+   (needs `npx supabase login` and `npx supabase link --project-ref
+   <your-project-ref>` first if you haven't already for the push function).
+
+That's it — the app calls this function itself; nothing else to wire up in
+the dashboard.
+
 ## 5. Pick hosting
 
 Push notifications (and the service worker they need) only work over HTTPS

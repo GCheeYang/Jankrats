@@ -1946,6 +1946,7 @@
     html += '<div id="import-result" style="margin-top:14px;"></div>';
 
     html += renderVoiceImportSection();
+    html += renderScanImportSection();
     return html;
   }
 
@@ -1953,6 +1954,7 @@
     if (JVBackend.isConfigured() && !state.social.session) { wireSignInPrompt(root); return; }
     renderImportSchema("json");
     wireVoiceImport(root);
+    wireScanImport(root);
     function setImportTab(key) {
       root.querySelectorAll("[data-tab2]").forEach(function (x) { x.classList.toggle("active", x.getAttribute("data-tab2") === key); });
       renderImportSchema(key);
@@ -2070,12 +2072,14 @@
     return html;
   }
 
-  function voiceResultsHtml() {
-    var results = voiceImportState.results;
+  // Shared by voice import and the AI photo/video scan below: both produce
+  // the same {phrase, qty, cardId} row shape and let the user fix a
+  // mismatch in a dropdown before anything touches the collection.
+  function matchResultsTableHtml(results, addLabel) {
     if (!results.length) return "";
     var sorted = state.cards.slice().sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
     var html = '<div style="overflow-x:auto;"><table class="coll-table"><thead><tr>' +
-      "<th>You said</th><th>Matched card</th><th>Qty</th><th>Add</th>" +
+      "<th>Detected</th><th>Matched card</th><th>Qty</th><th>Add</th>" +
       "</tr></thead><tbody>" +
       results.map(function (r, i) {
         return "<tr>" +
@@ -2086,8 +2090,44 @@
           "</tr>";
       }).join("") +
       "</tbody></table></div>";
-    html += '<div style="margin-top:10px;"><button class="btn primary" id="voice-add" type="button">Add checked cards to collection</button></div>';
+    html += '<div style="margin-top:10px;"><button class="btn primary" data-match-add type="button">' + escapeHtml(addLabel) + "</button></div>";
     return html;
+  }
+
+  function wireMatchResultsTable(host, results, onAdded) {
+    if (!host) return;
+    host.querySelectorAll('select[data-field="card"]').forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        results[parseInt(sel.getAttribute("data-row"), 10)].cardId = sel.value || null;
+      });
+    });
+    host.querySelectorAll('input[data-field="qty"]').forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        results[parseInt(inp.getAttribute("data-row"), 10)].qty = clamp(parseInt(inp.value, 10) || 0, 0, 999);
+      });
+    });
+    var addBtn = host.querySelector("[data-match-add]");
+    if (addBtn) {
+      addBtn.addEventListener("click", function () {
+        var added = 0;
+        host.querySelectorAll('input[data-field="include"]').forEach(function (chk) {
+          var row = parseInt(chk.getAttribute("data-row"), 10);
+          var r = results[row];
+          if (!chk.checked || !r || !r.cardId) return;
+          setOwned(r.cardId, getOwned(r.cardId) + r.qty, getOwnedFoil(r.cardId));
+          added++;
+        });
+        if (!added) { toast("Nothing checked to add."); return; }
+        toast("Added " + added + " card" + (added === 1 ? "" : "s") + " to your collection.");
+        renderRail();
+        if (state.route === "collection") renderCollectionView();
+        onAdded();
+      });
+    }
+  }
+
+  function voiceResultsHtml() {
+    return matchResultsTableHtml(voiceImportState.results, "Add checked cards to collection");
   }
 
   // Some cards share a name with another printing at the same numbered slot
@@ -2356,42 +2396,198 @@
 
   function wireVoiceResultsControls() {
     var host = document.getElementById("voice-results");
-    if (!host) return;
-    host.querySelectorAll('select[data-field="card"]').forEach(function (sel) {
-      sel.addEventListener("change", function () {
-        var row = parseInt(sel.getAttribute("data-row"), 10);
-        voiceImportState.results[row].cardId = sel.value || null;
-      });
+    wireMatchResultsTable(host, voiceImportState.results, function () {
+      voiceImportState.results = [];
+      voiceImportState.transcript = "";
+      var transcriptEl = document.getElementById("voice-transcript");
+      if (transcriptEl) transcriptEl.value = "";
+      rerenderVoiceResults();
     });
-    host.querySelectorAll('input[data-field="qty"]').forEach(function (inp) {
-      inp.addEventListener("change", function () {
-        var row = parseInt(inp.getAttribute("data-row"), 10);
-        voiceImportState.results[row].qty = clamp(parseInt(inp.value, 10) || 0, 0, 999);
-      });
-    });
-    var addBtn = document.getElementById("voice-add");
-    if (addBtn) {
-      addBtn.addEventListener("click", function () {
-        var added = 0;
-        host.querySelectorAll('input[data-field="include"]').forEach(function (chk) {
-          var row = parseInt(chk.getAttribute("data-row"), 10);
-          var r = voiceImportState.results[row];
-          if (!chk.checked || !r || !r.cardId) return;
-          setOwned(r.cardId, getOwned(r.cardId) + r.qty, getOwnedFoil(r.cardId));
-          added++;
-        });
-        if (!added) { toast("Nothing checked to add."); return; }
-        toast("Added " + added + " card" + (added === 1 ? "" : "s") + " to your collection.");
-        renderRail();
-        if (state.route === "collection") renderCollectionView();
-        voiceImportState.results = [];
-        voiceImportState.transcript = "";
-        var transcriptEl = document.getElementById("voice-transcript");
-        if (transcriptEl) transcriptEl.value = "";
-        rerenderVoiceResults();
-        renderRail();
-      });
+  }
+
+  /* ================================================================
+     SCAN IMPORT: upload a photo or short video of a pull/pack, have an
+     AI (via the identify-cards Edge Function) read off the card names,
+     then run those through the same fuzzy matcher as voice import.
+     ================================================================ */
+
+  var scanImportState = { results: [], busy: false };
+
+  function renderScanImportSection() {
+    var html = '<div class="view-head" style="margin-top:34px;"><div><h1 style="font-size:20px;">Scan a pack (photo or video)</h1>' +
+      "<p>Upload a photo of your pull, or a short video panning across the cards, and AI will read off what's there. Nothing is added until you review and confirm the matches below.</p></div></div>";
+
+    if (!JVBackend.isConfigured()) {
+      html += '<div class="callout" style="margin-bottom:14px;">Card scanning needs the backend connected (see SETUP.md) plus an <code>identify-cards</code> Edge Function deployed with an Anthropic API key.</div>';
+    } else {
+      html += '<div class="callout" style="margin-bottom:14px;">Works best with good lighting and each card held steady/in-focus for at least half a second. Videos are capped at 60 seconds.</div>';
     }
+
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+      '<input type="file" id="scan-file" accept="image/*,video/*">' +
+      '<button class="btn primary" id="scan-run" type="button">Identify cards</button>' +
+      "</div>";
+
+    html += '<div id="scan-status" style="margin-top:10px;"></div>';
+    html += '<div id="scan-results" style="margin-top:14px;">' + scanResultsHtml() + "</div>";
+    return html;
+  }
+
+  function scanResultsHtml() {
+    return matchResultsTableHtml(scanImportState.results, "Add checked cards to collection");
+  }
+
+  function rerenderScanResults() {
+    var host = document.getElementById("scan-results");
+    if (!host) return;
+    host.innerHTML = scanResultsHtml();
+    wireScanResultsControls();
+  }
+
+  function wireScanResultsControls() {
+    var host = document.getElementById("scan-results");
+    wireMatchResultsTable(host, scanImportState.results, function () {
+      scanImportState.results = [];
+      rerenderScanResults();
+    });
+  }
+
+  // Turns the Edge Function's loose {name, qty, collectorNumber} guesses
+  // into the same {phrase, qty, cardId} row shape voice import produces,
+  // fuzzy-matching by name via the existing bestCardMatch(). The collector
+  // number (when the AI could read it) is shown alongside the name for the
+  // user to cross-check, not used to match — its printed format varies too
+  // much to parse reliably, and the review step exists precisely to catch
+  // a wrong guess.
+  function scanResultsFromCards(cards) {
+    return (cards || []).map(function (c) {
+      var name = String((c && c.name) || "").trim();
+      var qty = clamp(parseInt(c && c.qty, 10) || 1, 1, 999);
+      var match = name ? bestCardMatch(name, null) : null;
+      var label = (name || "(unnamed)") + (c && c.collectorNumber ? " (" + c.collectorNumber + ")" : "");
+      return { phrase: label, qty: qty, cardId: match ? match.card.id : null };
+    });
+  }
+
+  function wireScanImport(el) {
+    var runBtn = el.querySelector("#scan-run");
+    var fileInput = el.querySelector("#scan-file");
+    var statusEl = el.querySelector("#scan-status");
+    if (!runBtn) return;
+
+    function setStatus(msg) { if (statusEl) statusEl.textContent = msg || ""; }
+
+    runBtn.addEventListener("click", function () {
+      if (scanImportState.busy) return;
+      var file = fileInput && fileInput.files && fileInput.files[0];
+      if (!file) { toast("Pick a photo or video first."); return; }
+      if (!JVBackend.isConfigured()) { toast("Card scanning needs the backend connected — see SETUP.md."); return; }
+
+      scanImportState.busy = true;
+      runBtn.disabled = true;
+      setStatus("Reading frames…");
+
+      extractFramesFromMediaFile(file).then(function (frames) {
+        setStatus("Asking AI to identify cards (" + frames.length + " frame" + (frames.length === 1 ? "" : "s") + ")…");
+        return JVBackend.identifyCards(frames);
+      }).then(function (res) {
+        var cards = (res && res.cards) || [];
+        scanImportState.results = scanResultsFromCards(cards);
+        setStatus(cards.length ? "" : "Couldn't identify any cards in that — try better lighting or a steadier shot.");
+        rerenderScanResults();
+      }).catch(function (err) {
+        console.error(err);
+        setStatus("Something went wrong: " + (err && err.message ? err.message : "couldn't scan that file."));
+      }).then(function () {
+        scanImportState.busy = false;
+        runBtn.disabled = false;
+      });
+    });
+  }
+
+  function extractFramesFromMediaFile(file) {
+    if (file.type.indexOf("video") === 0) return extractVideoFrames(file);
+    return imageFileToFrame(file).then(function (frame) { return [frame]; });
+  }
+
+  function imageFileToFrame(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var maxW = 1100;
+        var scale = Math.min(1, maxW / img.naturalWidth);
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("Couldn't read that image.")); };
+      img.src = url;
+    });
+  }
+
+  var SCAN_MAX_FRAMES = 16;
+  var SCAN_FRAME_INTERVAL_S = 0.8;
+
+  // Grabs still frames at fixed intervals by seeking a hidden <video> and
+  // reading each seeked position onto a canvas — no video-processing
+  // library needed, just what the browser already gives us.
+  function extractVideoFrames(file) {
+    return new Promise(function (resolve, reject) {
+      var video = document.createElement("video");
+      video.preload = "auto";
+      video.muted = true;
+      video.playsInline = true;
+      var url = URL.createObjectURL(file);
+      var done = false;
+
+      function finish(frames) { if (done) return; done = true; URL.revokeObjectURL(url); resolve(frames); }
+      function fail(err) { if (done) return; done = true; URL.revokeObjectURL(url); reject(err); }
+
+      video.onloadedmetadata = function () {
+        var duration = video.duration;
+        if (!isFinite(duration) || duration <= 0) { fail(new Error("Couldn't read that video.")); return; }
+        if (duration > 60) { fail(new Error("Videos are capped at 60 seconds — trim it and try again.")); return; }
+
+        var count = Math.max(1, Math.min(SCAN_MAX_FRAMES, Math.ceil(duration / SCAN_FRAME_INTERVAL_S)));
+        var timestamps = [];
+        for (var i = 0; i < count; i++) timestamps.push(Math.min(duration - 0.05, (i + 0.5) * (duration / count)));
+
+        var frames = [];
+        var idx = 0;
+        var canvas = document.createElement("canvas");
+        var ctx = canvas.getContext("2d");
+        var maxW = 900;
+
+        function grabAt() {
+          if (done) return;
+          if (idx >= timestamps.length) { finish(frames); return; }
+          video.currentTime = timestamps[idx];
+        }
+
+        video.onseeked = function () {
+          if (done) return;
+          var scale = Math.min(1, maxW / video.videoWidth);
+          canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+          canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+          try {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            frames.push(canvas.toDataURL("image/jpeg", 0.7));
+          } catch (e) { /* skip an unreadable frame rather than aborting the whole scan */ }
+          idx++;
+          grabAt();
+        };
+
+        // Some browsers only decode frames after a play/pause cycle —
+        // muted autoplay is allowed even without a user gesture here.
+        video.play().then(function () { video.pause(); grabAt(); }).catch(function () { grabAt(); });
+      };
+      video.onerror = function () { fail(new Error("Couldn't read that video.")); };
+      video.src = url;
+    });
   }
 
   function errorBox(msg) { return '<div class="pill bad" style="font-size:13px;padding:6px 12px;margin-bottom:8px;">' + escapeHtml(msg) + "</div>"; }

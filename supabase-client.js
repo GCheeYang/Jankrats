@@ -432,6 +432,20 @@
     });
   }
 
+  /* ---------------- AI card scan (photo/video → collection import) ---------------- */
+
+  // frames: array of "data:image/jpeg;base64,..." strings extracted client-side.
+  // Resolves to { ok, cards: [{name, qty, collectorNumber?}] } from the
+  // identify-cards Edge Function — see supabase/functions/identify-cards.
+  function identifyCards(frames) {
+    var c = client_();
+    if (!c) return Promise.reject(new Error("Backend not configured"));
+    return c.functions.invoke("identify-cards", { body: { frames: frames } }).then(function (r) {
+      if (r.error) throw r.error;
+      return r.data;
+    });
+  }
+
   window.JVBackend = {
     isConfigured: isConfigured,
     getSession: getSession,
@@ -466,6 +480,7 @@
     subscribeFeed: subscribeFeed,
     pushSupported: pushSupported,
     enablePush: enablePush,
-    disablePush: disablePush
+    disablePush: disablePush,
+    identifyCards: identifyCards
   };
 })();
