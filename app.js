@@ -1922,6 +1922,7 @@
   // button there) rather than as its own nav tab, since it's just another
   // way to fill in the same data Collection shows.
   function openImportModal() {
+    importMethodTab = "scan";
     var root = document.getElementById("modal-root");
     root.innerHTML = '<div class="modal-backdrop" id="import-modal"><div class="modal modal-wide">' +
       '<div class="modal-head"><h2 style="font-size:19px;">Import to Collection</h2><button class="modal-close" data-close>&times;</button></div>' +
@@ -1932,29 +1933,69 @@
     wireImportBody(root);
   }
 
+  // Which top-level import method the modal opens on — photo/video scan
+  // is the easiest option for most people, so it's the default; CSV/JSON
+  // paste is there for anyone who already has a spreadsheet or export.
+  var importMethodTab = "scan";
+
   function importBodyHtml() {
     if (JVBackend.isConfigured() && !state.social.session) {
       return socialSignInPromptHtml("Sign in to import cards into your collection — it'll sync to your account and follow you across devices.");
     }
     var html = '<p style="color:var(--ink-soft);margin-bottom:14px;">Pick how you\'d rather bring in a list of cards you own — nothing is fetched automatically, this just sets how many of each you own, matched against the card database.</p>';
-    html += '<div class="tabs">' + tabBtn2("json", "JSON") + tabBtn2("csv", "CSV") + "</div>";
-    html += '<div id="import-schema"></div>';
+    html += '<div class="tabs" style="margin-bottom:14px;">' +
+      importMethodTabBtn("scan", "Photo / Video") +
+      importMethodTabBtn("text", "CSV / JSON") +
+      "</div>";
+    html += '<div id="import-method-panel">' + importMethodPanelHtml() + "</div>";
+    return html;
+  }
 
+  function importMethodTabBtn(key, label) {
+    return '<button class="' + (key === importMethodTab ? "active" : "") + '" data-import-method="' + key + '">' + label + "</button>";
+  }
+
+  function importMethodPanelHtml() {
+    return importMethodTab === "scan" ? renderScanImportSection() : renderTextImportSection();
+  }
+
+  function wireImportBody(root) {
+    if (JVBackend.isConfigured() && !state.social.session) { wireSignInPrompt(root); return; }
+    root.querySelectorAll("[data-import-method]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var key = b.getAttribute("data-import-method");
+        if (key === importMethodTab) return;
+        importMethodTab = key;
+        root.querySelectorAll("[data-import-method]").forEach(function (x) {
+          x.classList.toggle("active", x.getAttribute("data-import-method") === key);
+        });
+        var panel = root.querySelector("#import-method-panel");
+        panel.innerHTML = importMethodPanelHtml();
+        wireImportMethodPanel(panel);
+      });
+    });
+    wireImportMethodPanel(root.querySelector("#import-method-panel"));
+  }
+
+  function wireImportMethodPanel(panel) {
+    if (importMethodTab === "scan") wireScanImport(panel);
+    else wireTextImport(panel);
+  }
+
+  function renderTextImportSection() {
+    var html = '<div class="tabs">' + tabBtn2("json", "JSON") + tabBtn2("csv", "CSV") + "</div>";
+    html += '<div id="import-schema"></div>';
     html += '<div class="field" style="margin-top:14px;"><label>Upload a file</label><input type="file" id="import-file" accept=".json,.csv,application/json,text/csv"></div>';
     html += '<div class="field" style="margin-top:14px;"><label>Or paste data</label><textarea id="import-text" rows="8" placeholder="Paste JSON array or CSV here…"></textarea></div>';
     html += '<div style="display:flex;gap:8px;margin-top:10px;">' +
       '<button class="btn primary" id="import-run">Import</button>' +
       "</div>";
     html += '<div id="import-result" style="margin-top:14px;"></div>';
-
-    html += renderScanImportSection();
     return html;
   }
 
-  function wireImportBody(root) {
-    if (JVBackend.isConfigured() && !state.social.session) { wireSignInPrompt(root); return; }
+  function wireTextImport(root) {
     renderImportSchema("json");
-    wireScanImport(root);
     function setImportTab(key) {
       root.querySelectorAll("[data-tab2]").forEach(function (x) { x.classList.toggle("active", x.getAttribute("data-tab2") === key); });
       renderImportSchema(key);
@@ -2185,8 +2226,7 @@
   var scanImportState = { results: [], busy: false };
 
   function renderScanImportSection() {
-    var html = '<div class="view-head" style="margin-top:34px;"><div><h1 style="font-size:20px;">Scan a pack (photo or video)</h1>' +
-      "<p>Upload a photo of your pull, or a short video panning across the cards, and AI will read off what's there. Nothing is added until you review and confirm the matches below.</p></div></div>";
+    var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Upload a photo of your pull, or a short video panning across the cards, and AI will read off what's there. Nothing is added until you review and confirm the matches below.</p>";
 
     if (!JVBackend.isConfigured()) {
       html += '<div class="callout" style="margin-bottom:14px;">Card scanning needs the backend connected (see SETUP.md) plus an <code>identify-cards</code> Edge Function deployed with an Anthropic API key.</div>';
