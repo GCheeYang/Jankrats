@@ -274,7 +274,7 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["home", "cards", "collection", "friends", "decks", "dashboard", "profile", "shared"];
+  var VIEWS = ["home", "cards", "collection", "decks", "friends", "dashboard", "profile", "shared"];
 
   // Maps a route name to/from a clean URL path, e.g. "collection" <->
   // "/collection", with "home" living at the bare root "/".
@@ -662,7 +662,7 @@
     var shown = Math.min(cardsFilterState.limit || CARDS_PAGE_SIZE, total);
     var page = list.slice(0, shown);
 
-    var html = '<div class="view-head"><div><h1>Explore Cards</h1><p>' + state.cards.length + ' cards loaded. Search, filter, and click a card to see the full text or log how many you own.</p></div></div>';
+    var html = '<div class="view-head"><div><h1>Explore Cards</h1><p>Search, filter, and click a card to see the full text or log how many you own.</p></div></div>';
 
     html += '<div class="toolbar">' +
       field("Search", '<input type="search" id="cf-q" placeholder="Name or text…" value="' + escapeHtml(cardsFilterState.q) + '">') +
