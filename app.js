@@ -651,7 +651,7 @@
     return out.sort();
   }
 
-  var cardsFilterState = { q: "", domain: "", type: "", rarity: "", set: "", sort: "name", limit: 60 };
+  var cardsFilterState = { q: "", domain: "", rarity: "", set: "", sort: "name", limit: 60 };
   var CARDS_PAGE_SIZE = 60;
 
   function renderCardsView() {
@@ -666,10 +666,9 @@
 
     html += '<div class="toolbar">' +
       field("Domain", selectHtml("cf-domain", optionList(["", "Any"], DOMAIN_NAMES, cardsFilterState.domain))) +
-      field("Type", selectHtml("cf-type", optionList(["", "Any"], CARD_TYPES, cardsFilterState.type))) +
       field("Rarity", selectHtml("cf-rarity", optionList(["", "Any"], uniqueValues("rarity"), cardsFilterState.rarity))) +
       field("Set", selectHtml("cf-set", optionList(["", "Any"], uniqueValues("set"), cardsFilterState.set))) +
-      field("Sort", selectHtml("cf-sort", explicitOptions([["name", "Name"], ["cost", "Cost"]], cardsFilterState.sort))) +
+      field("Sort", selectHtml("cf-sort", explicitOptions([["name", "Name"], ["cost", "Cost"], ["price", "Price"], ["id", "Card ID"]], cardsFilterState.sort))) +
       "</div>";
 
     if (!total) {
@@ -692,6 +691,12 @@
     var copy = list.slice();
     copy.sort(function (a, b) {
       if (sort === "cost") return (a.cost === null || a.cost === undefined ? 99 : a.cost) - (b.cost === null || b.cost === undefined ? 99 : b.cost) || a.name.localeCompare(b.name);
+      if (sort === "price") {
+        var pa = (a.price && a.price.en !== null && a.price.en !== undefined) ? a.price.en : -1;
+        var pb = (b.price && b.price.en !== null && b.price.en !== undefined) ? b.price.en : -1;
+        return pb - pa || a.name.localeCompare(b.name);
+      }
+      if (sort === "id") return a.id.localeCompare(b.id, undefined, { numeric: true });
       return a.name.localeCompare(b.name);
     });
     return copy;
@@ -722,7 +727,9 @@
   }
 
   function wireCardFilterToolbar(el, rerender) {
-    ["domain", "type", "rarity", "set", "sort"].forEach(function (k) {
+    var q = el.querySelector("#cf-q");
+    if (q) q.addEventListener("input", function () { cardsFilterState.q = q.value; cardsFilterState.limit = CARDS_PAGE_SIZE; rerenderSoft(el, rerender); });
+    ["domain", "rarity", "set", "sort"].forEach(function (k) {
       var sel = el.querySelector("#cf-" + k);
       if (sel) sel.addEventListener("change", function () { cardsFilterState[k] = sel.value; cardsFilterState.limit = CARDS_PAGE_SIZE; rerender(); });
     });
