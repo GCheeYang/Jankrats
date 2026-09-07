@@ -362,8 +362,19 @@ textarea { resize: vertical; min-height: 90px; }
   gap: 12px;
 }
 
-.card-tile-wrap { position: relative; }
-.card-tile-wrap .card-tile { width: 100%; height: 100%; }
+.card-tile-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--d-none);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.card-tile-wrap:hover { border-color: var(--line-strong); }
+.card-tile-wrap .card-tile { width: 100%; flex: 1; }
 
 /* marks where the next page loads in automatically as it scrolls near view */
 .load-sentinel { text-align: center; padding: 24px 0; color: var(--ink-faint); font-size: 12.5px; }
@@ -443,39 +454,35 @@ textarea { resize: vertical; min-height: 90px; }
 }
 
 .card-tile {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--d-none);
-  border-radius: 10px;
-  padding: 12px 12px 10px;
+  background: none;
+  border: none;
+  padding: 12px 12px 8px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 8px;
   text-align: left;
-  box-shadow: var(--shadow);
-  position: relative;
+  color: inherit;
+  font: inherit;
 }
-.card-tile:hover { border-color: var(--line-strong); }
 
 .ct-price-link {
-  position: absolute; bottom: 10px; right: 10px; z-index: 2;
-  background: var(--accent); color: var(--accent-ink); text-decoration: none;
+  display: block;
+  width: fit-content;
+  padding: 0 12px 10px;
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px; font-weight: 700; padding: 4px 9px; border-radius: 999px;
-  transition: background 0.15s ease;
+  font-size: 12.5px; font-weight: 600;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
 }
-.ct-price-link:hover { background: var(--accent-strong); }
+.ct-price-link:hover { color: var(--accent-strong); }
 
 .card-tile .ct-top {
   display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;
 }
 .card-tile .ct-name { font-family: 'Fraunces', serif; font-weight: 600; font-size: 14.5px; line-height: 1.25; }
-.card-tile .ct-cost {
-  font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 12.5px;
-  background: var(--surface-raised); border: 1px solid var(--line); border-radius: 6px;
-  padding: 1px 6px; flex: none;
-}
 .card-tile .ct-meta { font-size: 11.5px; color: var(--ink-faint); display: flex; gap: 6px; flex-wrap: wrap; }
 .card-tile .ct-owned {
   position: absolute; top: 10px; right: 10px;
@@ -768,12 +775,9 @@ code.deckcode {
     grid-template-columns: repeat(2, 1fr);
     gap: 10px;
   }
-  .card-tile { padding: 9px 9px 34px; gap: 6px; }
+  .card-tile { padding: 9px 9px 6px; gap: 6px; }
   .card-tile .ct-name { font-size: 13px; }
-  .ct-price-link {
-    left: 9px; right: 9px; bottom: 8px; width: auto;
-    text-align: center; font-size: 12.5px; padding: 5px 7px;
-  }
+  .ct-price-link { padding: 0 9px 8px; }
 }
 
 /* ============================================================

@@ -8,12 +8,13 @@ test.describe('top nav', () => {
     await expect(page.locator('#view-home')).toBeVisible();
   });
 
-  test('nav order has Home first and Dashboard last', async ({ page }) => {
+  test('nav order has Home first and Friends last, no Dashboard button', async ({ page }) => {
     await page.goto('/');
     const labels = await page.locator('.nav button').allTextContents();
     expect(labels[0]).toContain('Home');
-    expect(labels[labels.length - 1]).toContain('Dashboard');
+    expect(labels[labels.length - 1]).toContain('Friends');
     expect(labels.some((l) => l.includes('Import'))).toBe(false);
+    expect(labels.some((l) => l.includes('Dashboard'))).toBe(false);
   });
 
   test('every nav tab routes to its own view and updates the URL', async ({ page }) => {
@@ -21,9 +22,9 @@ test.describe('top nav', () => {
     const cases = [
       ['cards', 'Explore Cards', '/cards'],
       ['collection', 'Collection', '/collection'],
-      ['friends', 'Friends', '/friends'],
+      ['wanted', 'Wanted', '/wanted'],
       ['decks', 'Decks', '/decks'],
-      ['dashboard', 'Dashboard', '/dashboard'],
+      ['friends', 'Friends', '/friends'],
       ['home', 'Home', '/'],
     ];
     for (const [view, label, path] of cases) {
@@ -59,9 +60,10 @@ test.describe('top nav', () => {
       if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) errors.push(msg.text());
     });
     await page.goto('/');
-    for (const view of ['cards', 'collection', 'friends', 'decks', 'dashboard', 'home']) {
+    for (const view of ['cards', 'collection', 'wanted', 'decks', 'friends', 'home']) {
       await page.locator(`.nav button[data-view="${view}"]`).click();
     }
+    await page.goto('/dashboard');
     expect(errors).toEqual([]);
   });
 });

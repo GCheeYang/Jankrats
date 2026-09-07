@@ -772,15 +772,13 @@
     var priceLabel = (c.price && c.price.en !== null && c.price.en !== undefined)
       ? formatUsd(c.price.en) + " ↗"
       : "Price ↗";
-    return '<div class="card-tile-wrap">' +
-      '<button class="card-tile" style="border-left-color:' + domainColor(primaryDomain) + '" data-card-id="' + c.id + '">' +
+    return '<div class="card-tile-wrap" style="border-left-color:' + domainColor(primaryDomain) + '">' +
+      '<button class="card-tile" data-card-id="' + c.id + '" data-cost="' + (c.cost !== null && c.cost !== undefined ? c.cost : "") + '" data-type="' + escapeHtml(c.type || "") + '">' +
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
       (c.imageUrl ? '<div class="ct-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
-      '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span>" +
-      (c.cost !== null && c.cost !== undefined ? '<span class="ct-cost">' + c.cost + "⚡</span>" : "") +
-      "</div>" +
+      '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span></div>" +
       '<div>' + domainChips(c.domains) + "</div>" +
-      '<div class="ct-meta"><span>' + escapeHtml(c.type) + "</span><span>·</span><span>" + escapeHtml(c.rarity || "") + "</span>" +
+      '<div class="ct-meta"><span>' + escapeHtml(c.rarity || "") + "</span>" +
       (c.power !== null && c.power !== undefined ? '<span class="ct-power">' + c.power + "★</span>" : "") +
       "</div>" +
       "</button>" +

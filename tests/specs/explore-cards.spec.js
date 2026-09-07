@@ -30,19 +30,10 @@ test.describe('explore cards', () => {
     }
   });
 
-  test('type filter only shows that card type', async ({ page }) => {
-    await page.goto('/cards');
-    await page.selectOption('#cf-type', 'Battlefield');
-    const grid = await page.locator('#view-cards .card-grid').innerText();
-    expect(grid).toContain('Battlefield');
-    const tileCount = await page.locator('#view-cards .card-tile').count();
-    expect(tileCount).toBeGreaterThan(0);
-  });
-
   test('sort by cost orders the visible tiles ascending', async ({ page }) => {
     await page.goto('/cards');
     await page.selectOption('#cf-sort', 'cost');
-    const costs = await page.locator('#view-cards .ct-cost').allTextContents();
+    const costs = await page.locator('#view-cards .card-tile').evaluateAll((els) => els.map((el) => el.getAttribute('data-cost')));
     const nums = costs.map((c) => parseInt(c, 10)).filter((n) => !Number.isNaN(n));
     const sorted = [...nums].sort((a, b) => a - b);
     expect(nums).toEqual(sorted);

@@ -26,7 +26,7 @@ test.describe('decks', () => {
   test('a new deck also shows up on the dashboard\'s recent decks and stat tile', async ({ page }) => {
     await page.goto('/decks');
     await page.click('[data-action="new-deck"]');
-    await page.locator('.nav button[data-view="dashboard"]').click();
+    await page.goto('/dashboard');
     await expect(page.locator('#view-dashboard .stat-card .num').nth(2)).toHaveText('1');
     await expect(page.locator('#view-dashboard .deck-row')).toHaveCount(1);
   });

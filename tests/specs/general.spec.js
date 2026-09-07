@@ -39,10 +39,12 @@ test.describe('global search (top bar, next to the logo)', () => {
   test('is present next to the logo on every page, not just Home', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.wordmark + .topbar-search-wrap #global-search')).toBeVisible();
-    for (const view of ['cards', 'collection', 'friends', 'decks', 'dashboard']) {
+    for (const view of ['cards', 'collection', 'friends', 'decks']) {
       await page.locator(`.nav button[data-view="${view}"]`).click();
       await expect(page.locator('#global-search')).toBeVisible();
     }
+    await page.goto('/dashboard');
+    await expect(page.locator('#global-search')).toBeVisible();
   });
 
   test('searching from a non-Home page still jumps to Explore Cards with that filter applied', async ({ page }) => {

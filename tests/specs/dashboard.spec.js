@@ -23,7 +23,7 @@ test.describe('dashboard', () => {
     await page.click('#import-run');
     await page.click('#import-modal .modal-close');
 
-    await page.locator('.nav button[data-view="dashboard"]').click();
+    await page.goto('/dashboard');
     const stats = await page.locator('#view-dashboard .stat-card .num').allTextContents();
     expect(stats).toEqual(['3', '1', '0']); // total owned, unique owned, decks brewed
     await expect(page.locator('#view-dashboard')).not.toContainText('Start exploring');
