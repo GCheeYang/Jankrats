@@ -665,7 +665,6 @@
     var html = '<div class="view-head"><div><h1>Explore Cards</h1><p>Search, filter, and click a card to see the full text or log how many you own.</p></div></div>';
 
     html += '<div class="toolbar">' +
-      field("Search", '<input type="search" id="cf-q" placeholder="Name or text…" value="' + escapeHtml(cardsFilterState.q) + '">') +
       field("Domain", selectHtml("cf-domain", optionList(["", "Any"], DOMAIN_NAMES, cardsFilterState.domain))) +
       field("Type", selectHtml("cf-type", optionList(["", "Any"], CARD_TYPES, cardsFilterState.type))) +
       field("Rarity", selectHtml("cf-rarity", optionList(["", "Any"], uniqueValues("rarity"), cardsFilterState.rarity))) +
@@ -723,8 +722,6 @@
   }
 
   function wireCardFilterToolbar(el, rerender) {
-    var q = el.querySelector("#cf-q");
-    if (q) q.addEventListener("input", function () { cardsFilterState.q = q.value; cardsFilterState.limit = CARDS_PAGE_SIZE; rerenderSoft(el, rerender); });
     ["domain", "type", "rarity", "set", "sort"].forEach(function (k) {
       var sel = el.querySelector("#cf-" + k);
       if (sel) sel.addEventListener("change", function () { cardsFilterState[k] = sel.value; cardsFilterState.limit = CARDS_PAGE_SIZE; rerender(); });
