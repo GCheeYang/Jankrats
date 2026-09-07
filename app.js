@@ -830,6 +830,8 @@
       "</div></div>" +
       '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex;align-items:center;gap:18px;flex-wrap:wrap;">' +
       trackingHtml +
+      '<button class="btn small ' + (isWanted(cardId) ? "ghost" : "primary") + '" id="cd-toggle-wanted" data-toggle-wanted="' + cardId + '">' +
+      (isWanted(cardId) ? "★ On your wanted list" : "☆ Add to wanted list") + "</button>" +
       "</div>" +
       "</div></div>";
     document.getElementById("modal-root").innerHTML = html;
@@ -861,6 +863,13 @@
         if (state.route === "collection") renderCollectionView();
         if (state.route === "cards") renderCardsView();
       });
+    });
+    var wantBtn = root.querySelector("#cd-toggle-wanted");
+    if (wantBtn) wantBtn.addEventListener("click", function () {
+      toggleWanted(cardId);
+      wantBtn.className = "btn small " + (isWanted(cardId) ? "ghost" : "primary");
+      wantBtn.textContent = isWanted(cardId) ? "★ On your wanted list" : "☆ Add to wanted list";
+      if (state.route === "wanted") renderWantedView();
     });
   }
 
@@ -973,6 +982,179 @@
           }
           renderRail();
         });
+      });
+    });
+  }
+
+  /* ================================================================
+     RENDER: wanted (build a list of cards, then check who owns them)
+     ================================================================ */
+
+  function wantedSearchResults(q) {
+    q = (q || "").toLowerCase().trim();
+    if (!q) return [];
+    return state.cards.filter(function (c) { return c.name.toLowerCase().indexOf(q) !== -1; }).slice(0, 12);
+  }
+
+  function wantedResultRowHtml(c) {
+    var added = isWanted(c.id);
+    return '<div class="wanted-result-row">' +
+      (c.imageUrl ? '<img src="' + escapeHtml(c.imageUrl) + '" alt="">' : '<span class="wr-noimg"></span>') +
+      '<div class="wr-info"><span class="wr-name">' + escapeHtml(c.name) + "</span>" +
+      '<span class="wr-set">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span></div>" +
+      '<button class="btn small ' + (added ? "ghost" : "primary") + '" data-toggle-wanted="' + c.id + '">' + (added ? "Added ✓" : "+ Add") + "</button>" +
+      "</div>";
+  }
+
+  function wantedChipHtml(c) {
+    return '<span class="wanted-chip">' + escapeHtml(c.name) +
+      '<button data-remove-wanted="' + c.id + '" aria-label="Remove ' + escapeHtml(c.name) + '">&times;</button></span>';
+  }
+
+  // Fetches the collections of every not-yet-cached person in the current
+  // scope (friends, or everyone) in one batched request, then re-renders.
+  function loadWantedCollectionsIfNeeded() {
+    var s = state.social;
+    var pool = s.wantedProfiles || [];
+    var people = s.wantedScope === "everyone" ? pool : pool.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
+    var missing = people.map(function (p) { return p.id; }).filter(function (id) { return !s.wantedCollections[id]; });
+    if (!missing.length) return;
+    JVBackend.listCollectionsFor(missing).then(function (byUser) {
+      missing.forEach(function (id) { s.wantedCollections[id] = byUser[id] || {}; });
+      if (state.route === "wanted") renderWantedView();
+    });
+  }
+
+  function wantedMatchRowHtml(p, owned, total) {
+    var s = state.social;
+    var expanded = s.wantedExpandedId === p.id;
+    var badge = owned === null
+      ? '<span class="pill neutral">Checking…</span>'
+      : owned === total
+        ? '<span class="pill good">Has all ' + total + "</span>"
+        : owned === 0
+          ? '<span class="pill bad">Has none</span>'
+          : '<span class="pill warn">' + owned + " / " + total + "</span>";
+    var html = '<button class="friend-tile wanted-match-row" data-open-wanted-match="' + p.id + '">' +
+      (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
+      '<span class="friend-name">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span>" +
+      badge +
+      "</button>";
+    if (expanded && owned !== null) {
+      var coll = s.wantedCollections[p.id] || {};
+      html += '<div class="wanted-match-detail">' + state.wanted.map(function (cardId) {
+        var c = state.cardsById[cardId];
+        if (!c) return "";
+        var e = coll[cardId];
+        var has = e && (e.qty || 0) + (e.foil || 0) > 0;
+        return '<span class="pill ' + (has ? "good" : "bad") + '">' + (has ? "✓ " : "✗ ") + escapeHtml(c.name) + "</span>";
+      }).join("") + "</div>";
+    }
+    return html;
+  }
+
+  function wantedMatchSectionHtml() {
+    var heading = '<h3 style="margin:26px 0 10px;">Who has these?</h3>';
+    if (!JVBackend.isConfigured()) return heading + socialNotConfiguredHtml("Checking friends");
+    if (!state.social.session) return heading + socialSignInPromptHtml("Sign in with Google to check who owns these cards.");
+
+    var s = state.social;
+    if (s.wantedProfiles === null) return heading + '<p style="color:var(--ink-faint);">Loading…</p>';
+
+    var mode = s.wantedScope === "everyone" ? "everyone" : "mine";
+    var people = mode === "everyone" ? s.wantedProfiles : s.wantedProfiles.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
+    var total = state.wanted.length;
+    var rows = people.map(function (p) {
+      var coll = s.wantedCollections[p.id];
+      return { profile: p, owned: coll ? wantedOwnedCount(coll) : null };
+    });
+    rows.sort(function (a, b) {
+      if (a.owned === null) return b.owned === null ? 0 : 1;
+      if (b.owned === null) return -1;
+      return b.owned - a.owned;
+    });
+
+    var html = heading + '<div class="tabs" style="margin-bottom:16px;">' +
+      '<button class="' + (mode === "mine" ? "active" : "") + '" data-wanted-scope="mine">My friends</button>' +
+      '<button class="' + (mode === "everyone" ? "active" : "") + '" data-wanted-scope="everyone">Everyone</button>' +
+      "</div>";
+
+    if (!rows.length) {
+      html += mode === "mine"
+        ? '<div class="empty-state"><h3>No friends added yet</h3><p>Add friends from the <b>Friends</b> tab, or switch to <b>Everyone</b>.</p></div>'
+        : '<div class="empty-state"><h3>No one else has signed in yet</h3></div>';
+    } else {
+      html += '<div class="wanted-match-list">' + rows.map(function (r) { return wantedMatchRowHtml(r.profile, r.owned, total); }).join("") + "</div>";
+    }
+    return html;
+  }
+
+  function renderWantedView() {
+    var el = document.getElementById("view-wanted");
+    var cards = state.wanted.map(function (id) { return state.cardsById[id]; }).filter(Boolean);
+
+    var html = '<div class="view-head"><div><h1>Wanted List</h1><p>Search for cards you’re after, add them here, then see which friends — or anyone else — already own the whole list.</p></div></div>';
+
+    html += '<div class="toolbar">' +
+      field("Search cards to add", '<input type="search" id="wt-q" placeholder="Card name…" value="' + escapeHtml(state.wantedQuery) + '">') +
+      "</div>";
+
+    var results = wantedSearchResults(state.wantedQuery);
+    if (results.length) {
+      html += '<div class="wanted-results">' + results.map(wantedResultRowHtml).join("") + "</div>";
+    } else if (state.wantedQuery.trim()) {
+      html += '<p style="font-size:12.5px;color:var(--ink-faint);margin:6px 0 16px;">No cards match “' + escapeHtml(state.wantedQuery) + '”.</p>';
+    }
+
+    html += '<h3 style="margin:22px 0 10px;">Your list (' + cards.length + ")</h3>";
+    if (!cards.length) {
+      html += '<div class="empty-state"><h3>Nothing added yet</h3><p>Search above and click <b>+ Add</b> on any card.</p></div>';
+    } else {
+      html += '<div class="wanted-chip-row">' + cards.map(wantedChipHtml).join("") + "</div>" +
+        '<button class="btn small ghost" id="wt-clear" style="margin-top:10px;">Clear list</button>';
+    }
+
+    if (cards.length) html += wantedMatchSectionHtml();
+
+    el.innerHTML = html;
+    wireWantedView(el);
+  }
+
+  function wireWantedView(el) {
+    var q = el.querySelector("#wt-q");
+    if (q) q.addEventListener("input", function () { state.wantedQuery = q.value; rerenderSoft(el, renderWantedView); });
+
+    el.querySelectorAll("[data-toggle-wanted]").forEach(function (b) {
+      b.addEventListener("click", function () { toggleWanted(b.getAttribute("data-toggle-wanted")); renderWantedView(); });
+    });
+    el.querySelectorAll("[data-remove-wanted]").forEach(function (b) {
+      b.addEventListener("click", function () { removeWanted(b.getAttribute("data-remove-wanted")); renderWantedView(); });
+    });
+    var clear = el.querySelector("#wt-clear");
+    if (clear) clear.addEventListener("click", function () { state.wanted = []; persistWanted(); renderWantedView(); });
+
+    if (!JVBackend.isConfigured() || !state.wanted.length) return;
+    if (!state.social.session) { wireSignInPrompt(el); return; }
+
+    var s = state.social;
+    if (s.wantedProfiles === null) {
+      JVBackend.listProfiles().then(function (profiles) {
+        s.wantedProfiles = profiles;
+        if (state.route === "wanted") renderWantedView();
+      });
+      return;
+    }
+
+    loadWantedCollectionsIfNeeded();
+
+    el.querySelectorAll("[data-wanted-scope]").forEach(function (b) {
+      b.addEventListener("click", function () { s.wantedScope = b.getAttribute("data-wanted-scope"); renderWantedView(); });
+    });
+    el.querySelectorAll("[data-open-wanted-match]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-open-wanted-match");
+        s.wantedExpandedId = s.wantedExpandedId === id ? null : id;
+        renderWantedView();
       });
     });
   }
