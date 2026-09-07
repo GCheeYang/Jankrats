@@ -924,7 +924,7 @@
     var shown = Math.min(collFilterState.limit || COLL_PAGE_SIZE, total);
     var page = list.slice(0, shown);
 
-    var html = '<div class="view-head"><div><h1>Collection</h1><p>The cards you actually own — ' + uniqueOwned + " / " + state.cards.length + " unique cards (" + pct + '%). Browse <b>Explore Cards</b> to find and add new ones.</p></div>' +
+    var html = '<div class="view-head"><div><h1>Collection</h1><p>You own — ' + uniqueOwned + " / " + state.cards.length + " unique cards! (" + pct + '%). Browse <b>Explore Cards</b> to find search for new cards.</p></div>' +
       '<button class="btn primary" id="open-import-btn">Import cards</button></div>';
 
     html += '<div class="toolbar">' +
