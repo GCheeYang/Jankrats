@@ -289,7 +289,6 @@
 
   function navigate(view) {
     if (VIEWS.indexOf(view) === -1) view = "home";
-    if (voiceImportState.listening) stopVoiceListening();
     state.route = view;
     var path = viewToPath(view);
     if (window.location.pathname !== path) window.history.pushState({ view: view }, "", path);
@@ -1919,9 +1918,6 @@
      IMPORT (CSV / JSON) of real card data
      ================================================================ */
 
-  var SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition || null;
-  var voiceImportState = { listening: false, recognition: null, transcript: "", results: [] };
-
   // Import lives inside Collection now (opened from an "Import cards"
   // button there) rather than as its own nav tab, since it's just another
   // way to fill in the same data Collection shows.
@@ -1951,7 +1947,6 @@
       "</div>";
     html += '<div id="import-result" style="margin-top:14px;"></div>';
 
-    html += renderVoiceImportSection();
     html += renderScanImportSection();
     return html;
   }
@@ -1959,7 +1954,6 @@
   function wireImportBody(root) {
     if (JVBackend.isConfigured() && !state.social.session) { wireSignInPrompt(root); return; }
     renderImportSchema("json");
-    wireVoiceImport(root);
     wireScanImport(root);
     function setImportTab(key) {
       root.querySelectorAll("[data-tab2]").forEach(function (x) { x.classList.toggle("active", x.getAttribute("data-tab2") === key); });
@@ -1992,7 +1986,7 @@
   function renderImportSchema(mode) {
     var host = document.getElementById("import-schema");
     if (mode === "json") {
-      host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint);">Array of objects, one per card you own. Each needs <code>qty</code> and either <code>id</code> (exact card id, e.g. <code>OGN-179/298</code>) or <code>name</code> (matched against the card database, same fuzzy matching as the voice importer below). <code>foil</code> is optional (defaults to 0). Example: <code>[{"id":"OGN-179/298","qty":3},{"name":"Ahri, Alluring","qty":1,"foil":1}]</code></p>';
+      host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint);">Array of objects, one per card you own. Each needs <code>qty</code> and either <code>id</code> (exact card id, e.g. <code>OGN-179/298</code>) or <code>name</code> (fuzzy-matched against the card database). <code>foil</code> is optional (defaults to 0). Example: <code>[{"id":"OGN-179/298","qty":3},{"name":"Ahri, Alluring","qty":1,"foil":1}]</code></p>';
     } else {
       host.innerHTML = '<p style="font-size:12.5px;color:var(--ink-faint);">First row is a header: <code>id,qty,foil</code> or <code>name,qty,foil</code> (both <code>id</code> and <code>name</code> columns are fine together — <code>id</code> wins when both are present). <code>foil</code> is optional.</p>';
     }
@@ -2047,40 +2041,9 @@
     toast("Collection import complete.");
   }
 
-  /* ================================================================
-     VOICE IMPORT: speak (or type) a list of owned cards, fuzzy-match
-     each phrase against the card database, and add to the collection.
-     ================================================================ */
-
-  function renderVoiceImportSection() {
-    var supported = !!SpeechRecognitionCtor;
-    var html = '<div class="view-head" style="margin-top:34px;"><div><h1 style="font-size:20px;">Speak your collection</h1>' +
-      "<p>Read off the cards you own out loud (or type/paste a list) and it'll match each one against the card database and add it to your Collection.</p></div></div>";
-
-    var variantNote = "Some cards have more than one printing (alt art, or a signed/secret-rare parallel). Add a word like <b>signature</b>, <b>secret</b>, or <b>star</b> for that special parallel, or <b>alt</b>/<b>showcase</b> for the alternate art — say nothing and it picks the plain printing.";
-    if (!supported) {
-      html += '<div class="callout" style="margin-bottom:14px;">Voice input isn\'t supported in this browser — try Chrome or Edge. You can still type or paste a list below (one card per line or comma-separated, e.g. "2 Bargain-Bin Baron, Sir Reginald Duct-Taped" or "1 of SFD 10"). ' + variantNote + "</div>";
-    } else {
-      html += '<div class="callout" style="margin-bottom:14px;">Click the mic, then say your cards one after another (e.g. "two Bargain-Bin Baron, Sir Reginald Duct-Taped, three Anchor Dump"). Say a number before a card to set its quantity — otherwise it assumes 1. You can also say the set and card number instead of the name, in the form "<b>qty of SET number</b>" — e.g. "1 of SFD 10". Click the mic again when you\'re done, then review the matches before adding them.<br><br>' + variantNote + "</div>";
-    }
-
-    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-      (supported ? '<button class="btn primary" id="voice-mic-toggle" type="button">🎤 Start listening</button>' : "") +
-      '<button class="btn" id="voice-match" type="button">Match cards</button>' +
-      '<button class="btn ghost" id="voice-clear" type="button">Clear</button>' +
-      "</div>";
-
-    html += '<div class="field" style="margin-top:12px;"><label>' + (supported ? "Heard so far (editable)" : "Type or paste a list") +
-      '</label><textarea id="voice-transcript" rows="4" placeholder="e.g. two Bargain-Bin Baron, Sir Reginald Duct-Taped, three Anchor Dump">' +
-      escapeHtml(voiceImportState.transcript) + "</textarea></div>";
-
-    html += '<div id="voice-results" style="margin-top:14px;">' + voiceResultsHtml() + "</div>";
-    return html;
-  }
-
-  // Shared by voice import and the AI photo/video scan below: both produce
-  // the same {phrase, qty, cardId} row shape and let the user fix a
-  // mismatch in a dropdown before anything touches the collection.
+  // Used by the AI photo/video scan below: produces rows shaped
+  // {phrase, qty, cardId} and lets the user fix a mismatch in a dropdown
+  // before anything touches the collection.
   function matchResultsTableHtml(results, addLabel) {
     if (!results.length) return "";
     var sorted = state.cards.slice().sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
@@ -2132,10 +2095,6 @@
     }
   }
 
-  function voiceResultsHtml() {
-    return matchResultsTableHtml(voiceImportState.results, "Add checked cards to collection");
-  }
-
   // Some cards share a name with another printing at the same numbered slot
   // (an alt-art variant, or a second parallel of an over-numbered secret
   // slot) — distinguished only by a letter/asterisk suffix on the id, e.g.
@@ -2157,91 +2116,6 @@
       html += '<option value="' + escapeHtml(c.id) + '"' + (c.id === selectedId ? " selected" : "") + ">" + label + "</option>";
     });
     return html;
-  }
-
-  var VOICE_NUMBER_WORDS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
-
-  // Say one of these alongside a card name to pick a specific printing when
-  // a card has more than one (e.g. "one signature Defender of Tomorrow").
-  // Anything unrecognized/unsaid falls back to the plain/base printing.
-  var VOICE_VARIANT_HINTS = {
-    signature: "*", signed: "*", star: "*", special: "*", secret: "*",
-    alt: "a", alternate: "a", showcase: "a"
-  };
-
-  function extractQtyAndName(phrase) {
-    var words = phrase.trim().split(/\s+/).filter(Boolean);
-    var qty = 1;
-    if (words.length > 1) {
-      var first = words[0].toLowerCase().replace(/[^a-z0-9]/g, "");
-      if (/^\d+$/.test(first)) { qty = parseInt(first, 10); words.shift(); }
-      else if (VOICE_NUMBER_WORDS[first] !== undefined) { qty = VOICE_NUMBER_WORDS[first]; words.shift(); }
-    }
-    if (words.length > 1) {
-      var xMatch = words[words.length - 1].toLowerCase().match(/^x(\d+)$/);
-      if (xMatch) { qty = parseInt(xMatch[1], 10); words.pop(); }
-    }
-    var variantHint = null;
-    words = words.filter(function (w) {
-      var key = w.toLowerCase().replace(/[^a-z]/g, "");
-      if (VOICE_VARIANT_HINTS[key] !== undefined) { variantHint = VOICE_VARIANT_HINTS[key]; return false; }
-      return true;
-    });
-    return { qty: clamp(qty || 1, 1, 999), name: words.join(" "), variantHint: variantHint };
-  }
-
-  var VOICE_QTY_WORD_RE = /\b(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/gi;
-
-  // Speech recognition rarely inserts punctuation, so "one Abandon two
-  // Adaptatron" comes through as one run-on phrase. Since every card mention
-  // starts with a quantity word ("one", "two", "3", "one of", ...), we can
-  // find those boundaries ourselves and split there before matching.
-  function autoInsertCardBoundaries(text) {
-    if (!text) return text;
-    var re = new RegExp(VOICE_QTY_WORD_RE.source, "gi");
-    var out = "", lastIndex = 0, m;
-    while ((m = re.exec(text)) !== null) {
-      var idx = m.index;
-      if (idx === 0) continue; // nothing before the very first token to separate
-      var before = text.slice(0, idx);
-      if (/[,\n]\s*$/.test(before)) continue; // already at a boundary
-      // "1 of SFD 10" — the trailing number is a collector number, not the
-      // start of a new card mention, so don't split "SFD" from "10".
-      if (/\bof\s+[a-z]{2,6}\s*$/i.test(before)) continue;
-      out += text.slice(lastIndex, idx).replace(/\s+$/, "") + ", ";
-      lastIndex = idx;
-    }
-    out += text.slice(lastIndex);
-    return out.replace(/,\s*,+/g, ",").replace(/[ \t]{2,}/g, " ").trim();
-  }
-
-  // "1 of SFD 10" style card reference: quantity, set code, collector number.
-  var CARD_REF_RE = /^(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s+of\s+([a-z]{2,6})\s+(\d{1,4}[a-z]?|one|two|three|four|five|six|seven|eight|nine|ten)\b\s*$/i;
-
-  function normalizeCollectorNumber(s) {
-    return String(s || "").toLowerCase().trim().replace(/^0+(?=\d)/, "");
-  }
-
-  function matchBySetNumber(phrase) {
-    var m = CARD_REF_RE.exec(phrase.trim());
-    if (!m) return null;
-    var qtyToken = m[1].toLowerCase();
-    var qty = /^\d+$/.test(qtyToken) ? parseInt(qtyToken, 10) : VOICE_NUMBER_WORDS[qtyToken];
-    var setQuery = m[2].toLowerCase();
-    var numToken = m[3].toLowerCase();
-    var numQuery = normalizeCollectorNumber(/^\d/.test(numToken) ? numToken : VOICE_NUMBER_WORDS[numToken]);
-    var card = state.cards.filter(function (c) {
-      return String(c.set || "").toLowerCase() === setQuery && normalizeCollectorNumber(c.collectorNumber) === numQuery;
-    })[0];
-    if (!card) return null;
-    return { qty: clamp(qty || 1, 1, 999), card: card };
-  }
-
-  function splitTranscript(text) {
-    return autoInsertCardBoundaries(String(text || ""))
-      .split(/[,\n]|(?:\s+and\s+)/i)
-      .map(function (s) { return s.trim(); })
-      .filter(Boolean);
   }
 
   function normalizeForMatch(s) {
@@ -2302,119 +2176,10 @@
     return { card: pickVariant(tied, variantHint), score: bestScore };
   }
 
-  function matchTranscriptToCards(text) {
-    return splitTranscript(text).map(function (phrase) {
-      var refMatch = matchBySetNumber(phrase);
-      if (refMatch) return { phrase: phrase, qty: refMatch.qty, cardId: refMatch.card.id };
-      var parsed = extractQtyAndName(phrase);
-      var match = bestCardMatch(parsed.name, parsed.variantHint);
-      return { phrase: phrase, qty: parsed.qty, cardId: match ? match.card.id : null };
-    });
-  }
-
-  function wireVoiceImport(el) {
-    var micBtn = el.querySelector("#voice-mic-toggle");
-    var transcriptEl = el.querySelector("#voice-transcript");
-    var matchBtn = el.querySelector("#voice-match");
-    var clearBtn = el.querySelector("#voice-clear");
-
-    if (transcriptEl) {
-      transcriptEl.addEventListener("input", function () { voiceImportState.transcript = transcriptEl.value; });
-    }
-    if (micBtn) {
-      micBtn.textContent = voiceImportState.listening ? "⏹ Stop listening" : "🎤 Start listening";
-      micBtn.addEventListener("click", function () {
-        if (voiceImportState.listening) stopVoiceListening();
-        else startVoiceListening(transcriptEl);
-      });
-    }
-    if (matchBtn) {
-      matchBtn.addEventListener("click", function () {
-        voiceImportState.transcript = transcriptEl ? transcriptEl.value : voiceImportState.transcript;
-        voiceImportState.results = matchTranscriptToCards(voiceImportState.transcript);
-        rerenderVoiceResults();
-      });
-    }
-    if (clearBtn) {
-      clearBtn.addEventListener("click", function () {
-        stopVoiceListening();
-        voiceImportState.transcript = "";
-        voiceImportState.results = [];
-        if (transcriptEl) transcriptEl.value = "";
-        rerenderVoiceResults();
-      });
-    }
-    wireVoiceResultsControls();
-  }
-
-  function startVoiceListening(transcriptEl) {
-    if (!SpeechRecognitionCtor || voiceImportState.listening) return;
-    var recognition = new SpeechRecognitionCtor();
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    var baseTranscript = voiceImportState.transcript ? voiceImportState.transcript.replace(/\s+$/, "") : "";
-
-    recognition.onresult = function (event) {
-      var finalChunk = "", interimChunk = "";
-      for (var i = event.resultIndex; i < event.results.length; i++) {
-        var r = event.results[i];
-        if (r.isFinal) finalChunk += r[0].transcript;
-        else interimChunk += r[0].transcript;
-      }
-      if (finalChunk) {
-        baseTranscript = (baseTranscript ? baseTranscript + ", " : "") + autoInsertCardBoundaries(finalChunk.trim());
-        voiceImportState.transcript = baseTranscript;
-      }
-      if (transcriptEl) transcriptEl.value = baseTranscript + (interimChunk ? (baseTranscript ? " " : "") + interimChunk : "");
-    };
-    recognition.onerror = function (event) {
-      toast(event.error === "not-allowed" ? "Microphone access denied." : "Voice input error: " + event.error);
-      stopVoiceListening();
-    };
-    recognition.onend = function () {
-      voiceImportState.listening = false;
-      voiceImportState.recognition = null;
-      var btn = document.getElementById("voice-mic-toggle");
-      if (btn) btn.textContent = "🎤 Start listening";
-    };
-
-    voiceImportState.recognition = recognition;
-    voiceImportState.listening = true;
-    recognition.start();
-    var btn = document.getElementById("voice-mic-toggle");
-    if (btn) btn.textContent = "⏹ Stop listening";
-  }
-
-  function stopVoiceListening() {
-    if (voiceImportState.recognition) {
-      try { voiceImportState.recognition.stop(); } catch (e) {}
-    }
-    voiceImportState.listening = false;
-  }
-
-  function rerenderVoiceResults() {
-    var host = document.getElementById("voice-results");
-    if (!host) return;
-    host.innerHTML = voiceResultsHtml();
-    wireVoiceResultsControls();
-  }
-
-  function wireVoiceResultsControls() {
-    var host = document.getElementById("voice-results");
-    wireMatchResultsTable(host, voiceImportState.results, function () {
-      voiceImportState.results = [];
-      voiceImportState.transcript = "";
-      var transcriptEl = document.getElementById("voice-transcript");
-      if (transcriptEl) transcriptEl.value = "";
-      rerenderVoiceResults();
-    });
-  }
-
   /* ================================================================
      SCAN IMPORT: upload a photo or short video of a pull/pack, have an
      AI (via the identify-cards Edge Function) read off the card names,
-     then run those through the same fuzzy matcher as voice import.
+     then run those through the fuzzy card-name matcher.
      ================================================================ */
 
   var scanImportState = { results: [], busy: false };
@@ -2459,7 +2224,7 @@
   }
 
   // Turns the Edge Function's loose {name, qty, collectorNumber} guesses
-  // into the same {phrase, qty, cardId} row shape voice import produces,
+  // into the {phrase, qty, cardId} row shape matchResultsTableHtml expects,
   // fuzzy-matching by name via the existing bestCardMatch(). The collector
   // number (when the AI could read it) is shown alongside the name for the
   // user to cross-check, not used to match — its printed format varies too
@@ -2643,7 +2408,6 @@
     window.addEventListener("popstate", function () {
       var v = pathToView(window.location.pathname);
       if (v) {
-        if (voiceImportState.listening) stopVoiceListening();
         state.route = v;
         render();
       }
