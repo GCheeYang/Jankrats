@@ -888,6 +888,7 @@ code.deckcode {
   padding: 20px 40px 28px;
 }
 .profile-banner-overlay h1 { color: #fff; font-size: 30px; margin: 0; text-shadow: 0 2px 12px rgba(0,0,0,0.5); }
+.profile-banner-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 
 @media (max-width: 760px) {
   .profile-banner { margin: -20px -20px 20px; width: calc(100% + 40px); height: 220px; }

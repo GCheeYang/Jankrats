@@ -407,10 +407,14 @@
     var banner = state.profile.banner || { champ: "Ahri", num: 0 };
 
     var html = "";
+    var showSignOut = JVBackend.isConfigured() && state.social.session;
     html += '<div class="profile-banner">' +
       '<img class="profile-banner-img" src="' + splashUrl(banner.champ, banner.num) + '" data-fallback="' + splashUrlFallback(banner.champ, banner.num) + '" alt="">' +
       '<div class="profile-banner-overlay"><h1>Welcome' + (state.profile.name ? ", " + escapeHtml(state.profile.name) : "") + '.</h1>' +
-      '<button class="btn small" id="change-banner-btn">' + (state.profile.banner ? "Change banner" : "Choose a banner") + "</button></div></div>";
+      '<div class="profile-banner-actions">' +
+      '<button class="btn small" id="change-banner-btn">' + (state.profile.banner ? "Change banner" : "Choose a banner") + "</button>" +
+      (showSignOut ? '<button class="btn small ghost" id="dash-signout">Sign out</button>' : "") +
+      "</div></div></div>";
 
     html += '<div class="view-head"><div><p>Your ledger for tracking the Riftbound cards you own and the jank decks you keep building instead of the meta ones.</p></div>' +
       '<button class="btn primary" data-action="new-deck">+ New deck</button></div>';
@@ -448,6 +452,8 @@
       row.addEventListener("click", function () { openDeck(row.getAttribute("data-open-deck")); navigate("decks"); });
     });
     el.querySelector("#change-banner-btn").addEventListener("click", openBannerPicker);
+    var dashSignout = el.querySelector("#dash-signout");
+    if (dashSignout) dashSignout.addEventListener("click", function () { JVBackend.signOut(); });
     el.querySelectorAll("[data-card-id]").forEach(function (t) {
       t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
     });
@@ -2774,14 +2780,11 @@
     var name = (s.myProfile && s.myProfile.display_name) || (s.session.user && s.session.user.email) || "Signed in";
     return '<div class="social-auth signed-in"><button class="social-auth-me" data-open-my-profile>' +
       (s.myProfile && s.myProfile.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(s.myProfile.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
-      '<span>' + escapeHtml(name) + "</span></button>" +
-      '<button class="btn small ghost" id="auth-signout">Sign out</button></div>';
+      '<span>' + escapeHtml(name) + "</span></button></div>";
   }
 
   function wireAuthRail(el) {
     wireSignInButtons(el, "auth-signin");
-    var signout = el.querySelector("#auth-signout");
-    if (signout) signout.addEventListener("click", function () { JVBackend.signOut(); });
     var meBtn = el.querySelector("[data-open-my-profile]");
     if (meBtn) meBtn.addEventListener("click", function () { openProfile(null); });
   }
