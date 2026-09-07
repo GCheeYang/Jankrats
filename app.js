@@ -1942,7 +1942,7 @@
     if (JVBackend.isConfigured() && !state.social.session) {
       return socialSignInPromptHtml("Sign in to import cards into your collection — it'll sync to your account and follow you across devices.");
     }
-    var html = '<p style="color:var(--ink-soft);margin-bottom:14px;">Pick how you\'d rather bring in a list of cards you own — nothing is fetched automatically, this just sets how many of each you own, matched against the card database.</p>';
+    var html = '<p style="color:var(--ink-soft);margin-bottom:14px;">Add your cards to your collection, simply snap a photo or video and upload it instantly!</p>';
     html += '<div class="tabs" style="margin-bottom:14px;">' +
       importMethodTabBtn("scan", "Photo / Video") +
       importMethodTabBtn("text", "CSV / JSON") +
@@ -2226,7 +2226,7 @@
   var scanImportState = { results: [], busy: false };
 
   function renderScanImportSection() {
-    var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Upload a photo of your pull, or a short video panning across the cards, and AI will read off what's there. Nothing is added until you review and confirm the matches below.</p>";
+    var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Upload a photo of your pull, or a short video panning across the cards, and we'll add them to your collection. Simply review and confirm the matches after!</p>";
 
     if (!JVBackend.isConfigured()) {
       html += '<div class="callout" style="margin-bottom:14px;">Card scanning needs the backend connected (see SETUP.md) plus an <code>identify-cards</code> Edge Function deployed with an Anthropic API key.</div>';
