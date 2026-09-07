@@ -362,9 +362,9 @@
     var html = '<div class="home-hero">' +
       '<div class="home-hero-dots"></div>' +
       '<div class="home-hero-body">' +
-      '<div class="home-hero-kicker">Jankrats Collection &amp; Deck Ledger</div>' +
+      '<div class="home-hero-kicker">Jankrats</div>' +
       "<h1>Track your bulk<br>with ease.</h1>" +
-      "<p>Snap, log, and trade. Find the cards your deck needs among your friends' collections.</p>" +
+      "<p>Snap, log, and trade.<br>Find the cards your deck needs among your friends' collections.</p>" +
       '<div class="home-hero-ctas">' +
       '<button type="button" class="btn primary" data-nav="cards"><span class="n-icon">▤</span>Trade / Search for Cards</button>' +
       '<button type="button" class="btn ghost-outline" data-nav="collection"><span class="n-icon">✦</span>Add to Collection</button>' +
