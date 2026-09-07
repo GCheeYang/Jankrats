@@ -135,6 +135,23 @@
       .then(function (r) { return collectionRowsToMap(r.data); });
   }
 
+  // Batches the collections of many users into one query (used by the
+  // Wanted List's "who has these?" check, so checking a whole friends list
+  // doesn't cost one round trip per person). Returns userId -> collection map.
+  function listCollectionsFor(userIds) {
+    var c = client_();
+    if (!c || !userIds || !userIds.length) return Promise.resolve({});
+    return c.from("collection_entries").select("user_id, card_id, qty, foil").in("user_id", userIds)
+      .then(function (r) {
+        var byUser = {};
+        (r.data || []).forEach(function (row) {
+          if (!byUser[row.user_id]) byUser[row.user_id] = {};
+          byUser[row.user_id][row.card_id] = { qty: row.qty || 0, foil: row.foil || 0 };
+        });
+        return byUser;
+      });
+  }
+
   // Postgrest's query-builder objects are "thenable" (have .then) but don't
   // implement .catch/.finally themselves, so callers doing
   // JVBackend.xyz(...).catch(...) directly would throw "catch is not a
@@ -460,6 +477,7 @@
     listProfiles: listProfiles,
     listMyCollection: listMyCollection,
     listCollectionFor: listCollectionFor,
+    listCollectionsFor: listCollectionsFor,
     upsertCollectionEntry: upsertCollectionEntry,
     bulkUpsertCollection: bulkUpsertCollection,
     listCardPrices: listCardPrices,

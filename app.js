@@ -13,6 +13,7 @@
     cards: STORAGE_PREFIX + "cards",
     collection: STORAGE_PREFIX + "collection",
     decks: STORAGE_PREFIX + "decks",
+    wanted: STORAGE_PREFIX + "wanted",
     profile: STORAGE_PREFIX + "profile",
     lastAuthProvider: STORAGE_PREFIX + "lastAuthProvider"
   };
@@ -172,6 +173,8 @@
     cardsById: {},
     collection: {},
     decks: [],
+    wanted: [],          // card ids the player is searching for
+    wantedQuery: "",     // transient search box text, not persisted
     profile: { name: "" },
     route: "home",
     builder: { deckId: null, tab: "main", cardFilter: "" },
@@ -187,8 +190,6 @@
       profileTargetId: null,   // whose profile the Profile view is showing
       profileData: null,
       profilePosts: null,
-      myActivityPosts: null,   // signed-in user's own posts, shown on the Dashboard
-      pushEnabled: false,
       friendsProfiles: null,        // null = not loaded yet, [] = loaded & empty
       friendsMode: "mine",          // "mine" = added friends only, "add" = browse everyone
       friendsTargetId: null,        // whose collection/decks the Friends view is showing
@@ -196,7 +197,11 @@
       friendsTargetCollection: null, // cardId -> {qty, foil} for friendsTargetId
       friendsTargetDecks: null,      // that friend's decks, or [] once loaded & empty
       friendsDetailTab: "collection", // "collection" | "decks", within a friend's page
-      friendsViewingDeckId: null     // set once you drill into one of their decks
+      friendsViewingDeckId: null,    // set once you drill into one of their decks
+      wantedScope: "mine",          // "mine" = check friends only, "everyone" = check every profile
+      wantedProfiles: null,         // null = not loaded yet, [] = loaded & empty (everyone but me)
+      wantedCollections: {},        // userId -> {cardId: {qty, foil}}, filled in as people are checked
+      wantedExpandedId: null        // profile id whose per-card breakdown is expanded, or null
     }
   };
 
@@ -211,11 +216,13 @@
     rebuildCardIndex();
     state.collection = loadJSON(KEYS.collection, {});
     state.decks = loadJSON(KEYS.decks, []);
+    state.wanted = loadJSON(KEYS.wanted, []);
     state.profile = loadJSON(KEYS.profile, { name: "" });
   }
 
   function persistCards() { saveJSON(KEYS.cards, state.cards); }
   function persistCollection() { saveJSON(KEYS.collection, state.collection); }
+  function persistWanted() { saveJSON(KEYS.wanted, state.wanted); }
   function persistDecks() {
     saveJSON(KEYS.decks, state.decks);
     syncDecksToCloud();
@@ -251,6 +258,30 @@
     syncCollectionEntryToCloud(cardId, qty, foil);
   }
 
+  /* ---------------- wanted-list helpers ---------------- */
+
+  function isWanted(cardId) { return state.wanted.indexOf(cardId) !== -1; }
+
+  function toggleWanted(cardId) {
+    var i = state.wanted.indexOf(cardId);
+    if (i !== -1) state.wanted.splice(i, 1); else state.wanted.push(cardId);
+    persistWanted();
+  }
+
+  function removeWanted(cardId) {
+    var i = state.wanted.indexOf(cardId);
+    if (i !== -1) { state.wanted.splice(i, 1); persistWanted(); }
+  }
+
+  // How many of the wanted cards a given collection map (yours, a friend's,
+  // or anyone's) has at least one copy of.
+  function wantedOwnedCount(collection) {
+    return state.wanted.reduce(function (n, cardId) {
+      var e = collection[cardId];
+      return n + (e && (e.qty || 0) + (e.foil || 0) > 0 ? 1 : 0);
+    }, 0);
+  }
+
   // Fire-and-forget: keeps the signed-in player's cloud collection (which
   // the Friends tab reads) in step with every local qty/foil change.
   function syncCollectionEntryToCloud(cardId, qty, foil) {
@@ -274,7 +305,7 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["home", "cards", "collection", "decks", "friends", "dashboard", "profile", "shared"];
+  var VIEWS = ["home", "cards", "collection", "wanted", "decks", "friends", "dashboard", "profile", "shared"];
 
   // Maps a route name to/from a clean URL path, e.g. "collection" <->
   // "/collection", with "home" living at the bare root "/".
@@ -324,6 +355,7 @@
     if (state.route === "dashboard") renderDashboard();
     if (state.route === "cards") renderCardsView();
     if (state.route === "collection") renderCollectionView();
+    if (state.route === "wanted") renderWantedView();
     if (state.route === "friends") renderFriendsView();
     if (state.route === "decks") renderDecksView();
     if (state.route === "profile") renderProfileView();
@@ -407,9 +439,13 @@
 
     var html = "";
     var showSignOut = JVBackend.isConfigured() && state.social.session;
+    var welcomeName = state.profile.name ||
+      (state.social.myProfile && state.social.myProfile.display_name) ||
+      (state.social.session && state.social.session.user && state.social.session.user.email) ||
+      "";
     html += '<div class="profile-banner">' +
       '<img class="profile-banner-img" src="' + splashUrl(banner.champ, banner.num) + '" data-fallback="' + splashUrlFallback(banner.champ, banner.num) + '" alt="">' +
-      '<div class="profile-banner-overlay"><h1>Welcome' + (state.profile.name ? ", " + escapeHtml(state.profile.name) : "") + '.</h1>' +
+      '<div class="profile-banner-overlay"><h1>Welcome' + (welcomeName ? ", " + escapeHtml(welcomeName) : "") + '.</h1>' +
       '<div class="profile-banner-actions">' +
       '<button class="btn small" id="change-banner-btn">' + (state.profile.banner ? "Change banner" : "Choose a banner") + "</button>" +
       (showSignOut ? '<button class="btn small ghost" id="dash-signout">Sign out</button>' : "") +
@@ -440,9 +476,6 @@
     }
     html += "</div>";
 
-    var showActivity = JVBackend.isConfigured() && state.social.session;
-    if (showActivity) html += myActivityHtml();
-
     el.innerHTML = html;
 
     wireImgFallback(el.querySelector(".profile-banner-img"));
@@ -456,43 +489,6 @@
     el.querySelectorAll("[data-card-id]").forEach(function (t) {
       t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
     });
-
-    if (showActivity) {
-      wirePostCards(el);
-      var pushBtn = el.querySelector("#push-toggle-btn");
-      if (pushBtn) pushBtn.addEventListener("click", function () {
-        if (state.social.pushEnabled) {
-          JVBackend.disablePush().then(function () { state.social.pushEnabled = false; renderDashboard(); });
-        } else {
-          JVBackend.enablePush().then(function () { state.social.pushEnabled = true; toast("Notifications enabled."); renderDashboard(); })
-            .catch(function () { toast("Couldn't enable notifications — check your browser's notification permission."); });
-        }
-      });
-      if (state.social.myActivityPosts === null) {
-        JVBackend.listPosts({ authorId: JVBackend.currentUserId(), limit: 50 }).then(function (posts) {
-          state.social.myActivityPosts = posts;
-          if (state.route === "dashboard") renderDashboard();
-        });
-      }
-    }
-  }
-
-  function myActivityHtml() {
-    var html = "";
-    if (JVBackend.pushSupported()) {
-      html += '<div class="callout" style="margin-bottom:16px;">Get notified when someone you follow posts, or when someone comments on your post. ' +
-        '<button class="btn small" id="push-toggle-btn" style="margin-left:8px;">' + (state.social.pushEnabled ? "Notifications on" : "Enable notifications") + "</button></div>";
-    }
-    html += '<div class="section-block"><h2>Your activity</h2><div id="my-activity-host">';
-    if (state.social.myActivityPosts === null) {
-      html += '<p style="font-size:13px;color:var(--ink-faint);">Loading…</p>';
-    } else if (!state.social.myActivityPosts.length) {
-      html += '<div class="empty-state"><h3>No posts yet</h3><p>Nothing posted yet.</p></div>';
-    } else {
-      html += state.social.myActivityPosts.map(postCardHtml).join("");
-    }
-    html += "</div></div>";
-    return html;
   }
 
   /* ---- League of Legends champion splash banner picker ---- */
@@ -2485,7 +2481,6 @@
         state.social.myProfile = null;
         state.social.followingIds = [];
         state.social.feedPosts = null;
-        state.social.myActivityPosts = null;
         state.social.friendsProfiles = null;
         state.social.friendsTargetId = null;
         state.social.friendsTargetProfile = null;
@@ -2594,7 +2589,7 @@
   function wireAuthRail(el) {
     wireSignInButtons(el, "auth-signin");
     var meBtn = el.querySelector("[data-open-my-profile]");
-    if (meBtn) meBtn.addEventListener("click", function () { openProfile(null); });
+    if (meBtn) meBtn.addEventListener("click", function () { navigate("dashboard"); });
   }
 
   function socialNotConfiguredHtml(title) {
