@@ -1,18 +1,23 @@
 # Price scraper
 
-Pulls every card's price from Bilgewater Market's own bulk pricing API
-(`api.bilgewatermarket.com/api/cards-with-prices`) and upserts it into the
-`card_prices` Supabase table. Runs daily via
+Pulls EN (USD) prices off Bilgewater Market's `/cards` browse page and
+upserts them into the `card_prices` Supabase table. Runs daily via
 [`.github/workflows/update-card-prices.yml`](../../.github/workflows/update-card-prices.yml).
 
-That API sits behind Firebase App Check and 401s on a plain server-side
-request, so this still launches a real (headless) browser -- just to load
-one page at bilgewatermarket.com and call the API from inside its context,
-which is enough to pass App Check. No DOM scraping or scrolling involved
-anymore (an earlier version scraped the `/cards` browse listing's HTML,
-which turned out to only ever render its first ~50 rows and never load
-more on scroll -- it silently under-priced ~98% of cards for weeks while
-still exiting 0).
+**Known limitation, not a bug:** this only ever captures the ~25 cards
+shown in Bilgewater's default (unfiltered) view. Everything past that --
+search, domain/rarity/set filters, a card's own detail page, and their
+bulk `api.bilgewatermarket.com/api/cards-with-prices` endpoint -- requires
+a live API call gated behind Firebase App Check + reCAPTCHA v3, and a
+headless automated browser reliably fails that check (confirmed directly:
+Google's own reCAPTCHA token exchange comes back 403 before Bilgewater's
+API is even reached, from a cold Playwright browser regardless of IP or
+wait time). That's Bilgewater's deliberate anti-scraping boundary, not
+something this script should try to work around. So `card_prices` only
+ever has real numbers for a couple dozen cards; every other card falls
+back to the "Price" placeholder link in the app. Getting full coverage
+would need either a different data source or an occasional manual export
+from a real signed-in browser session -- not a scheduled CI job.
 
 ## Run it locally (e.g. for the first backfill)
 
@@ -24,8 +29,9 @@ still exiting 0).
 4. `node --env-file=.env fetch-prices.js`
 
 It logs the row/card counts it found and upserts, and exits non-zero on
-failure (missing env vars, a Supabase error, the API returning suspiciously
-few cards, etc).
+failure (missing env vars, a Supabase error, finding suspiciously few
+cards -- which would mean the page markup changed, not the App Check
+limitation above -- etc).
 
 ## Scheduled runs
 
