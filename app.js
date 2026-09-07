@@ -2414,8 +2414,13 @@
       html += '<div class="callout" style="margin-bottom:14px;">Works best with good lighting and each card held steady/in-focus for at least half a second. Videos are capped at 60 seconds.</div>';
     }
 
+    html += '<div style="margin-bottom:10px;">' +
+      '<label for="scan-file" class="btn primary" style="display:inline-flex;align-items:center;padding:12px 22px;font-size:15px;cursor:pointer;">Upload Cards</label>' +
+      '<input type="file" id="scan-file" accept="image/*,video/*" style="display:none;">' +
+      '<div id="scan-file-name" style="margin-top:6px;color:var(--ink-soft);font-size:13px;">No file chosen</div>' +
+      "</div>";
+
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
-      '<input type="file" id="scan-file" accept="image/*,video/*">' +
       '<button class="btn primary" id="scan-run" type="button">Identify cards</button>' +
       "</div>";
 
@@ -2464,9 +2469,20 @@
     var runBtn = el.querySelector("#scan-run");
     var fileInput = el.querySelector("#scan-file");
     var statusEl = el.querySelector("#scan-status");
+    var fileNameEl = el.querySelector("#scan-file-name");
     if (!runBtn) return;
 
     function setStatus(msg) { if (statusEl) statusEl.textContent = msg || ""; }
+    function setLoadingStatus(msg) {
+      if (statusEl) statusEl.innerHTML = '<span class="spinner"></span><span>' + escapeHtml(msg) + "</span>";
+    }
+
+    if (fileInput && fileNameEl) {
+      fileInput.addEventListener("change", function () {
+        var file = fileInput.files && fileInput.files[0];
+        fileNameEl.textContent = file ? file.name : "No file chosen";
+      });
+    }
 
     runBtn.addEventListener("click", function () {
       if (scanImportState.busy) return;
@@ -2476,10 +2492,10 @@
 
       scanImportState.busy = true;
       runBtn.disabled = true;
-      setStatus("Reading frames…");
+      setLoadingStatus("Uploading cards…");
 
       extractFramesFromMediaFile(file).then(function (frames) {
-        setStatus("Asking AI to identify cards (" + frames.length + " frame" + (frames.length === 1 ? "" : "s") + ")…");
+        setLoadingStatus("Uploading cards…");
         return JVBackend.identifyCards(frames);
       }).then(function (res) {
         var cards = (res && res.cards) || [];
