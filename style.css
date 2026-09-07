@@ -208,8 +208,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
 
 .nav button:hover { color: var(--ink); }
 .nav button.active { color: var(--accent-strong); border-bottom-color: var(--accent); }
-.nav button .n-icon { width: 18px; text-align: center; opacity: 0.85; }
-.nav button.active .n-icon { opacity: 1; }
 
 .topbar-right {
   margin-left: auto;
@@ -217,15 +215,6 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; colo
   align-items: center;
   gap: 10px;
   flex: none;
-}
-
-#profile-name.profile-name-input {
-  width: 140px;
-  background: var(--surface-raised);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 6px 8px;
-  font-size: 13px;
 }
 
 .topbar-right .social-auth {
@@ -769,7 +758,6 @@ code.deckcode {
   .wordmark { order: 1; }
   .topbar-right { order: 2; }
   .topbar-search-wrap { order: 3; flex-basis: 100%; }
-  .profile-name-input { display: none; }
   main { padding: 20px; }
   .home-hero { padding: 32px 24px; }
   .home-hero-body h1 { font-size: 28px; }

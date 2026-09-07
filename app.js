@@ -2626,7 +2626,7 @@
       });
     });
     var nameInput = document.getElementById("profile-name");
-    nameInput.addEventListener("change", function () { state.profile.name = nameInput.value; persistProfile(); renderRail(); });
+    if (nameInput) nameInput.addEventListener("change", function () { state.profile.name = nameInput.value; persistProfile(); renderRail(); });
     var globalSearch = document.getElementById("global-search");
     globalSearch.addEventListener("keydown", function (e) {
       if (e.key !== "Enter") return;
