@@ -74,6 +74,17 @@
     return !!m && Number(m[1]) > Number(m[2]);
   }
 
+  // Not every token is actually typed "Token" in the source data — a few
+  // (the domain-flavored Recruit reminder cards, a duplicate Sprite) are
+  // typed "Unit" instead. Every real draftable card has both a cost and a
+  // domain; Battlefields lack both but are their own category (own tab,
+  // own rotation); everything else lacking both is a token in disguise.
+  function isTokenCard(c) {
+    return !!c && c.type !== "Battlefield" &&
+      (c.cost === null || c.cost === undefined) &&
+      (!c.domains || !c.domains.length);
+  }
+
   function safeParse(str, fallback) {
     try { var v = JSON.parse(str); return v === undefined ? fallback : v; }
     catch (e) { return fallback; }
@@ -1932,7 +1943,7 @@
     var legal = issues.every(function (i) { return i.ok; });
 
     var pickPoolFull = state.cards.filter(function (c) {
-      return ["Unit", "Spell", "Gear"].indexOf(c.type) !== -1 && cardDomainsSubset(c.domains, deck.domains) &&
+      return ["Unit", "Spell", "Gear"].indexOf(c.type) !== -1 && !isTokenCard(c) && cardDomainsSubset(c.domains, deck.domains) &&
         (!state.builder.cardFilter || c.name.toLowerCase().indexOf(state.builder.cardFilter.toLowerCase()) !== -1);
     }).sort(function (a, b) { return (a.cost || 0) - (b.cost || 0) || a.name.localeCompare(b.name); });
     var PICK_POOL_CAP = 150;
@@ -1996,7 +2007,7 @@
         return deckPickTileHtml(c, qty ? "×" + qty : null, atLimit && !qty);
       }).join("") + "</div>";
     } else if (state.builder.tab === "tokens") {
-      var tokenPool = state.cards.filter(function (c) { return c.type === "Token"; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+      var tokenPool = state.cards.filter(isTokenCard).sort(function (a, b) { return a.name.localeCompare(b.name); });
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Reference art for tokens card effects create — not part of your deck, so they don\'t count toward anything above.</p>';
       html += '<div class="card-grid" data-token-grid>' + tokenPool.map(cardTileHtml).join("") + "</div>";
       if (!tokenPool.length) html += '<div class="empty-state"><h3>No tokens yet</h3><p>Import more cards to see token reference art.</p></div>';
