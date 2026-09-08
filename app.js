@@ -2799,7 +2799,7 @@
      ================================================================ */
 
   function wireShell() {
-    document.querySelectorAll(".nav button[data-view]").forEach(function (b) {
+    document.querySelectorAll(".nav button[data-view], .wordmark[data-view]").forEach(function (b) {
       b.addEventListener("click", function () {
         var v = b.getAttribute("data-view");
         if (v === "friends") { state.social.friendsTargetId = null; navigate(v); }
