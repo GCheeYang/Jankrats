@@ -1562,6 +1562,7 @@
       runes: {},       // {domainName: count}
       battlefields: [], // [cardId,...] up to 3
       sideboard: [],   // [{cardId, qty}]
+      tokens: [],      // [{cardId, qty}] reference tracker, uncapped -- doesn't count toward deck rules
       notes: "",
       createdAt: Date.now ? Date.now() : 0,
       updatedAt: Date.now ? Date.now() : 0
@@ -1714,6 +1715,24 @@
     if (!e) return;
     e.qty--;
     if (e.qty <= 0) deck.sideboard = deck.sideboard.filter(function (x) { return x.cardId !== cardId; });
+    persistDecks();
+  }
+  // Tokens are reference art for effects your deck creates -- players can
+  // need more than 3 of one (e.g. a wide board of Sand Soldiers), so unlike
+  // every other section this tracker has no copy limit.
+  function addToTokens(deck, cardId) {
+    deck.tokens = deck.tokens || [];
+    var e = deck.tokens.filter(function (e) { return e.cardId === cardId; })[0];
+    if (!e) { e = { cardId: cardId, qty: 0 }; deck.tokens.push(e); }
+    e.qty++;
+    persistDecks();
+  }
+  function removeFromTokens(deck, cardId) {
+    deck.tokens = deck.tokens || [];
+    var e = deck.tokens.filter(function (e) { return e.cardId === cardId; })[0];
+    if (!e) return;
+    e.qty--;
+    if (e.qty <= 0) deck.tokens = deck.tokens.filter(function (x) { return x.cardId !== cardId; });
     persistDecks();
   }
 
@@ -2075,8 +2094,10 @@
         if (!existing || (hasPrice && !existingHasPrice)) tokensByName[c.name] = c;
       });
       var tokenPool = Object.keys(tokensByName).sort().map(function (n) { return tokensByName[n]; });
-      html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Reference art for tokens card effects create — not part of your deck, so they don\'t count toward anything above.</p>';
-      html += '<div class="card-grid" data-token-grid>' + tokenPool.map(cardTileHtml).join("") + "</div>";
+      html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Reference art for tokens your effects create — not part of your deck, so they don\'t count toward anything above. Click to add as many as you want, right-click to remove one.</p>';
+      html += '<div class="card-grid deck-pick-grid" data-pick-section="tokens">' + tokenPool.map(function (c) {
+        return deckPickTileHtml(c, sectionQty(deck.tokens, c.id) ? "×" + sectionQty(deck.tokens, c.id) : null);
+      }).join("") + "</div>";
       if (!tokenPool.length) html += '<div class="empty-state"><h3>No tokens yet</h3><p>Import more cards to see token reference art.</p></div>';
     }
     html += "</div>";
@@ -2143,6 +2164,16 @@
       html += "</div>";
     }
 
+    if ((deck.tokens || []).length) {
+      html += '<div><h3>Tokens</h3>';
+      deck.tokens.forEach(function (e) {
+        var c = state.cardsById[e.cardId];
+        html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + "</span>" +
+          '<button data-rm-token="' + e.cardId + '" title="Remove one">&times;</button></div>';
+      });
+      html += "</div>";
+    }
+
     html += '<div><h3>Legality</h3><div class="legality-list">' + issues.map(function (i) {
       return '<div class="leg-item ' + (i.ok ? "ok" : "bad") + '"><span class="li-icon">' + (i.ok ? "✓" : "✕") + "</span><span class=\"li-text\"><b>" + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
     }).join("") + "</div></div>";
@@ -2180,10 +2211,6 @@
 
     host.querySelectorAll("[data-tab]").forEach(function (b) { b.addEventListener("click", function () { state.builder.tab = b.getAttribute("data-tab"); renderBuilder(); }); });
 
-    host.querySelectorAll("[data-token-grid] [data-card-id]").forEach(function (t) {
-      t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
-    });
-
     var filt = host.querySelector("#deck-card-filter");
     if (filt) filt.addEventListener("input", function () {
       state.builder.cardFilter = filt.value;
@@ -2197,21 +2224,24 @@
       }, 120);
     });
 
-    // Summary-panel "×" buttons (main/sideboard slot lines) still remove one copy directly.
+    // Summary-panel "×" buttons (main/sideboard/tokens slot lines) still remove one copy directly.
     host.querySelectorAll("[data-rm-main]").forEach(function (b) { b.addEventListener("click", function () { removeFromMain(deck, b.getAttribute("data-rm-main")); renderBuilder(); }); });
     host.querySelectorAll("[data-rm-sb]").forEach(function (b) { b.addEventListener("click", function () { removeFromSideboard(deck, b.getAttribute("data-rm-sb")); renderBuilder(); }); });
+    host.querySelectorAll("[data-rm-token]").forEach(function (b) { b.addEventListener("click", function () { removeFromTokens(deck, b.getAttribute("data-rm-token")); renderBuilder(); }); });
 
     // Full-card pickers: left-click adds a copy, right-click removes one. A
     // single pair of listeners per grid (event delegation) covers every tile.
+    // Tokens are exempt from the max-copies check -- effects can create as
+    // many as the game state calls for.
     host.querySelectorAll("[data-pick-section]").forEach(function (grid) {
       var section = grid.getAttribute("data-pick-section");
-      var addFn = section === "main" ? addToMain : addToSideboard;
-      var rmFn = section === "main" ? removeFromMain : removeFromSideboard;
+      var addFn = section === "main" ? addToMain : section === "tokens" ? addToTokens : addToSideboard;
+      var rmFn = section === "main" ? removeFromMain : section === "tokens" ? removeFromTokens : removeFromSideboard;
       grid.addEventListener("click", function (e) {
         var wrap = e.target.closest("[data-card-id]");
         if (!wrap) return;
         var cid = wrap.getAttribute("data-card-id");
-        if (totalCopies(deck, cid) >= RULES.maxCopies) { toast("Already have " + RULES.maxCopies + " copies of that card."); return; }
+        if (section !== "tokens" && totalCopies(deck, cid) >= RULES.maxCopies) { toast("Already have " + RULES.maxCopies + " copies of that card."); return; }
         addFn(deck, cid);
         renderBuilder();
       });
