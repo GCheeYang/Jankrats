@@ -1953,8 +1953,17 @@
   // they own/prefer — but a Rune's specific printing doesn't matter for deck
   // legality, so every tile for a domain shares that one domain's count
   // (see the `key` override passed into deckPickTileHtml below).
+  // Every alt-art (Showcase) printing of a domain's Rune is worth showing
+  // separately, but the plain design is reprinted set after set with
+  // identical art (just a fresh asset hash) -- so collapse those down to one
+  // representative tile instead of one per set, the same way the Tokens tab
+  // dedupes identical reprints.
   function runesForDomain(domain) {
-    return state.cards.filter(function (c) { return c.type === "Rune" && (c.domains || [])[0] === domain; });
+    var pool = state.cards.filter(function (c) { return c.type === "Rune" && (c.domains || [])[0] === domain; });
+    var alt = pool.filter(function (c) { return c.rarity === "Showcase"; });
+    var normal = pool.filter(function (c) { return c.rarity !== "Showcase"; });
+    var normalPick = normal.filter(function (c) { return c.set === "OGN"; })[0] || normal[0];
+    return (normalPick ? [normalPick] : []).concat(alt);
   }
 
   function builderMain(deck) {
