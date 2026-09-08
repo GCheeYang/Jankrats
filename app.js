@@ -390,8 +390,13 @@
   function renderHomeView() {
     var el = document.getElementById("view-home");
     var mostValuable = mostValuableCards(14);
+    // Same default as the dashboard banner, so home never opens on a bare
+    // gradient before the player has picked their own champion.
+    var banner = state.profile.banner || { champ: "Ahri", num: 0 };
 
     var html = '<div class="home-hero">' +
+      '<img class="home-hero-img" src="' + splashUrl(banner.champ, banner.num) + '" data-fallback="' + splashUrlFallback(banner.champ, banner.num) + '" alt="">' +
+      '<div class="home-hero-scrim"></div>' +
       '<div class="home-hero-dots"></div>' +
       '<div class="home-hero-body">' +
       '<div class="home-hero-kicker">Jankrats</div>' +
@@ -411,6 +416,7 @@
       "</div></div>";
 
     el.innerHTML = html;
+    wireImgFallback(el.querySelector(".home-hero-img"));
     el.querySelectorAll("[data-nav]").forEach(function (b) {
       b.addEventListener("click", function () { navigate(b.getAttribute("data-nav")); });
     });
