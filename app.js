@@ -2094,6 +2094,16 @@
         if (!existing || (hasPrice && !existingHasPrice)) tokensByName[c.name] = c;
       });
       var tokenPool = Object.keys(tokensByName).sort().map(function (n) { return tokensByName[n]; });
+      // Bird and Brush are swapped from alphabetical order so the two
+      // landscape battlefield-token arts (Baron Pit, Brush) sit side by side
+      // instead of sandwiching the upright Bird tile between them.
+      var birdIdx = tokenPool.findIndex(function (c) { return c.name === "Bird"; });
+      var brushIdx = tokenPool.findIndex(function (c) { return c.name === "Brush"; });
+      if (birdIdx !== -1 && brushIdx !== -1) {
+        var tmp = tokenPool[birdIdx];
+        tokenPool[birdIdx] = tokenPool[brushIdx];
+        tokenPool[brushIdx] = tmp;
+      }
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Reference art for tokens your effects create — not part of your deck, so they don\'t count toward anything above. Click to add as many as you want, right-click to remove one.</p>';
       html += '<div class="card-grid deck-pick-grid" data-pick-section="tokens">' + tokenPool.map(function (c) {
         return deckPickTileHtml(c, sectionQty(deck.tokens, c.id) ? "×" + sectionQty(deck.tokens, c.id) : null);
