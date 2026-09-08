@@ -731,9 +731,10 @@ textarea { resize: vertical; min-height: 90px; }
 .curve-bar .bcount { font-size: 10px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; }
 .curve-bar .blabel { font-size: 10px; color: var(--ink-faint); }
 
-.rune-row { display: flex; align-items: center; gap: 10px; }
-.rune-row .domain-chip { min-width: 90px; }
-.rune-row input { width: 60px; }
+.deck-pick-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.deck-pick-grid .card-tile-wrap.in-deck { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.deck-pick-grid .card-tile-wrap.at-limit { opacity: 0.45; }
+.deck-pick-grid .card-tile-wrap.at-limit .card-tile { cursor: not-allowed; }
 
 .legend-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; }
 .legend-card {
