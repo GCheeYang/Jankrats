@@ -1523,9 +1523,11 @@
       });
       html += "</div>";
     }
-    html += '<div><h3>Legality</h3><div class="legality-list">' + issues.map(function (i) {
-      return '<div class="leg-item ' + (i.ok ? "ok" : "bad") + '"><span class="li-icon">' + (i.ok ? "✓" : "✕") + "</span><span class=\"li-text\"><b>" + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
-    }).join("") + "</div></div>";
+    if (!issues.every(function (i) { return i.ok; })) {
+      html += '<div><h3>Legality</h3><div class="legality-list">' + issues.map(function (i) {
+        return '<div class="leg-item ' + (i.ok ? "ok" : "bad") + '"><span class="li-icon">' + (i.ok ? "✓" : "✕") + "</span><span class=\"li-text\"><b>" + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
+      }).join("") + "</div></div>";
+    }
     html += "</div>";
     return html;
   }
@@ -2184,9 +2186,11 @@
       html += "</div>";
     }
 
-    html += '<div><h3>Legality</h3><div class="legality-list">' + issues.map(function (i) {
-      return '<div class="leg-item ' + (i.ok ? "ok" : "bad") + '"><span class="li-icon">' + (i.ok ? "✓" : "✕") + "</span><span class=\"li-text\"><b>" + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
-    }).join("") + "</div></div>";
+    if (!legal) {
+      html += '<div><h3>Legality</h3><div class="legality-list">' + issues.map(function (i) {
+        return '<div class="leg-item ' + (i.ok ? "ok" : "bad") + '"><span class="li-icon">' + (i.ok ? "✓" : "✕") + "</span><span class=\"li-text\"><b>" + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
+      }).join("") + "</div></div>";
+    }
 
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn danger" data-delete-deck>Delete deck</button></div>';
 
