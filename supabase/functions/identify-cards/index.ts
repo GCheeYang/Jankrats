@@ -22,11 +22,13 @@ const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
 const SYSTEM_PROMPT = `You are looking at still frames from a video (or a single photo) of someone opening a pack of the Riftbound Trading Card Game, or showing off cards they own.
 
-Identify every distinct physical card visible across the frames. The same card often appears in several consecutive frames (a panning shot) — count it once, not once per frame, unless the frames clearly show separate copies (e.g. two of the same card laid out side by side at once).
+Identify every distinct physical card visible across the frames. The same card often appears in several consecutive frames (a panning shot) — count it once per physical copy shown, not once per frame it happens to appear in.
+
+Cards are frequently held fanned out in one hand rather than laid flat: several copies of the same card stacked directly behind each other, with only a sliver of each one's edge or corner (its cost pip, color, border) visible behind the frontmost copy. That sliver is still a separate physical card, not a duplicate frame of the front one — look for it and count it. Don't require copies to be fully laid out side by side to count them; a fanned hand showing 3 same-colored edges stacked behind one fully-visible card of that name means qty 3, not qty 1.
 
 For each distinct card, report:
 - "name": the card's title text, exactly as printed
-- "qty": how many separate physical copies you're confident are shown
+- "qty": how many separate physical copies you're confident are shown, including any partially-hidden behind others in a fanned stack
 - "collectorNumber": the small set code + number printed on the card (e.g. "OGN-066/298"), if it's legible — omit this field entirely if you can't read it
 
 Respond with ONLY a JSON array, no prose, no markdown code fences. If you can't identify any cards, respond with []. Example:
