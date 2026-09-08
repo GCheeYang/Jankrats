@@ -1525,7 +1525,7 @@
     }
     var failing = issues.filter(function (i) { return !i.ok; });
     if (failing.length) {
-      html += '<div><h3>Legality</h3><div class="legality-list">' + failing.map(function (i) {
+      html += '<div><h3>Issues</h3><div class="legality-list">' + failing.map(function (i) {
         return '<div class="leg-item bad"><span class="li-icon">✕</span><span class="li-text"><b>' + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
       }).join("") + "</div></div>";
     }
@@ -2188,7 +2188,7 @@
     }
 
     if (!legal) {
-      html += '<div><h3>Legality</h3><div class="legality-list">' + issues.filter(function (i) { return !i.ok; }).map(function (i) {
+      html += '<div><h3>Issues</h3><div class="legality-list">' + issues.filter(function (i) { return !i.ok; }).map(function (i) {
         return '<div class="leg-item bad"><span class="li-icon">✕</span><span class="li-text"><b>' + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
       }).join("") + "</div></div>";
     }
