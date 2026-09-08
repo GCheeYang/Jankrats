@@ -43,7 +43,7 @@
     maxCopies: 3,
     runeDeckSize: 12,
     battlefieldCount: 3,
-    sideboardSizes: [0, 8]
+    sideboardMax: 10
   };
 
   /* ---------------- tiny helpers ---------------- */
@@ -1632,7 +1632,7 @@
     issues.push({ ok: bfCount === RULES.battlefieldCount && bfUnique, label: RULES.battlefieldCount + " unique Battlefields", detail: bfCount + " / " + RULES.battlefieldCount + (bfUnique ? "" : " — duplicates not allowed") });
 
     var sbCount = sideboardCount(deck);
-    issues.push({ ok: RULES.sideboardSizes.indexOf(sbCount) !== -1, label: "Sideboard is 0 or 8 cards", detail: sbCount + " / 0 or 8" });
+    issues.push({ ok: sbCount <= RULES.sideboardMax, label: "Sideboard is at most " + RULES.sideboardMax + " cards", detail: sbCount + " / " + RULES.sideboardMax });
 
     return issues;
   }
@@ -2055,7 +2055,7 @@
       }).join("") + "</div>";
       if (!battlefieldPool.length) html += '<div class="empty-state"><h3>No Battlefield cards yet</h3><p>Import some — Battlefields are colorless.</p></div>';
     } else if (state.builder.tab === "sideboard") {
-      html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Optional: 0 or exactly 8 cards, same domain and copy-limit rules as your main deck. Click to add, right-click to remove.</p>';
+      html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Optional: up to ' + RULES.sideboardMax + ' cards, same domain and copy-limit rules as your main deck. Click to add, right-click to remove.</p>';
       html += '<div class="card-grid deck-pick-grid" data-pick-section="sideboard">' + pickPool.map(function (c) {
         var qty = sectionQty(deck.sideboard, c.id);
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
