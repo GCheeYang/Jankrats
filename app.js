@@ -13,6 +13,7 @@
     cardExtras: STORAGE_PREFIX + "cardExtras",
     collection: STORAGE_PREFIX + "collection",
     decks: STORAGE_PREFIX + "decks",
+    deletedDeckIds: STORAGE_PREFIX + "deletedDeckIds",
     wanted: STORAGE_PREFIX + "wanted",
     profile: STORAGE_PREFIX + "profile",
     lastAuthProvider: STORAGE_PREFIX + "lastAuthProvider"
@@ -1727,13 +1728,30 @@
     renderDecksView();
   }
 
+  // Deleting a deck locally doesn't guarantee the matching cloud row is
+  // gone too -- deleteDeckRemote needs an active session (so a delete
+  // made while signed out never reaches the server at all), and even a
+  // signed-in delete can lose a race with the network. Recording the id
+  // here means the next syncDecksOnSignIn merge treats it as "deleted on
+  // purpose" instead of "never uploaded yet", so it can't resurrect it.
+  function markDeckDeletedLocally(id) {
+    var ids = loadJSON(KEYS.deletedDeckIds, []);
+    if (ids.indexOf(id) === -1) { ids.push(id); saveJSON(KEYS.deletedDeckIds, ids); }
+  }
+  function clearDeckTombstone(id) {
+    var ids = loadJSON(KEYS.deletedDeckIds, []);
+    var next = ids.filter(function (x) { return x !== id; });
+    if (next.length !== ids.length) saveJSON(KEYS.deletedDeckIds, next);
+  }
+
   function deleteDeck(id) {
     state.decks = state.decks.filter(function (d) { return d.id !== id; });
     persistDecks();
+    markDeckDeletedLocally(id);
     if (state.builder.deckId === id) state.builder.deckId = null;
     renderDecksView();
     if (JVBackend.isConfigured() && JVBackend.currentUserId()) {
-      JVBackend.deleteDeckRemote(id).catch(function () {
+      JVBackend.deleteDeckRemote(id).then(function () { clearDeckTombstone(id); }).catch(function () {
         toast("Couldn't remove that deck from your account.");
       });
     }
@@ -3492,12 +3510,20 @@
   // aren't gated behind sign-in (unlike Collection, they've always worked
   // fully offline), so this merges rather than replaces: any deck that
   // exists on only one side is kept, and one that exists on both keeps
-  // whichever copy was edited more recently.
+  // whichever copy was edited more recently -- except a deck tombstoned
+  // by markDeckDeletedLocally, which is deliberately excluded from that
+  // "keep" logic so a cloud row a previous delete never reached can't
+  // come back from the dead.
   function syncDecksOnSignIn() {
+    var tombstones = loadJSON(KEYS.deletedDeckIds, []);
     JVBackend.listDecksFor(JVBackend.currentUserId()).then(function (cloud) {
+      var stillOnServer = {};
+      cloud.forEach(function (cd) { stillOnServer[cd.id] = true; });
+
       var byId = {};
       state.decks.forEach(function (d) { byId[d.id] = d; });
       cloud.forEach(function (cd) {
+        if (tombstones.indexOf(cd.id) !== -1) return;
         var local = byId[cd.id];
         if (!local || (cd.updatedAt || 0) > (local.updatedAt || 0)) byId[cd.id] = cd;
       });
@@ -3508,6 +3534,15 @@
           toast("Couldn't sync your decks to your account.");
         });
       }
+
+      // Retry any delete that never made it to the server now that we're
+      // definitely signed in, and stop tracking tombstones the server has
+      // already forgotten about so this list doesn't grow forever.
+      tombstones.forEach(function (id) {
+        if (stillOnServer[id]) JVBackend.deleteDeckRemote(id).then(function () { clearDeckTombstone(id); }).catch(function () {});
+        else clearDeckTombstone(id);
+      });
+
       if (state.route === "decks") renderDecksView();
     });
   }
