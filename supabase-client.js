@@ -31,11 +31,17 @@
       client = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
       client.auth.getSession().then(function (r) {
         cachedSession = (r.data && r.data.session) || null;
-        authListeners.forEach(function (cb) { cb(cachedSession); });
+        authListeners.forEach(function (cb) { cb(cachedSession, "RESTORED"); });
       });
-      client.auth.onAuthStateChange(function (_event, session) {
+      // Forward Supabase's own event name (SIGNED_IN, SIGNED_OUT,
+      // INITIAL_SESSION, TOKEN_REFRESHED, ...) instead of discarding it --
+      // callers need to tell a genuine sign-in apart from a session just
+      // being restored/refreshed on an ordinary page load, since a one-time
+      // "just signed in" action (like merging local data into the account)
+      // must not re-run on every reload of an already-signed-in tab.
+      client.auth.onAuthStateChange(function (event, session) {
         cachedSession = session;
-        authListeners.forEach(function (cb) { cb(session); });
+        authListeners.forEach(function (cb) { cb(session, event); });
       });
     }
     return client;
@@ -47,10 +53,12 @@
   // the trigger to actually create the Supabase client, so it picks up an
   // existing session (or one just returned by a Google OAuth redirect)
   // immediately, instead of waiting for the user to click "Sign in" again.
+  // cb receives (session, event); event is "RESTORED" for this immediate
+  // replay of an already-known session, otherwise Supabase's own event name.
   function onAuthChange(cb) {
     authListeners.push(cb);
     client_();
-    if (cachedSession !== null) cb(cachedSession);
+    if (cachedSession !== null) cb(cachedSession, "RESTORED");
   }
 
   function signInWithGoogle() {

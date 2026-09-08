@@ -1936,8 +1936,9 @@
   // wrapper's data-card-id — normally the card's own id, but the rune picker
   // overrides it to the domain name since rune counts are tracked per-domain,
   // not per specific rune printing.
-  function deckPickTileHtml(c, badgeText, disabled, key) {
-    return '<div class="card-tile-wrap' + (badgeText ? " in-deck" : "") + (disabled ? " at-limit" : "") + '" data-card-id="' + escapeHtml(key || c.id) + '">' +
+  function deckPickTileHtml(c, badgeText, disabled, key, groupIds) {
+    return '<div class="card-tile-wrap' + (badgeText ? " in-deck" : "") + (disabled ? " at-limit" : "") + '" data-card-id="' + escapeHtml(key || c.id) + '"' +
+      (groupIds ? ' data-rune-group="' + escapeHtml(groupIds.join(",")) + '"' : "") + '>' +
       '<button class="card-tile" type="button" title="Click to add, right-click to remove">' +
       (badgeText ? '<span class="ct-owned qty-badge">' + escapeHtml(badgeText) + "</span>" : "") +
       (c.imageUrl ? '<div class="ct-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
@@ -1964,6 +1965,18 @@
     var normal = pool.filter(function (c) { return c.rarity !== "Showcase"; });
     var normalPick = normal.filter(function (c) { return c.set === "OGN"; })[0] || normal[0];
     return (normalPick ? [normalPick] : []).concat(alt);
+  }
+
+  // Every plain-design rune id for a domain, across every set -- used only to
+  // fold a deck's quantity into the single representative tile the Runes tab
+  // shows for that group (see runesForDomain), so a pre-existing count on a
+  // deduped-away printing (e.g. an older deck that has quantity on VEN's own
+  // plain rune, not the shown OGN one) still shows up on the visible tile
+  // instead of silently padding the total with no matching badge anywhere.
+  function runeNormalGroupIds(domain) {
+    return state.cards
+      .filter(function (c) { return c.type === "Rune" && (c.domains || [])[0] === domain && c.rarity !== "Showcase"; })
+      .map(function (c) { return c.id; });
   }
 
   function builderMain(deck) {
@@ -2016,9 +2029,13 @@
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Split ' + RULES.runeDeckSize + ' runes across your domains (a 6/6 split is standard) — each art tracks its own count. Click to add one, right-click to remove one.</p>';
       var runeCapReached = runeCount(deck) >= RULES.runeDeckSize;
       html += '<div class="card-grid deck-pick-grid" data-pick-runes>' + deck.domains.map(function (d) {
+        var normalGroup = runeNormalGroupIds(d);
         return runesForDomain(d).map(function (rc) {
-          var qty = deck.runes[rc.id] || 0;
-          return deckPickTileHtml(rc, qty ? "×" + qty : null, runeCapReached && !qty);
+          var isNormalTile = normalGroup.indexOf(rc.id) !== -1;
+          var qty = isNormalTile
+            ? normalGroup.reduce(function (s, id) { return s + (deck.runes[id] || 0); }, 0)
+            : (deck.runes[rc.id] || 0);
+          return deckPickTileHtml(rc, qty ? "×" + qty : null, runeCapReached && !qty, null, isNormalTile ? normalGroup : null);
         }).join("");
       }).join("") + "</div>";
     } else if (state.builder.tab === "battlefields") {
@@ -2249,7 +2266,19 @@
         if (!wrap) return;
         e.preventDefault();
         var cid = wrap.getAttribute("data-card-id");
-        deck.runes[cid] = Math.max(0, (deck.runes[cid] || 0) - 1);
+        var groupAttr = wrap.getAttribute("data-rune-group");
+        // A normal-tier tile's badge is an aggregate across every deduped
+        // plain-design id for that domain -- removing "one" has to come off
+        // whichever of those ids actually still has a count, not always the
+        // shown representative's own id (which may itself be at 0 while an
+        // older/hidden printing still holds the deck's runes).
+        if (groupAttr) {
+          var group = groupAttr.split(",");
+          var target = (deck.runes[cid] || 0) > 0 ? cid : group.filter(function (id) { return (deck.runes[id] || 0) > 0; })[0];
+          if (target) deck.runes[target] = Math.max(0, (deck.runes[target] || 0) - 1);
+        } else {
+          deck.runes[cid] = Math.max(0, (deck.runes[cid] || 0) - 1);
+        }
         persistDecks();
         renderBuilder();
       });
@@ -2949,7 +2978,7 @@
      ================================================================ */
 
   function wireAuth() {
-    JVBackend.onAuthChange(function (session) {
+    JVBackend.onAuthChange(function (session, event) {
       var hadSession = !!state.social.session;
       state.social.session = session;
       if (session) {
@@ -2966,7 +2995,15 @@
           if (state.route === "feed" || state.route === "profile" || state.route === "dashboard") render();
         });
         JVBackend.listFollowingIds().then(function (ids) { state.social.followingIds = ids; });
-        if (!hadSession) { syncCollectionOnSignIn(); syncDecksOnSignIn(); }
+        // event === "SIGNED_IN" is Supabase's own signal for a genuine,
+        // just-happened sign-in — unlike the old `!hadSession` check, this
+        // does NOT fire again on an ordinary reload/tab reopen of an
+        // already-signed-in session ("RESTORED"/"INITIAL_SESSION"). Running
+        // this merge on every reload raced against in-flight local edits:
+        // a deck deleted moments before a refresh, with its cloud-delete
+        // still in flight, would get pulled back from the cloud and
+        // re-uploaded, silently undoing the delete.
+        if (event === "SIGNED_IN") { syncCollectionOnSignIn(); syncDecksOnSignIn(); }
       } else if (hadSession) {
         state.social.myProfile = null;
         state.social.followingIds = [];
