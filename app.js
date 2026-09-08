@@ -3242,7 +3242,7 @@
     if (!JVBackend.isConfigured()) {
       html += '<div class="callout" style="margin-bottom:14px;">Card scanning needs the backend connected (see SETUP.md) plus an <code>identify-cards</code> Edge Function deployed with an Anthropic API key.</div>';
     } else {
-      html += '<div class="callout" style="margin-bottom:14px;">Works best with good lighting — pan smoothly and pause on each card for a beat (a third of a second or so) rather than flipping instantly through the stack. Videos are capped at 60 seconds.</div>';
+      html += '<div class="callout" style="margin-bottom:14px;">Works best with good lighting — pan smoothly and pause on each card for a beat (four-tenths of a second or so) rather than flipping instantly through the stack. Videos are capped at 60 seconds.</div>';
     }
 
     html += '<div style="margin-bottom:10px;">' +
@@ -3378,7 +3378,7 @@
   // and never get a clean frame at all. Halving the interval roughly
   // halves the minimum hold time needed to guarantee a hit.
   var SCAN_MAX_FRAMES = 20;
-  var SCAN_FRAME_INTERVAL_S = 0.35;
+  var SCAN_FRAME_INTERVAL_S = 0.4;
 
   // Grabs still frames at fixed intervals by seeking a hidden <video> and
   // reading each seeked position onto a canvas — no video-processing
