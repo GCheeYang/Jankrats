@@ -219,7 +219,8 @@
       wantedScope: "mine",          // "mine" = check friends only, "everyone" = check every profile
       wantedProfiles: null,         // null = not loaded yet, [] = loaded & empty (everyone but me)
       wantedCollections: {},        // userId -> {cardId: {qty, foil}}, filled in as people are checked
-      wantedExpandedId: null        // profile id whose per-card breakdown is expanded, or null
+      wantedExpandedId: null,        // profile id whose per-card breakdown is expanded, or null
+      deckMatch: null                // { deckId, items: [{name, ids}], scope, expandedId } while the "Find who has these" modal is open, else null
     }
   };
 
@@ -327,13 +328,16 @@
     if (i !== -1) { state.wanted.splice(i, 1); persistWanted(); }
   }
 
-  // How many of the wanted cards a given collection map (yours, a friend's,
-  // or anyone's) has at least one copy of.
-  function wantedOwnedCount(collection) {
-    return state.wanted.reduce(function (n, cardId) {
+  // How many of a list of card ids a given collection map (yours, a
+  // friend's, or anyone's) has at least one copy of.
+  function ownedCountAmong(cardIds, collection) {
+    return cardIds.reduce(function (n, cardId) {
       var e = collection[cardId];
       return n + (e && (e.qty || 0) + (e.foil || 0) > 0 ? 1 : 0);
     }, 0);
+  }
+  function wantedOwnedCount(collection) {
+    return ownedCountAmong(state.wanted, collection);
   }
 
   // Fire-and-forget: keeps the signed-in player's cloud collection (which
@@ -1678,7 +1682,7 @@
     var missing = [];
     buildRequirements(deck).forEach(function (r) {
       var owned = r.ids.reduce(function (s, id) { return s + getOwned(id) + getOwnedFoil(id); }, 0);
-      if (owned < r.needed) missing.push({ name: r.name, needed: r.needed, owned: owned, short: r.needed - owned });
+      if (owned < r.needed) missing.push({ name: r.name, needed: r.needed, owned: owned, short: r.needed - owned, ids: r.ids });
     });
     missing.sort(function (a, b) { return b.short - a.short; });
     return { buildable: !missing.length, missing: missing };
@@ -2239,7 +2243,8 @@
     if (buildability.missing.length) {
       html += '<div><h3>Missing from collection</h3><div class="legality-list">' + buildability.missing.map(function (m) {
         return '<div class="leg-item bad"><span class="li-icon">✕</span><span class="li-text"><b>' + escapeHtml(m.name) + "</b> — own " + m.owned + " / need " + m.needed + "</span></div>";
-      }).join("") + "</div></div>";
+      }).join("") +
+        '</div><button class="btn small ghost" style="margin-top:8px;" data-find-who-has>Find who has these</button></div>';
     }
 
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn danger" data-delete-deck>Delete deck</button></div>';
@@ -2375,6 +2380,10 @@
 
     host.querySelectorAll("[data-export-deck]").forEach(function (b) {
       b.addEventListener("click", function () { openExportDeckModal(deck); });
+    });
+
+    host.querySelectorAll("[data-find-who-has]").forEach(function (b) {
+      b.addEventListener("click", function () { openDeckMatchModal(deck); });
     });
 
     host.querySelectorAll("[data-delete-deck]").forEach(function (b) {
@@ -2687,6 +2696,157 @@
     root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
     root.querySelector("#deck-export-modal").addEventListener("click", function (e) { if (e.target.id === "deck-export-modal") closeModal(); });
     root.querySelector("[data-copy-export]").addEventListener("click", function () { copyToClipboard(text); });
+  }
+
+  /* ================================================================
+     DECK MATCH ("Find who has these") -- rank friends/everyone by how
+     many of a deck's missing cards they already own, so the player
+     knows exactly who to go trade with instead of just a raw shortfall
+     list. Shares its profile/collection caches with the Wanted List
+     (state.social.wantedProfiles / wantedCollections) since both are
+     just "does this person's collection contain card X" checks.
+     ================================================================ */
+
+  function openDeckMatchModal(deck) {
+    var missing = computeBuildability(deck).missing;
+    if (!missing.length) return;
+    state.social.deckMatch = {
+      deckId: deck.id,
+      items: missing.map(function (m) { return { name: m.name, ids: m.ids }; }),
+      scope: "mine",
+      expandedId: null
+    };
+    var root = document.getElementById("modal-root");
+    root.innerHTML = '<div class="modal-backdrop" id="deck-match-modal"><div class="modal modal-wide">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">Find who has these</h2><button class="modal-close" data-close>&times;</button></div>' +
+      '<div id="deck-match-body">' + deckMatchBodyHtml() + "</div>" +
+      "</div></div>";
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeDeckMatchModal); });
+    root.querySelector("#deck-match-modal").addEventListener("click", function (e) { if (e.target.id === "deck-match-modal") closeDeckMatchModal(); });
+    wireDeckMatchBody(root);
+  }
+
+  function closeDeckMatchModal() {
+    state.social.deckMatch = null;
+    closeModal();
+  }
+
+  function hasAnyOwned(ids, collection) {
+    return ids.some(function (id) {
+      var e = collection[id];
+      return !!(e && (e.qty || 0) + (e.foil || 0) > 0);
+    });
+  }
+
+  function deckMatchBodyHtml() {
+    var dm = state.social.deckMatch;
+    if (!dm) return "";
+    if (!JVBackend.isConfigured()) return socialNotConfiguredHtml("Checking friends");
+    if (!state.social.session) return socialSignInPromptHtml("Sign in with Google to check who owns these cards.");
+
+    var s = state.social;
+    var total = dm.items.length;
+    var html = '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' + total + " card" + (total === 1 ? "" : "s") + " short — ranked by how many they already have.</p>";
+    html += '<div class="tabs" style="margin-bottom:16px;">' +
+      '<button class="' + (dm.scope === "mine" ? "active" : "") + '" data-deck-match-scope="mine">My friends</button>' +
+      '<button class="' + (dm.scope === "everyone" ? "active" : "") + '" data-deck-match-scope="everyone">Everyone</button>' +
+      "</div>";
+
+    if (s.wantedProfiles === null) return html + '<p style="color:var(--ink-faint);">Loading…</p>';
+
+    var people = dm.scope === "everyone" ? s.wantedProfiles : s.wantedProfiles.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
+    var rows = people.map(function (p) {
+      var coll = s.wantedCollections[p.id];
+      var owned = coll ? dm.items.reduce(function (n, item) { return n + (hasAnyOwned(item.ids, coll) ? 1 : 0); }, 0) : null;
+      return { profile: p, owned: owned };
+    });
+    rows.sort(function (a, b) {
+      if (a.owned === null) return b.owned === null ? 0 : 1;
+      if (b.owned === null) return -1;
+      return b.owned - a.owned;
+    });
+
+    if (!rows.length) {
+      html += dm.scope === "mine"
+        ? '<div class="empty-state"><h3>No friends added yet</h3><p>Add friends from the <b>Friends</b> tab, or switch to <b>Everyone</b>.</p></div>'
+        : '<div class="empty-state"><h3>No one else has signed in yet</h3></div>';
+    } else {
+      html += '<div class="wanted-match-list">' + rows.map(function (r) { return deckMatchRowHtml(r.profile, r.owned, total, dm); }).join("") + "</div>";
+    }
+    return html;
+  }
+
+  function deckMatchRowHtml(p, owned, total, dm) {
+    var expanded = dm.expandedId === p.id;
+    var badge = owned === null
+      ? '<span class="pill neutral">Checking…</span>'
+      : owned === total
+        ? '<span class="pill good">Has all ' + total + "</span>"
+        : owned === 0
+          ? '<span class="pill bad">Has none</span>'
+          : '<span class="pill warn">' + owned + " / " + total + "</span>";
+    var html = '<button class="friend-tile wanted-match-row" data-open-deck-match="' + p.id + '">' +
+      (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
+      '<span class="friend-name">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span>" +
+      badge +
+      "</button>";
+    if (expanded && owned !== null) {
+      var coll = state.social.wantedCollections[p.id] || {};
+      html += '<div class="wanted-match-detail">' + dm.items.map(function (item) {
+        var has = hasAnyOwned(item.ids, coll);
+        return '<span class="pill ' + (has ? "good" : "bad") + '">' + (has ? "✓ " : "✗ ") + escapeHtml(item.name) + "</span>";
+      }).join("") + "</div>";
+    }
+    return html;
+  }
+
+  function refreshDeckMatchBody(root) {
+    var body = root.querySelector("#deck-match-body");
+    if (!body) return;
+    body.innerHTML = deckMatchBodyHtml();
+    wireDeckMatchBody(root);
+  }
+
+  function loadDeckMatchCollectionsIfNeeded(root) {
+    var s = state.social;
+    var dm = s.deckMatch;
+    if (!dm) return;
+    var pool = s.wantedProfiles || [];
+    var people = dm.scope === "everyone" ? pool : pool.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
+    var missing = people.map(function (p) { return p.id; }).filter(function (id) { return !s.wantedCollections[id]; });
+    if (!missing.length) return;
+    JVBackend.listCollectionsFor(missing).then(function (byUser) {
+      missing.forEach(function (id) { s.wantedCollections[id] = byUser[id] || {}; });
+      if (state.social.deckMatch) refreshDeckMatchBody(root);
+    });
+  }
+
+  function wireDeckMatchBody(root) {
+    var dm = state.social.deckMatch;
+    if (!dm) return;
+    if (!JVBackend.isConfigured() || !state.social.session) { wireSignInPrompt(root); return; }
+
+    var s = state.social;
+    if (s.wantedProfiles === null) {
+      JVBackend.listProfiles().then(function (profiles) {
+        s.wantedProfiles = profiles;
+        if (state.social.deckMatch) refreshDeckMatchBody(root);
+      });
+      return;
+    }
+
+    loadDeckMatchCollectionsIfNeeded(root);
+
+    root.querySelectorAll("[data-deck-match-scope]").forEach(function (b) {
+      b.addEventListener("click", function () { dm.scope = b.getAttribute("data-deck-match-scope"); refreshDeckMatchBody(root); });
+    });
+    root.querySelectorAll("[data-open-deck-match]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-open-deck-match");
+        dm.expandedId = dm.expandedId === id ? null : id;
+        refreshDeckMatchBody(root);
+      });
+    });
   }
 
   /* ================================================================
