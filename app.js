@@ -615,6 +615,37 @@
     return '<div class="stat-card"><div class="num tabular">' + escapeHtml(num) + '</div><div class="label">' + escapeHtml(label) + "</div></div>";
   }
 
+  function deckCardHtml(d) {
+    var issues = computeLegality(d);
+    var legal = issues.every(function (i) { return i.ok; });
+    var legend = d.legendId ? state.cardsById[d.legendId] : null;
+    var champion = d.championId ? state.cardsById[d.championId] : null;
+    var art = legend || champion;
+    var subtitle = [champion, legend].filter(Boolean).map(function (c) { return c.name; }).join(" · ");
+    var updated = d.updatedAt
+      ? new Date(d.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+      : null;
+    return '<div class="deck-card" data-open="' + d.id + '">' +
+      '<div class="deck-card-art">' +
+      (art && art.imageUrl
+        ? '<img class="' + (isLandscapeCard(art) ? "rot90" : "") + '" src="' + escapeHtml(art.imageUrl) + '" alt="" loading="lazy">'
+        : "") +
+      "</div>" +
+      '<div class="deck-card-body">' +
+      '<div class="deck-card-badges">' +
+      '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Ready" : issues.filter(function (i) { return !i.ok; }).length + " issue(s)") + "</span>" +
+      (d.domains || []).map(domainChip).join("") +
+      "</div>" +
+      '<div class="deck-card-title">' + escapeHtml(d.name || "Unnamed deck") + "</div>" +
+      (subtitle ? '<div class="deck-card-sub">' + escapeHtml(subtitle) + "</div>" : "") +
+      '<div class="deck-card-meta">' + (updated ? "Updated " + updated : mainDeckCount(d) + "/" + RULES.mainDeckSize + " main") + "</div>" +
+      '<div class="deck-card-actions">' +
+      '<button class="btn primary small" data-open="' + d.id + '"><span class="n-icon">▶</span>Open</button>' +
+      '<span style="flex:1;"></span>' +
+      '<button class="btn small danger" data-del="' + d.id + '">Delete</button>' +
+      "</div></div></div>";
+  }
+
   function deckRowHtml(d) {
     var issues = computeLegality(d);
     var legal = issues.every(function (i) { return i.ok; });
@@ -1631,21 +1662,13 @@
     }
 
     if (!deck) {
-      html += '<div class="deck-row-list" style="margin-bottom:20px;">';
       if (!state.decks.length) {
-        html += '<div class="empty-state"><h3>No decks yet</h3><p>Start with a Legend, then add your Chosen Champion.</p></div>';
+        html += '<div class="empty-state" style="margin-bottom:20px;"><h3>No decks yet</h3><p>Start with a Legend, then add your Chosen Champion.</p></div>';
       } else {
-        state.decks.slice().sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).forEach(function (d) {
-          html += '<div class="deck-row" data-open="' + d.id + '">' +
-            '<div class="drn">' + escapeHtml(d.name) + "</div>" +
-            '<div class="drdomains">' + (d.domains || []).map(domainChip).join("") + "</div>" +
-            '<div class="drspacer"></div>' +
-            '<div class="drmeta">' + mainDeckCount(d) + "/" + RULES.mainDeckSize + "</div>" +
-            '<button class="btn small danger" data-del="' + d.id + '">Delete</button>' +
-            "</div>";
-        });
+        html += '<div class="decks-grid">' +
+          state.decks.slice().sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).map(deckCardHtml).join("") +
+          "</div>";
       }
-      html += "</div>";
     } else {
       html += '<button class="btn ghost small" style="margin-bottom:14px;" data-back-to-list>← All decks</button>';
     }
