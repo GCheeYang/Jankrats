@@ -1857,15 +1857,13 @@
       "</button></div>";
   }
 
-  // Exactly one Rune card is shown per domain (real deckbuilding treats them
-  // as one fungible resource, not distinct collectible printings) — prefer
-  // the base OGN "Common" print, since every domain also has a Showcase
-  // alt-art and a VEN reprint of the same rune.
-  function basicRuneForDomain(domain) {
-    var pool = state.cards.filter(function (c) { return c.type === "Rune" && (c.domains || [])[0] === domain; });
-    var common = pool.filter(function (c) { return c.rarity === "Common"; });
-    var ogn = common.filter(function (c) { return c.set === "OGN"; });
-    return ogn[0] || common[0] || pool[0] || null;
+  // Every printing of a domain's Rune (Common, Showcase alt-art, VEN
+  // reprint, ...) is shown as its own tile so players can pick whichever art
+  // they own/prefer — but a Rune's specific printing doesn't matter for deck
+  // legality, so every tile for a domain shares that one domain's count
+  // (see the `key` override passed into deckPickTileHtml below).
+  function runesForDomain(domain) {
+    return state.cards.filter(function (c) { return c.type === "Rune" && (c.domains || [])[0] === domain; });
   }
 
   function builderMain(deck) {
@@ -1914,13 +1912,13 @@
       if (!pickPool.length) html += '<div class="empty-state"><h3>No cards in these domains</h3><p>Import more cards for ' + deck.domains.join("/") + ".</p></div>";
       else if (pickPoolFull.length > PICK_POOL_CAP) html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-top:8px;">Showing first ' + PICK_POOL_CAP + ' of ' + pickPoolFull.length + ' — use the search box above to narrow it down.</p>';
     } else if (state.builder.tab === "runes") {
-      html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Split ' + RULES.runeDeckSize + ' runes across your domains (a 6/6 split is standard). Click to add one, right-click to remove one.</p>';
+      html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Split ' + RULES.runeDeckSize + ' runes across your domains (a 6/6 split is standard) — any art works, the count is shared per domain. Click to add one, right-click to remove one.</p>';
       html += '<div class="card-grid deck-pick-grid" data-pick-runes>' + deck.domains.map(function (d) {
-        var rc = basicRuneForDomain(d);
-        if (!rc) return "";
         var qty = deck.runes[d] || 0;
         var atCap = runeCount(deck) >= RULES.runeDeckSize;
-        return deckPickTileHtml(rc, qty ? "×" + qty : null, atCap && !qty, d);
+        return runesForDomain(d).map(function (rc) {
+          return deckPickTileHtml(rc, qty ? "×" + qty : null, atCap && !qty, d);
+        }).join("");
       }).join("") + "</div>";
     } else if (state.builder.tab === "battlefields") {
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Choose ' + RULES.battlefieldCount + ' unique Battlefields. Click to add, right-click to remove.</p>';
