@@ -197,7 +197,6 @@
     profile: { name: "" },
     route: "home",
     builder: { deckId: null, tab: "main", cardFilter: "", legendVariantPickName: null },
-    sharedDeck: null,
     social: {
       session: null,           // Supabase auth session, or null when signed out
       myProfile: null,         // row from public.profiles for the signed-in user
@@ -360,7 +359,7 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["home", "cards", "collection", "wanted", "decks", "friends", "dashboard", "profile", "shared"];
+  var VIEWS = ["home", "cards", "collection", "wanted", "decks", "friends", "dashboard", "profile"];
 
   // Maps a route name to/from a clean URL path, e.g. "collection" <->
   // "/collection", with "home" living at the bare root "/".
@@ -414,7 +413,6 @@
     if (state.route === "friends") renderFriendsView();
     if (state.route === "decks") renderDecksView();
     if (state.route === "profile") renderProfileView();
-    if (state.route === "shared") renderSharedView();
   }
 
   function renderRail() {
@@ -1730,7 +1728,7 @@
     var html = "";
     if (!deck) {
       html += '<div class="view-head"><div><h1>Deck builder</h1><p>Build against real Riftbound construction rules: one Legend, one Chosen Champion, a 40-card main deck, a 12-card rune deck, and 3 battlefields.</p></div>' +
-        '<div style="display:flex;gap:8px;"><button class="btn" data-action="import-code">Import code</button><button class="btn primary" data-action="new-deck">+ New deck</button></div></div>';
+        '<div style="display:flex;gap:8px;"><button class="btn" data-action="import-deck">Import deck</button><button class="btn primary" data-action="new-deck">+ New deck</button></div></div>';
     }
 
     if (!deck) {
@@ -1749,7 +1747,7 @@
     el.innerHTML = html;
     if (!deck) {
       el.querySelector('[data-action="new-deck"]').addEventListener("click", startNewDeck);
-      el.querySelector('[data-action="import-code"]').addEventListener("click", promptImportShareCode);
+      el.querySelector('[data-action="import-deck"]').addEventListener("click", openDeckImportModal);
       el.querySelectorAll("[data-open]").forEach(function (r) { r.addEventListener("click", function () { openDeck(r.getAttribute("data-open")); }); });
       el.querySelectorAll("[data-del]").forEach(function (r) {
         r.addEventListener("click", function (e) {
@@ -2010,7 +2008,8 @@
       '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Tournament legal" : issues.filter(function(i){return !i.ok;}).length + " issue(s)") + "</span>" +
       "</div>";
     html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' + escapeHtml(legend.name) + " · Champion: " + escapeHtml(champion.name) + " · " + domainChips(deck.domains) +
-      ' <button class="btn ghost small" data-restart>restart</button></p>';
+      ' <button class="btn ghost small" data-restart>restart</button>' +
+      ' <button class="btn ghost small" data-export-deck>Export</button></p>';
 
     html += '<div class="builder-grid">';
 
@@ -2022,7 +2021,6 @@
       tabBtn("battlefields", "Battlefields (" + (deck.battlefields || []).length + "/" + RULES.battlefieldCount + ")") +
       tabBtn("sideboard", "Sideboard (" + sideboardCount(deck) + ")") +
       tabBtn("tokens", "Tokens") +
-      tabBtn("share", "Share") +
       "</div>";
 
     if (state.builder.tab === "main") {
@@ -2080,8 +2078,6 @@
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Reference art for tokens card effects create — not part of your deck, so they don\'t count toward anything above.</p>';
       html += '<div class="card-grid" data-token-grid>' + tokenPool.map(cardTileHtml).join("") + "</div>";
       if (!tokenPool.length) html += '<div class="empty-state"><h3>No tokens yet</h3><p>Import more cards to see token reference art.</p></div>';
-    } else if (state.builder.tab === "share") {
-      html += shareTabHtml(deck);
     }
     html += "</div>";
 
@@ -2174,15 +2170,6 @@
     });
     html += "</div>";
     return html;
-  }
-
-  function shareTabHtml(deck) {
-    var code = encodeDeckShare(deck);
-    return '<div>' +
-      '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:10px;">This code carries a full snapshot of the deck (card names, costs, text summary, and counts) so a friend can open it in their own Vault, even before they\'ve imported your card list.</p>' +
-      '<code class="deckcode" id="share-code">' + escapeHtml(code) + "</code>" +
-      '<button class="btn primary" style="margin-top:10px;" data-copy-code>Copy share code</button>' +
-      "</div>";
   }
 
   function wireBuilderMain(deck, host) {
@@ -2294,11 +2281,8 @@
       });
     });
 
-    host.querySelectorAll("[data-copy-code]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var codeEl = document.getElementById("share-code");
-        copyToClipboard(codeEl.textContent);
-      });
+    host.querySelectorAll("[data-export-deck]").forEach(function (b) {
+      b.addEventListener("click", function () { openExportDeckModal(deck); });
     });
 
     host.querySelectorAll("[data-delete-deck]").forEach(function (b) {
@@ -2323,44 +2307,10 @@
     } catch (e) { toast("Couldn't copy automatically — select the code manually."); }
   }
 
-  /* ---------------- deck share encode/decode ---------------- */
+  /* ---------------- deck share payload (feed decklist posts) ---------------- */
 
   function snapshotCard(c) {
     return { id: c.id, n: c.name, t: c.type, d: c.domains || [], co: c.cost, p: c.power, r: c.rarity };
-  }
-
-  function encodeDeckShare(deck) {
-    var legend = state.cardsById[deck.legendId];
-    var champion = state.cardsById[deck.championId];
-    var payload = {
-      v: 1,
-      name: deck.name,
-      legend: legend ? snapshotCard(legend) : null,
-      champion: champion ? snapshotCard(champion) : null,
-      domains: deck.domains,
-      main: (deck.main || []).map(function (e) { var c = state.cardsById[e.cardId]; return c ? { c: snapshotCard(c), q: e.qty } : null; }).filter(Boolean),
-      runes: deck.runes,
-      battlefields: (deck.battlefields || []).map(function (id) { var c = state.cardsById[id]; return c ? snapshotCard(c) : { id: id, n: id }; }),
-      sideboard: (deck.sideboard || []).map(function (e) { var c = state.cardsById[e.cardId]; return c ? { c: snapshotCard(c), q: e.qty } : null; }).filter(Boolean)
-    };
-    try {
-      return "JV1:" + btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-    } catch (e) {
-      return "JV1:ERROR";
-    }
-  }
-
-  function decodeDeckShare(code) {
-    code = (code || "").trim();
-    if (code.indexOf("JV1:") === 0) code = code.slice(4);
-    try {
-      var json = decodeURIComponent(escape(atob(code)));
-      var payload = safeParse(json, null);
-      if (!payload || !payload.v) return null;
-      return payload;
-    } catch (e) {
-      return null;
-    }
   }
 
   // Merge any card snapshots from a shared payload into the local card DB
@@ -2399,32 +2349,241 @@
     return d;
   }
 
-  function promptImportShareCode() {
-    var code = window.prompt("Paste a Jankrats share code:");
-    if (!code) return;
-    var payload = decodeDeckShare(code);
-    if (!payload) { toast("That doesn't look like a valid share code."); return; }
-    var d = importDeckFromPayload(payload);
-    toast('Imported "' + d.name + '".');
-    renderDecksView();
+  /* ================================================================
+     DECK IMPORT / EXPORT (plain-text list, RiftAtlas-style)
+     ================================================================ */
+
+  var DECK_LIST_SECTIONS = { legend: "legend", champion: "champion", maindeck: "main", battlefields: "battlefields", runes: "runes", sideboard: "sideboard" };
+
+  function parseDeckListText(text) {
+    var buckets = { legend: [], champion: [], main: [], battlefields: [], runes: [], sideboard: [] };
+    var current = null;
+    (text || "").split(/\r?\n/).forEach(function (raw) {
+      var line = raw.trim();
+      if (!line) return;
+      var header = line.match(/^([A-Za-z ]+):$/);
+      if (header) {
+        var key = header[1].toLowerCase().replace(/\s+/g, "");
+        if (DECK_LIST_SECTIONS[key]) { current = DECK_LIST_SECTIONS[key]; return; }
+      }
+      // A trailing "[CARD-ID]" (as exported) pins the exact printing;
+      // everything before it, trimmed, is the display name.
+      var m = line.match(/^(\d+)\s+(.+?)\s*(?:\[([^\[\]]+)\])?$/);
+      if (m && current) buckets[current].push({ qty: parseInt(m[1], 10), name: m[2].trim(), id: m[3] || null });
+    });
+    return buckets;
   }
 
-  function renderSharedView() {
-    var el = document.getElementById("view-shared");
-    if (!state.sharedDeck) { el.innerHTML = ""; return; }
-    var payload = state.sharedDeck;
-    var html = '<div class="view-head"><div><h1>' + escapeHtml(payload.name || "Shared deck") + '</h1><p>Someone shared this Jankrats deck with you as a link. Import it to add it (and its cards) to your own Vault.</p></div>' +
-      '<button class="btn primary" data-action="import-shared">Import into my Vault</button></div>';
-    html += '<div class="callout" style="margin-bottom:16px;">Legend: <b>' + escapeHtml(payload.legend ? payload.legend.n : "—") + "</b> · Champion: <b>" + escapeHtml(payload.champion ? payload.champion.n : "—") + "</b> · " + domainChips(payload.domains) + "</div>";
-    html += '<div class="card-grid">' + (payload.main || []).map(function (e) {
-      return cardTileHtml({ id: e.c.id, name: e.c.n + " ×" + e.q, type: e.c.t, domains: e.c.d, cost: e.c.co, power: e.c.p, rarity: e.c.r });
-    }).join("") + "</div>";
-    el.innerHTML = html;
-    el.querySelector('[data-action="import-shared"]').addEventListener("click", function () {
-      var d = importDeckFromPayload(payload);
-      toast('Imported "' + d.name + '".');
-      navigate("decks");
+  // Multiple printings often share a name (alt art, reprints across sets) --
+  // prefer whichever has a plain numeric collector number (the "base" print)
+  // over a lettered variant, then just take the first match. An explicit id
+  // (from a line's trailing "[CARD-ID]") always wins outright, since it
+  // pins the exact printing the list meant.
+  function findCardByNameForImport(name, opts) {
+    opts = opts || {};
+    if (opts.id && state.cardsById[opts.id]) return state.cardsById[opts.id];
+    var norm = name.trim().toLowerCase();
+    var candidates = state.cards.filter(function (c) {
+      if (opts.type && c.type !== opts.type) return false;
+      if (opts.types && opts.types.indexOf(c.type) === -1) return false;
+      if (!opts.type && !opts.types && c.type === "Token") return false;
+      if (opts.excludeTokenLike && isTokenCard(c)) return false;
+      return c.name.toLowerCase() === norm;
     });
+    if (!candidates.length) return null;
+    var plain = candidates.filter(function (c) { return /^\d+$/.test(String(c.collectorNumber)); });
+    return plain[0] || candidates[0];
+  }
+
+  // A Legend's own name never carries the character's identity (e.g. the
+  // card is just "Eye of Twilight"), but exported lists usually write it as
+  // "Shen, Eye of Twilight" -- try the raw string first, then fall back to
+  // whatever follows the first comma.
+  function findLegendForImport(rawName, id) {
+    var direct = findCardByNameForImport(rawName, { type: "Legend", id: id });
+    if (direct) return direct;
+    var comma = rawName.indexOf(",");
+    if (comma !== -1) return findCardByNameForImport(rawName.slice(comma + 1).trim(), { type: "Legend" });
+    return null;
+  }
+
+  // Import/export work at the domain level ("7 Calm Rune"), not a specific
+  // printing -- runesForDomain's first entry is always its one deduped
+  // "normal" tile, which is exactly the representative every other domain
+  // rune count already folds onto (see the Runes tab and its contextmenu
+  // handler above). An explicit id (from an exported list) still wins, so a
+  // count against a specific alt-art printing round-trips exactly.
+  function findRuneRepresentativeForImport(rawName, id) {
+    if (id && state.cardsById[id] && state.cardsById[id].type === "Rune") return state.cardsById[id];
+    var domainName = rawName.replace(/\s*Rune\s*$/i, "").trim();
+    var match = DOMAIN_NAMES.filter(function (d) { return d.toLowerCase() === domainName.toLowerCase(); })[0];
+    if (!match) return null;
+    var group = runesForDomain(match);
+    return group.length ? group[0] : null;
+  }
+
+  function buildDeckFromImportBuckets(buckets, nameOverride) {
+    var unresolved = [];
+    var d = newDeckObject();
+
+    var legendLine = buckets.legend[0];
+    var legendCard = legendLine ? findLegendForImport(legendLine.name, legendLine.id) : null;
+    if (legendCard) { d.legendId = legendCard.id; d.domains = (legendCard.domains || []).slice(); }
+    else if (legendLine) unresolved.push("Legend: " + legendLine.name);
+
+    var champLine = buckets.champion[0];
+    var champCard = champLine ? findCardByNameForImport(champLine.name, { type: "Unit", id: champLine.id }) : null;
+    if (champCard) d.championId = champCard.id;
+    else if (champLine) unresolved.push("Champion: " + champLine.name);
+
+    var legendDisplayName = legendCard && (function () {
+      var identity = championIdentityTagFor(legendCard);
+      return (identity ? identity + ", " : "") + legendCard.name;
+    })();
+    d.name = nameOverride || [champCard ? champCard.name : null, legendDisplayName].filter(Boolean).join(" / ") || "Imported deck";
+
+    buckets.main.forEach(function (e) {
+      var c = findCardByNameForImport(e.name, { types: ["Unit", "Spell", "Gear"], excludeTokenLike: true, id: e.id });
+      if (!c) { unresolved.push("Main: " + e.qty + " " + e.name); return; }
+      var existing = d.main.filter(function (x) { return x.cardId === c.id; })[0];
+      if (existing) existing.qty += e.qty; else d.main.push({ cardId: c.id, qty: e.qty });
+    });
+
+    buckets.battlefields.forEach(function (e) {
+      var c = findCardByNameForImport(e.name, { type: "Battlefield", id: e.id });
+      if (!c) { unresolved.push("Battlefield: " + e.name); return; }
+      for (var i = 0; i < e.qty && d.battlefields.length < RULES.battlefieldCount; i++) {
+        if (d.battlefields.indexOf(c.id) === -1) d.battlefields.push(c.id);
+      }
+    });
+
+    buckets.runes.forEach(function (e) {
+      var c = findRuneRepresentativeForImport(e.name, e.id);
+      if (!c) { unresolved.push("Rune: " + e.name); return; }
+      d.runes[c.id] = (d.runes[c.id] || 0) + e.qty;
+    });
+
+    buckets.sideboard.forEach(function (e) {
+      var c = findCardByNameForImport(e.name, { types: ["Unit", "Spell", "Gear"], excludeTokenLike: true, id: e.id });
+      if (!c) { unresolved.push("Sideboard: " + e.qty + " " + e.name); return; }
+      var existing = d.sideboard.filter(function (x) { return x.cardId === c.id; })[0];
+      if (existing) existing.qty += e.qty; else d.sideboard.push({ cardId: c.id, qty: e.qty });
+    });
+
+    return { deck: d, unresolved: unresolved };
+  }
+
+  function importDeckFromListText(text, nameOverride) {
+    var buckets = parseDeckListText(text);
+    var hasAny = buckets.legend.length || buckets.champion.length || buckets.main.length ||
+      buckets.battlefields.length || buckets.runes.length || buckets.sideboard.length;
+    if (!hasAny) return { deck: null, unresolved: [], error: "Couldn't find any recognizable sections (Legend/Champion/MainDeck/Battlefields/Runes/Sideboard)." };
+    var built = buildDeckFromImportBuckets(buckets, nameOverride);
+    state.decks.push(built.deck);
+    persistDecks();
+    return built;
+  }
+
+  function openDeckImportModal() {
+    var root = document.getElementById("modal-root");
+    var placeholder = "Legend:\n1 Shen, Eye of Twilight\n\nChampion:\n1 Shen, Kinkou\n\nMainDeck:\n3 Charm\n3 Discipline\n\nBattlefields:\n1 Kinkou Temple\n\nRunes:\n7 Calm Rune\n5 Order Rune\n\nSideboard:\n2 Salvage";
+    root.innerHTML = '<div class="modal-backdrop" id="deck-import-modal"><div class="modal modal-wide">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">Import a deck</h2><button class="modal-close" data-close>&times;</button></div>' +
+      '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Paste a decklist — Legend, Champion, MainDeck, Battlefields, Runes, and Sideboard sections, each a "qty name" per line. A trailing "[CARD-ID]" (as in Jankrats\' own export) pins the exact printing; it\'s optional otherwise.</p>' +
+      '<div class="field" style="margin-bottom:10px;"><label>Deck name (optional)</label><input type="text" id="deck-import-name" placeholder="Defaults to Champion / Legend"></div>' +
+      '<textarea id="deck-import-text" rows="14" placeholder="' + escapeHtml(placeholder) + '"></textarea>' +
+      '<div style="display:flex;gap:8px;margin-top:10px;"><button class="btn primary" id="deck-import-run">Import</button></div>' +
+      '<div id="deck-import-result" style="margin-top:14px;"></div>' +
+      "</div></div>";
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#deck-import-modal").addEventListener("click", function (e) { if (e.target.id === "deck-import-modal") closeModal(); });
+    root.querySelector("#deck-import-run").addEventListener("click", function () {
+      var text = document.getElementById("deck-import-text").value;
+      var name = document.getElementById("deck-import-name").value.trim();
+      var result = importDeckFromListText(text, name || null);
+      var resultEl = document.getElementById("deck-import-result");
+      if (!result.deck) {
+        resultEl.innerHTML = '<p style="color:var(--bad);font-size:13px;">' + escapeHtml(result.error || "Couldn't parse that list.") + "</p>";
+        return;
+      }
+      toast('Imported "' + result.deck.name + '".');
+      if (result.unresolved.length) {
+        resultEl.innerHTML = '<p style="font-size:13px;color:var(--warn);">Imported, but couldn\'t match: ' + result.unresolved.map(escapeHtml).join(", ") + "</p>";
+      }
+      state.builder.deckId = result.deck.id;
+      state.builder.tab = "main";
+      pushDeckBuilderHistoryEntry(result.deck.id);
+      if (!result.unresolved.length) closeModal();
+      renderDecksView();
+    });
+  }
+
+  function deckToExportText(deck) {
+    var legend = state.cardsById[deck.legendId];
+    var champion = state.cardsById[deck.championId];
+    var lines = [];
+    if (legend) {
+      var identity = championIdentityTagFor(legend);
+      lines.push("Legend:", "1 " + (identity ? identity + ", " : "") + legend.name + " [" + legend.id + "]", "");
+    }
+    if (champion) lines.push("Champion:", "1 " + champion.name + " [" + champion.id + "]", "");
+
+    lines.push("MainDeck:");
+    (deck.main || []).map(function (e) { return { c: state.cardsById[e.cardId], qty: e.qty }; })
+      .filter(function (e) { return e.c; })
+      .sort(function (a, b) { return a.c.name.localeCompare(b.c.name); })
+      .forEach(function (e) { lines.push(e.qty + " " + e.c.name + " [" + e.c.id + "]"); });
+    lines.push("");
+
+    if ((deck.battlefields || []).length) {
+      lines.push("Battlefields:");
+      deck.battlefields.forEach(function (id) {
+        var c = state.cardsById[id];
+        if (c) lines.push("1 " + c.name + " [" + c.id + "]");
+      });
+      lines.push("");
+    }
+
+    if (Object.keys(deck.runes || {}).length) {
+      var byDomain = {};
+      Object.keys(deck.runes).forEach(function (id) {
+        var qty = deck.runes[id];
+        if (!qty) return;
+        var c = state.cardsById[id];
+        var dom = c && (c.domains || [])[0];
+        if (!dom) return;
+        if (!byDomain[dom]) byDomain[dom] = { qty: 0, id: id };
+        byDomain[dom].qty += qty;
+      });
+      if (Object.keys(byDomain).length) {
+        lines.push("Runes:");
+        Object.keys(byDomain).forEach(function (dom) { lines.push(byDomain[dom].qty + " " + dom + " Rune [" + byDomain[dom].id + "]"); });
+        lines.push("");
+      }
+    }
+
+    if ((deck.sideboard || []).length) {
+      lines.push("Sideboard:");
+      (deck.sideboard || []).map(function (e) { return { c: state.cardsById[e.cardId], qty: e.qty }; })
+        .filter(function (e) { return e.c; })
+        .sort(function (a, b) { return a.c.name.localeCompare(b.c.name); })
+        .forEach(function (e) { lines.push(e.qty + " " + e.c.name + " [" + e.c.id + "]"); });
+    }
+
+    return lines.join("\n").trim() + "\n";
+  }
+
+  function openExportDeckModal(deck) {
+    var text = deckToExportText(deck);
+    var root = document.getElementById("modal-root");
+    root.innerHTML = '<div class="modal-backdrop" id="deck-export-modal"><div class="modal modal-wide">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">Export "' + escapeHtml(deck.name) + '"</h2><button class="modal-close" data-close>&times;</button></div>' +
+      '<textarea id="deck-export-text" rows="16" readonly>' + escapeHtml(text) + "</textarea>" +
+      '<div style="display:flex;gap:8px;margin-top:10px;"><button class="btn primary" data-copy-export>Copy to clipboard</button></div>' +
+      "</div></div>";
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#deck-export-modal").addEventListener("click", function (e) { if (e.target.id === "deck-export-modal") closeModal(); });
+    root.querySelector("[data-copy-export]").addEventListener("click", function () { copyToClipboard(text); });
   }
 
   /* ================================================================
@@ -3470,8 +3629,10 @@
     });
   }
 
-  // Same snapshot shape as encodeDeckShare's payload, but returned as a plain
-  // object (not base64-encoded) since it's stored directly as jsonb.
+  // A snapshot of the deck's cards (name/type/domains/cost/power/rarity, not
+  // just ids) so a feed post is self-contained -- a friend can view and
+  // import it even before their own card database has that exact printing.
+  // Stored directly as jsonb, unlike the plain-text import/export format.
   function deckSharePayload(deck) {
     var legend = state.cardsById[deck.legendId];
     var champion = state.cardsById[deck.championId];
@@ -3583,17 +3744,6 @@
     }
   }
 
-  function checkForSharedDeckInUrl() {
-    var params = new URLSearchParams(window.location.search);
-    var code = params.get("deck");
-    if (!code) return false;
-    var payload = decodeDeckShare(code);
-    if (!payload) return false;
-    state.sharedDeck = payload;
-    state.route = "shared";
-    return true;
-  }
-
   // Prices come from a daily-refreshed Supabase table (see
   // scripts/price-scraper), not the card data bundle -- fetch once at
   // startup and merge onto the already-loaded cards, then re-render so
@@ -3615,22 +3765,19 @@
     wireShell();
     wireAuth();
     loadCardPrices();
-    var hadShared = checkForSharedDeckInUrl();
-    if (!hadShared) {
-      // A bare "/" always resolves to home via pathToView, which would
-      // otherwise shadow an old-style "/#view" bookmark/link before its hash
-      // ever gets consulted -- so check that legacy hash case first.
-      var legacyHash = (window.location.hash || "").replace("#", "");
-      var v;
-      if ((window.location.pathname === "/" || window.location.pathname === "") && VIEWS.indexOf(legacyHash) !== -1) {
-        v = legacyHash;
-      } else {
-        v = pathToView(window.location.pathname) || "home";
-      }
-      state.route = v;
-      var path = viewToPath(v);
-      if (window.location.pathname !== path || window.location.hash) window.history.replaceState({ view: v }, "", path);
+    // A bare "/" always resolves to home via pathToView, which would
+    // otherwise shadow an old-style "/#view" bookmark/link before its hash
+    // ever gets consulted -- so check that legacy hash case first.
+    var legacyHash = (window.location.hash || "").replace("#", "");
+    var v;
+    if ((window.location.pathname === "/" || window.location.pathname === "") && VIEWS.indexOf(legacyHash) !== -1) {
+      v = legacyHash;
+    } else {
+      v = pathToView(window.location.pathname) || "home";
     }
+    state.route = v;
+    var path = viewToPath(v);
+    if (window.location.pathname !== path || window.location.hash) window.history.replaceState({ view: v }, "", path);
     render();
   }
 
