@@ -2089,10 +2089,22 @@
 
     var battlefieldPool = state.cards.filter(function (c) { return c.type === "Battlefield"; });
 
+    // Buildability (do you actually own enough of every card) is only
+    // meaningful once the list itself is legal -- a deck that's still
+    // 1/40 built would just show a confusing, ever-changing shortfall.
+    var buildability = legal ? computeBuildability(deck) : null;
+    var missingCount = buildability ? buildability.missing.reduce(function (s, m) { return s + m.short; }, 0) : 0;
+
     var html = '<div>';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
       '<input type="text" id="deck-name-input" value="' + escapeHtml(deck.name) + '" title="Click to rename" style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;border:none;border-bottom:2px dashed var(--accent);background:var(--surface-raised);border-radius:6px 6px 0 0;padding:4px 10px;max-width:340px;color:inherit;">' +
+      '<span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
       '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Tournament legal" : issues.filter(function(i){return !i.ok;}).length + " issue(s)") + "</span>" +
+      (buildability
+        ? '<span class="pill ' + (buildability.buildable ? "good" : "warn") + '">' + (buildability.buildable ? "All cards owned" : missingCount + (missingCount === 1 ? " card missing" : " cards missing")) + "</span>" +
+          (buildability.buildable ? "" : '<button class="btn small ghost" data-find-who-has>Find who has these</button>')
+        : "") +
+      "</span>" +
       "</div>";
     html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' + escapeHtml(legend.name) + " · Champion: " + escapeHtml(champion.name) + " · " + domainChips(deck.domains) +
       ' <button class="btn ghost small" data-export-deck>Export</button></p>';
@@ -2255,14 +2267,6 @@
       html += '<div><h3>Issues</h3><div class="legality-list">' + issues.filter(function (i) { return !i.ok; }).map(function (i) {
         return '<div class="leg-item bad"><span class="li-icon">✕</span><span class="li-text"><b>' + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
       }).join("") + "</div></div>";
-    }
-
-    var buildability = computeBuildability(deck);
-    if (buildability.missing.length) {
-      html += '<div><h3>Missing from collection</h3><div class="legality-list">' + buildability.missing.map(function (m) {
-        return '<div class="leg-item bad"><span class="li-icon">✕</span><span class="li-text"><b>' + escapeHtml(m.name) + "</b> — own " + m.owned + " / need " + m.needed + "</span></div>";
-      }).join("") +
-        '</div><button class="btn small ghost" style="margin-top:8px;" data-find-who-has>Find who has these</button></div>';
     }
 
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn danger" data-delete-deck>Delete deck</button></div>';
