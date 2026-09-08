@@ -61,10 +61,18 @@
 
   function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
-  // Battlefield card art is scanned landscape (rotated 90deg from every
-  // other card type), so it needs a matching rotation wherever we render it
-  // in a portrait-shaped slot, or it shows up sideways and cropped.
-  function isLandscapeCard(c) { return !!c && c.type === "Battlefield"; }
+  // Battlefield card art (and a couple of Battlefield-shaped tokens, like
+  // Baron Pit and Brush) is scanned landscape, so it needs a matching
+  // rotation wherever we render it in a portrait-shaped slot, or it shows up
+  // sideways/upside-down and cropped. The CDN filename encodes the source
+  // image's actual pixel dimensions (e.g. "...-1039x744.png"), which is a
+  // more reliable landscape signal than card type alone.
+  function isLandscapeCard(c) {
+    if (!c) return false;
+    if (c.type === "Battlefield") return true;
+    var m = c.imageUrl && /-(\d+)x(\d+)\.\w+$/.exec(c.imageUrl);
+    return !!m && Number(m[1]) > Number(m[2]);
+  }
 
   function safeParse(str, fallback) {
     try { var v = JSON.parse(str); return v === undefined ? fallback : v; }
