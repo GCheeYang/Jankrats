@@ -671,6 +671,8 @@
   function deckCardHtml(d) {
     var issues = computeLegality(d);
     var legal = issues.every(function (i) { return i.ok; });
+    var buildability = legal ? computeBuildability(d) : null;
+    var badgeLabel = !legal ? "Incomplete" : buildability.buildable ? "Ready" : "Missing cards";
     var legend = d.legendId ? state.cardsById[d.legendId] : null;
     var champion = d.championId ? state.cardsById[d.championId] : null;
     var art = legend || champion;
@@ -686,7 +688,7 @@
       "</div>" +
       '<div class="deck-card-body">' +
       '<div class="deck-card-badges">' +
-      '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Ready" : "Incomplete") + "</span>" +
+      '<span class="pill ' + (badgeLabel === "Ready" ? "good" : "warn") + '">' + badgeLabel + "</span>" +
       (d.domains || []).map(domainChip).join("") +
       "</div>" +
       '<div class="deck-card-title">' + escapeHtml(d.name || "Unnamed deck") + "</div>" +
@@ -702,12 +704,14 @@
   function deckRowHtml(d) {
     var issues = computeLegality(d);
     var legal = issues.every(function (i) { return i.ok; });
+    var buildability = legal ? computeBuildability(d) : null;
+    var badgeLabel = !legal ? "Incomplete" : buildability.buildable ? "Legal" : "Missing cards";
     return '<div class="deck-row" data-open-deck="' + d.id + '">' +
       '<div class="drn">' + escapeHtml(d.name || "Unnamed deck") + "</div>" +
       '<div class="drdomains">' + (d.domains || []).map(domainChip).join("") + "</div>" +
       '<div class="drspacer"></div>' +
       '<div class="drmeta">' + mainDeckCount(d) + "/" + RULES.mainDeckSize + " main</div>" +
-      '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Legal" : "Incomplete") + "</span>" +
+      '<span class="pill ' + (badgeLabel === "Legal" ? "good" : "warn") + '">' + badgeLabel + "</span>" +
       "</div>";
   }
 
@@ -1641,6 +1645,45 @@
     return issues;
   }
 
+  // Whether the player physically owns enough copies to put this deck
+  // together, as opposed to computeLegality's "is the list itself valid"
+  // check. Runes are the one wrinkle: the builder collapses every non-
+  // Showcase reprint of a domain's rune into one representative tile (see
+  // runeNormalGroupIds), so a player could easily own a different
+  // printing than deck.runes happens to point at -- ownership for those
+  // is summed across the whole reprint group instead of the one id.
+  function buildRequirements(deck) {
+    var reqs = {};
+    function addReq(cardId, qty) {
+      var c = state.cardsById[cardId];
+      if (!c || !qty) return;
+      var ids = [cardId];
+      if (c.type === "Rune" && c.rarity !== "Showcase") {
+        var domain = (c.domains || [])[0];
+        if (domain) ids = runeNormalGroupIds(domain);
+      }
+      var key = ids.slice().sort().join("|");
+      if (!reqs[key]) reqs[key] = { ids: ids, needed: 0, name: c.name };
+      reqs[key].needed += qty;
+    }
+    if (deck.legendId) addReq(deck.legendId, 1);
+    (deck.main || []).forEach(function (e) { addReq(e.cardId, e.qty); });
+    Object.keys(deck.runes || {}).forEach(function (cid) { addReq(cid, deck.runes[cid]); });
+    (deck.battlefields || []).forEach(function (id) { addReq(id, 1); });
+    (deck.sideboard || []).forEach(function (e) { addReq(e.cardId, e.qty); });
+    return Object.keys(reqs).map(function (k) { return reqs[k]; });
+  }
+
+  function computeBuildability(deck) {
+    var missing = [];
+    buildRequirements(deck).forEach(function (r) {
+      var owned = r.ids.reduce(function (s, id) { return s + getOwned(id) + getOwnedFoil(id); }, 0);
+      if (owned < r.needed) missing.push({ name: r.name, needed: r.needed, owned: owned, short: r.needed - owned });
+    });
+    missing.sort(function (a, b) { return b.short - a.short; });
+    return { buildable: !missing.length, missing: missing };
+  }
+
   function cardDomainsSubset(cardDomains, legendDomains) {
     if (!cardDomains || !cardDomains.length) return true; // colorless
     if (!legendDomains) return false;
@@ -2189,6 +2232,13 @@
     if (!legal) {
       html += '<div><h3>Issues</h3><div class="legality-list">' + issues.filter(function (i) { return !i.ok; }).map(function (i) {
         return '<div class="leg-item bad"><span class="li-icon">✕</span><span class="li-text"><b>' + escapeHtml(i.label) + "</b>" + (i.detail ? " — " + escapeHtml(i.detail) : "") + "</span></div>";
+      }).join("") + "</div></div>";
+    }
+
+    var buildability = computeBuildability(deck);
+    if (buildability.missing.length) {
+      html += '<div><h3>Missing from collection</h3><div class="legality-list">' + buildability.missing.map(function (m) {
+        return '<div class="leg-item bad"><span class="li-icon">✕</span><span class="li-text"><b>' + escapeHtml(m.name) + "</b> — own " + m.owned + " / need " + m.needed + "</span></div>";
       }).join("") + "</div></div>";
     }
 
