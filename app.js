@@ -320,7 +320,7 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["home", "cards", "collection", "wanted", "decks", "friends", "dashboard", "profile", "shared"];
+  var VIEWS = ["home", "cards", "tokens", "collection", "wanted", "decks", "friends", "dashboard", "profile", "shared"];
 
   // Maps a route name to/from a clean URL path, e.g. "collection" <->
   // "/collection", with "home" living at the bare root "/".
@@ -369,6 +369,7 @@
     if (state.route === "home") renderHomeView();
     if (state.route === "dashboard") renderDashboard();
     if (state.route === "cards") renderCardsView();
+    if (state.route === "tokens") renderTokensView();
     if (state.route === "collection") renderCollectionView();
     if (state.route === "wanted") renderWantedView();
     if (state.route === "friends") renderFriendsView();
@@ -704,7 +705,8 @@
 
   function renderCardsView() {
     var el = document.getElementById("view-cards");
-    var list = filteredCards(cardsFilterState);
+    // Tokens aren't cards you draft or own — they live on their own tab.
+    var list = filteredCards(cardsFilterState).filter(function (c) { return c.type !== "Token"; });
     list = sortCards(list, cardsFilterState.sort);
     var total = list.length;
     var shown = Math.min(cardsFilterState.limit || CARDS_PAGE_SIZE, total);
@@ -796,6 +798,32 @@
       }
     }, { rootMargin: "400px 0px" });
     io.observe(sentinel);
+  }
+
+  var tokensFilterState = { q: "" };
+
+  function renderTokensView() {
+    var el = document.getElementById("view-tokens");
+    var q = tokensFilterState.q.toLowerCase();
+    var list = state.cards.filter(function (c) {
+      return c.type === "Token" && (!q || (c.name + " " + (c.text || "")).toLowerCase().indexOf(q) !== -1);
+    }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+
+    var html = '<div class="view-head"><div><h1>Tokens</h1><p>Reference art for the tokens card effects create — not cards you draft, own, or add to a deck.</p></div></div>';
+    html += '<div class="toolbar">' + field("Search", '<input type="search" id="tok-q" placeholder="Name…" value="' + escapeHtml(tokensFilterState.q) + '">') + "</div>";
+
+    if (!list.length) {
+      html += '<div class="empty-state"><h3>No tokens match</h3><p>Try clearing the search.</p></div>';
+    } else {
+      html += '<div class="card-grid">' + list.map(cardTileHtml).join("") + "</div>";
+    }
+
+    el.innerHTML = html;
+    var qInput = el.querySelector("#tok-q");
+    if (qInput) qInput.addEventListener("input", function () { tokensFilterState.q = qInput.value; rerenderSoft(el, renderTokensView); });
+    el.querySelectorAll("[data-card-id]").forEach(function (t) {
+      t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
+    });
   }
 
   // avoid losing focus/caret on every keystroke: only re-render the grid portion
