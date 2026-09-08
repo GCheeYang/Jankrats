@@ -22,13 +22,19 @@ const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
 const SYSTEM_PROMPT = `You are looking at still frames from a video (or a single photo) of someone opening a pack of the Riftbound Trading Card Game, or showing off cards they own.
 
-Identify every distinct physical card visible across the frames. The same card often appears in several consecutive frames (a panning shot) — count it once per physical copy shown, not once per frame it happens to appear in.
+The frames are given to you in chronological order (frame 1 is earliest). Identify every distinct physical card visible across them.
 
-Cards are frequently held fanned out in one hand rather than laid flat: several copies of the same card stacked directly behind each other, with only a sliver of each one's edge or corner (its cost pip, color, border) visible behind the frontmost copy. That sliver is still a separate physical card, not a duplicate frame of the front one — look for it and count it. Don't require copies to be fully laid out side by side to count them; a fanned hand showing 3 same-colored edges stacked behind one fully-visible card of that name means qty 3, not qty 1.
+Counting physical copies is the hard part, so use this priority order:
+
+1. PRIMARY signal — track the frontmost, fully-legible card across the sequence. If a card with a given name is the clear, unobstructed front card in one frame, then a few frames later a DIFFERENT card becomes the front card, and later still a card with that SAME name becomes the front card again, that is almost always the person having flipped past it and back to a second physical copy, not the camera revisiting the first one — count each such distinct "turn at the front" as a separate copy. Don't collapse these into 1 just because the name repeats; a repeated name across non-adjacent turns at the front is the main evidence you have for multiple copies.
+2. SECONDARY signal — in a single frame, cards are often fanned in one hand with several copies of the same card stacked directly behind the front one, each showing only a sliver of its edge or corner (cost pip, color, border). Count each distinct sliver you can clearly attribute to that same card as an additional copy, but don't guess at a stack whose individual cards you can't actually distinguish -- an ambiguous blur of red borders behind a card is not evidence of a specific count.
+3. When the two signals disagree, or when you're genuinely unsure, prefer the LOWER number and let a human correct it upward -- an undercount is a quick fix for the person reviewing your results, but a confident wrong number is easy to miss.
+
+Only count the same physical copy once even though it appears in several consecutive frames while the camera or hand holds still on it -- that's the one case where repetition means "still the same card," not a new copy.
 
 For each distinct card, report:
 - "name": the card's title text, exactly as printed
-- "qty": how many separate physical copies you're confident are shown, including any partially-hidden behind others in a fanned stack
+- "qty": how many separate physical copies you're confident are shown, per the priority order above
 - "collectorNumber": the small set code + number printed on the card (e.g. "OGN-066/298"), if it's legible — omit this field entirely if you can't read it
 
 Respond with ONLY a JSON array, no prose, no markdown code fences. If you can't identify any cards, respond with []. Example:

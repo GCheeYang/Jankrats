@@ -3242,7 +3242,7 @@
     if (!JVBackend.isConfigured()) {
       html += '<div class="callout" style="margin-bottom:14px;">Card scanning needs the backend connected (see SETUP.md) plus an <code>identify-cards</code> Edge Function deployed with an Anthropic API key.</div>';
     } else {
-      html += '<div class="callout" style="margin-bottom:14px;">Works best with good lighting — pan smoothly and pause on each card for a beat (four-tenths of a second or so) rather than flipping instantly through the stack. Videos are capped at 60 seconds.</div>';
+      html += '<div class="callout" style="margin-bottom:14px;">Works best with good lighting. Show one card\'s full face at a time and pause on it for a beat (four-tenths of a second or so) — duplicates of the same card are easiest to count correctly when each copy gets its own moment in front, rather than fanned in a hand where only a sliver of the ones behind is visible. Videos are capped at 60 seconds.</div>';
     }
 
     html += '<div style="margin-bottom:10px;">' +
@@ -3408,7 +3408,11 @@
         var idx = 0;
         var canvas = document.createElement("canvas");
         var ctx = canvas.getContext("2d");
-        var maxW = 900;
+        // Counting stacked/fanned duplicate copies depends on reading a
+        // thin sliver of a card's edge behind the front one -- worth a
+        // bit more resolution and JPEG quality than a plain "read the
+        // name" frame would need, well within Claude's per-image limits.
+        var maxW = 1100;
 
         function grabAt() {
           if (done) return;
@@ -3423,7 +3427,7 @@
           canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
           try {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            frames.push(canvas.toDataURL("image/jpeg", 0.7));
+            frames.push(canvas.toDataURL("image/jpeg", 0.85));
           } catch (e) { /* skip an unreadable frame rather than aborting the whole scan */ }
           idx++;
           grabAt();
