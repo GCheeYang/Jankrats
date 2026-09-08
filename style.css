@@ -389,7 +389,6 @@ textarea { resize: vertical; min-height: 90px; }
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-left: 4px solid var(--d-none);
   border-radius: 10px;
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -757,6 +756,18 @@ textarea { resize: vertical; min-height: 90px; }
 .deck-pick-grid .card-tile-wrap.in-deck { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .deck-pick-grid .card-tile-wrap.at-limit { opacity: 0.45; }
 .deck-pick-grid .card-tile-wrap.at-limit .card-tile { cursor: not-allowed; }
+
+/* Quantity badge for deck-picker tiles — bigger and higher-contrast than the
+   plain "owned in collection" pill, since it needs to read at a glance. */
+.qty-badge {
+  top: 8px !important; right: 8px !important;
+  background: var(--accent) !important; color: var(--accent-ink) !important;
+  font-size: 13px !important; font-weight: 800 !important;
+  min-width: 22px; text-align: center;
+  padding: 2px 7px !important;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.45);
+  z-index: 1;
+}
 
 .legend-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; }
 .legend-card {

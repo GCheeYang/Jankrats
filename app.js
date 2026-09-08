@@ -773,12 +773,11 @@
   }
 
   function cardTileHtml(c) {
-    var primaryDomain = (c.domains && c.domains[0]) || null;
     var owned = getOwned(c.id) + getOwnedFoil(c.id);
     var priceLabel = (c.price && c.price.en !== null && c.price.en !== undefined)
       ? formatUsd(c.price.en) + " ↗"
       : "Price ↗";
-    return '<div class="card-tile-wrap" style="border-left-color:' + domainColor(primaryDomain) + '">' +
+    return '<div class="card-tile-wrap">' +
       '<button class="card-tile" data-card-id="' + c.id + '" data-cost="' + (c.cost !== null && c.cost !== undefined ? c.cost : "") + '" data-type="' + escapeHtml(c.type || "") + '">' +
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
       (c.imageUrl ? '<div class="ct-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
@@ -899,7 +898,6 @@
     var owned = entry ? (entry.qty || 0) : 0;
     var foil = entry ? (entry.foil || 0) : 0;
     var totalOwned = owned + foil;
-    var primaryDomain = (c.domains && c.domains[0]) || null;
     var steppersHtml = editable
       ? '<div class="coll-stepper-row"><span class="csr-label">Owned</span><div class="stepper" data-cid="' + c.id + '" data-kind="qty">' +
         '<button data-step="-1">−</button><span class="val">' + owned + "</span><button data-step=\"1\">+</button></div></div>" +
@@ -907,7 +905,7 @@
         '<button data-step="-1">−</button><span class="val">' + foil + "</span><button data-step=\"1\">+</button></div></div>"
       : '<div class="coll-stepper-row"><span class="csr-label">Owned</span><span class="val">' + owned + "</span></div>" +
         '<div class="coll-stepper-row"><span class="csr-label">Foil</span><span class="val">' + foil + "</span></div>";
-    return '<div class="coll-tile" data-card-id="' + c.id + '" style="border-left:4px solid ' + domainColor(primaryDomain) + ';">' +
+    return '<div class="coll-tile" data-card-id="' + c.id + '">' +
       '<div class="ct-img" data-open-card="' + c.id + '">' +
       (c.imageUrl ? '<img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
       '<span class="coll-owned-badge" style="' + (totalOwned ? "" : "display:none;") + '">×' + totalOwned + "</span>" +
@@ -1626,11 +1624,11 @@
     var el = document.getElementById("view-decks");
     var deck = currentDeck();
 
-    var html = '<div class="view-head"><div><h1>Deck builder</h1><p>Build against real Riftbound construction rules: one Legend, one Chosen Champion, a 40-card main deck, a 12-card rune deck, and 3 battlefields.</p></div>';
+    var html = "";
     if (!deck) {
-      html += '<div style="display:flex;gap:8px;"><button class="btn" data-action="import-code">Import code</button><button class="btn primary" data-action="new-deck">+ New deck</button></div>';
+      html += '<div class="view-head"><div><h1>Deck builder</h1><p>Build against real Riftbound construction rules: one Legend, one Chosen Champion, a 40-card main deck, a 12-card rune deck, and 3 battlefields.</p></div>' +
+        '<div style="display:flex;gap:8px;"><button class="btn" data-action="import-code">Import code</button><button class="btn primary" data-action="new-deck">+ New deck</button></div></div>';
     }
-    html += "</div>";
 
     if (!deck) {
       html += '<div class="deck-row-list" style="margin-bottom:20px;">';
@@ -1848,10 +1846,9 @@
   // overrides it to the domain name since rune counts are tracked per-domain,
   // not per specific rune printing.
   function deckPickTileHtml(c, badgeText, disabled, key) {
-    var primaryDomain = (c.domains && c.domains[0]) || null;
-    return '<div class="card-tile-wrap' + (badgeText ? " in-deck" : "") + (disabled ? " at-limit" : "") + '" style="border-left-color:' + domainColor(primaryDomain) + '" data-card-id="' + escapeHtml(key || c.id) + '">' +
+    return '<div class="card-tile-wrap' + (badgeText ? " in-deck" : "") + (disabled ? " at-limit" : "") + '" data-card-id="' + escapeHtml(key || c.id) + '">' +
       '<button class="card-tile" type="button" title="Click to add, right-click to remove">' +
-      (badgeText ? '<span class="ct-owned">' + escapeHtml(badgeText) + "</span>" : "") +
+      (badgeText ? '<span class="ct-owned qty-badge">' + escapeHtml(badgeText) + "</span>" : "") +
       (c.imageUrl ? '<div class="ct-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</span></div>" +
       '<div class="ct-meta"><span>' + (c.cost === null || c.cost === undefined ? escapeHtml(c.type || "") : c.cost + "⚡") + "</span>" +
@@ -1888,7 +1885,7 @@
 
     var html = '<div>';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">' +
-      '<input type="text" id="deck-name-input" value="' + escapeHtml(deck.name) + '" style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;border:none;background:none;padding:2px 0;max-width:340px;">' +
+      '<input type="text" id="deck-name-input" value="' + escapeHtml(deck.name) + '" title="Click to rename" style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;border:none;border-bottom:2px dashed var(--accent);background:var(--surface-raised);border-radius:6px 6px 0 0;padding:4px 10px;max-width:340px;color:inherit;">' +
       '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Tournament legal" : issues.filter(function(i){return !i.ok;}).length + " issue(s)") + "</span>" +
       "</div>";
     html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' + escapeHtml(legend.name) + " · Champion: " + escapeHtml(champion.name) + " · " + domainChips(deck.domains) +
