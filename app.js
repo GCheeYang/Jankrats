@@ -3242,7 +3242,7 @@
     if (!JVBackend.isConfigured()) {
       html += '<div class="callout" style="margin-bottom:14px;">Card scanning needs the backend connected (see SETUP.md) plus an <code>identify-cards</code> Edge Function deployed with an Anthropic API key.</div>';
     } else {
-      html += '<div class="callout" style="margin-bottom:14px;">Works best with good lighting and each card held steady/in-focus for at least half a second. Videos are capped at 60 seconds.</div>';
+      html += '<div class="callout" style="margin-bottom:14px;">Works best with good lighting — pan smoothly and pause on each card for a beat (a third of a second or so) rather than flipping instantly through the stack. Videos are capped at 60 seconds.</div>';
     }
 
     html += '<div style="margin-bottom:10px;">' +
@@ -3367,8 +3367,18 @@
     });
   }
 
-  var SCAN_MAX_FRAMES = 16;
-  var SCAN_FRAME_INTERVAL_S = 0.8;
+  // MAX_FRAMES here matches the identify-cards Edge Function's own hard
+  // cap (supabase/functions/identify-cards/index.ts) so a longer video
+  // uses the full allowance instead of leaving it on the table. The
+  // interval was 0.8s, which on a real test video (~0.7s actually spent
+  // per card during a quick run-through) produced only ~9 evenly-spaced
+  // frames for 10 cards -- some frames landed on the same card twice
+  // (wasted) while others fell in the middle of a hand-flip (blurred),
+  // so a card held for less than ~0.8s could land between two samples
+  // and never get a clean frame at all. Halving the interval roughly
+  // halves the minimum hold time needed to guarantee a hit.
+  var SCAN_MAX_FRAMES = 20;
+  var SCAN_FRAME_INTERVAL_S = 0.35;
 
   // Grabs still frames at fixed intervals by seeking a hidden <video> and
   // reading each seeked position onto a canvas — no video-processing
