@@ -694,7 +694,6 @@
       '<div class="deck-card-body">' +
       '<div class="deck-card-badges">' +
       '<span class="pill ' + (badgeLabel === "Ready" ? "good" : "warn") + '">' + badgeLabel + "</span>" +
-      (d.domains || []).map(domainChip).join("") +
       "</div>" +
       '<div class="deck-card-title">' + escapeHtml(d.name || "Unnamed deck") + "</div>" +
       (subtitle ? '<div class="deck-card-sub">' + escapeHtml(subtitle) + "</div>" : "") +
@@ -970,6 +969,24 @@
   }
 
   function closeModal() { document.getElementById("modal-root").innerHTML = ""; }
+
+  // In-app replacement for window.confirm -- a native browser dialog
+  // reads as jarring next to the rest of the UI (different chrome,
+  // pinned to the top of the viewport) and can't be styled or tested
+  // the same way as everything else here.
+  function openConfirmModal(opts) {
+    var root = document.getElementById("modal-root");
+    root.innerHTML = '<div class="modal-backdrop" id="confirm-modal"><div class="modal">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">' + escapeHtml(opts.title || "Are you sure?") + '</h2><button class="modal-close" data-close>&times;</button></div>' +
+      '<p style="color:var(--ink-soft);margin-bottom:18px;">' + escapeHtml(opts.message || "") + "</p>" +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+      '<button class="btn ghost" data-cancel>Cancel</button>' +
+      '<button class="btn ' + (opts.danger ? "danger" : "primary") + '" data-confirm>' + escapeHtml(opts.confirmLabel || "Confirm") + "</button>" +
+      "</div></div></div>";
+    root.querySelectorAll("[data-close],[data-cancel]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#confirm-modal").addEventListener("click", function (e) { if (e.target.id === "confirm-modal") closeModal(); });
+    root.querySelector("[data-confirm]").addEventListener("click", function () { closeModal(); opts.onConfirm(); });
+  }
 
   /* ================================================================
      RENDER: collection
@@ -1839,7 +1856,15 @@
       el.querySelectorAll("[data-del]").forEach(function (r) {
         r.addEventListener("click", function (e) {
           e.stopPropagation();
-          if (window.confirm("Delete this deck? This can't be undone.")) deleteDeck(r.getAttribute("data-del"));
+          var id = r.getAttribute("data-del");
+          var target = state.decks.filter(function (d) { return d.id === id; })[0];
+          openConfirmModal({
+            title: "Delete deck?",
+            message: "Delete \"" + (target ? target.name : "this deck") + "\"? This can't be undone.",
+            confirmLabel: "Delete",
+            danger: true,
+            onConfirm: function () { deleteDeck(id); }
+          });
         });
       });
     } else {
@@ -2410,7 +2435,13 @@
 
     host.querySelectorAll("[data-delete-deck]").forEach(function (b) {
       b.addEventListener("click", function () {
-        if (window.confirm("Delete \"" + deck.name + "\"? This can't be undone.")) deleteDeck(deck.id);
+        openConfirmModal({
+          title: "Delete deck?",
+          message: "Delete \"" + deck.name + "\"? This can't be undone.",
+          confirmLabel: "Delete",
+          danger: true,
+          onConfirm: function () { deleteDeck(deck.id); }
+        });
       });
     });
   }

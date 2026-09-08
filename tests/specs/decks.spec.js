@@ -14,14 +14,26 @@ test.describe('decks', () => {
   });
 
   test('deleting a deck removes it after confirmation', async ({ page }) => {
-    page.on('dialog', (d) => d.accept());
     await page.goto('/decks');
     await page.click('[data-action="new-deck"]');
     await page.click('[data-back-to-list]');
     await expect(page.locator('.deck-card')).toHaveCount(1);
     await page.click('[data-del]');
+    await expect(page.locator('#confirm-modal')).toBeVisible();
+    await page.click('#confirm-modal [data-confirm]');
     await expect(page.locator('.deck-card')).toHaveCount(0);
     await expect(page.locator('#view-decks')).toContainText('No decks yet');
+  });
+
+  test('deleting a deck can be cancelled from the confirm modal', async ({ page }) => {
+    await page.goto('/decks');
+    await page.click('[data-action="new-deck"]');
+    await page.click('[data-back-to-list]');
+    await expect(page.locator('.deck-card')).toHaveCount(1);
+    await page.click('[data-del]');
+    await page.click('#confirm-modal [data-cancel]');
+    await expect(page.locator('#confirm-modal')).toHaveCount(0);
+    await expect(page.locator('.deck-card')).toHaveCount(1);
   });
 
   test('a new deck also shows up on the dashboard\'s recent decks and stat tile', async ({ page }) => {
