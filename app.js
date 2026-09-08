@@ -2007,7 +2007,19 @@
         return deckPickTileHtml(c, qty ? "×" + qty : null, atLimit && !qty);
       }).join("") + "</div>";
     } else if (state.builder.tab === "tokens") {
-      var tokenPool = state.cards.filter(isTokenCard).sort(function (a, b) { return a.name.localeCompare(b.name); });
+      // Riot reprints the same token in later sets (a fresh asset hash even
+      // when the art is identical) the same way Runes get reprinted — but
+      // unlike Runes, a token here is pure reference art with no quantity
+      // to track per printing, so show one tile per unique name rather than
+      // every set's reprint of it. Prefer whichever printing has price data.
+      var tokensByName = {};
+      state.cards.filter(isTokenCard).forEach(function (c) {
+        var existing = tokensByName[c.name];
+        var hasPrice = !!(c.price && c.price.en !== null && c.price.en !== undefined);
+        var existingHasPrice = !!(existing && existing.price && existing.price.en !== null && existing.price.en !== undefined);
+        if (!existing || (hasPrice && !existingHasPrice)) tokensByName[c.name] = c;
+      });
+      var tokenPool = Object.keys(tokensByName).sort().map(function (n) { return tokensByName[n]; });
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Reference art for tokens card effects create — not part of your deck, so they don\'t count toward anything above.</p>';
       html += '<div class="card-grid" data-token-grid>' + tokenPool.map(cardTileHtml).join("") + "</div>";
       if (!tokenPool.length) html += '<div class="empty-state"><h3>No tokens yet</h3><p>Import more cards to see token reference art.</p></div>';
