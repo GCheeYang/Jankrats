@@ -246,8 +246,29 @@
     rebuildCardIndex();
     state.collection = loadJSON(KEYS.collection, {});
     state.decks = loadJSON(KEYS.decks, []);
+    if (sanitizeDeckRunes(state.decks)) persistDecks();
     state.wanted = loadJSON(KEYS.wanted, []);
     state.profile = loadJSON(KEYS.profile, { name: "" });
+  }
+
+  // Rune counts used to be tracked per-domain ({Calm: 6, Body: 6}); a deck
+  // saved before the switch to per-printing tracking ({cardId: 6}) still has
+  // those old domain-keyed entries sitting in its data. They don't match any
+  // rendered rune tile (so no badge ever shows for them) but runeCount()
+  // still adds them up, which silently inflates the total toward the 12-rune
+  // cap — the deck can read "12/12" while every visible tile reads 0 or 1.
+  // Strip any key that isn't an actual Rune card id so the total only ever
+  // reflects runes the player can see and edit.
+  function sanitizeDeckRunes(decks) {
+    var changed = false;
+    (decks || []).forEach(function (d) {
+      if (!d.runes) return;
+      Object.keys(d.runes).forEach(function (k) {
+        var rc = state.cardsById[k];
+        if (!rc || rc.type !== "Rune") { delete d.runes[k]; changed = true; }
+      });
+    });
+    return changed;
   }
 
   function persistCards() {
