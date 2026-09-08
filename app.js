@@ -899,7 +899,7 @@
       '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);display:flex;align-items:center;gap:18px;flex-wrap:wrap;">' +
       trackingHtml +
       '<button class="btn small ' + (isWanted(cardId) ? "ghost" : "primary") + '" id="cd-toggle-wanted" data-toggle-wanted="' + cardId + '">' +
-      (isWanted(cardId) ? "★ On your wanted list" : "☆ Add to wanted list") + "</button>" +
+      (isWanted(cardId) ? "★ On your wishlist" : "☆ Add to wishlist") + "</button>" +
       "</div>" +
       "</div></div>";
     document.getElementById("modal-root").innerHTML = html;
@@ -936,7 +936,7 @@
     if (wantBtn) wantBtn.addEventListener("click", function () {
       toggleWanted(cardId);
       wantBtn.className = "btn small " + (isWanted(cardId) ? "ghost" : "primary");
-      wantBtn.textContent = isWanted(cardId) ? "★ On your wanted list" : "☆ Add to wanted list";
+      wantBtn.textContent = isWanted(cardId) ? "★ On your wishlist" : "☆ Add to wishlist";
       if (state.route === "wanted") renderWantedView();
     });
   }
@@ -1160,7 +1160,7 @@
     var el = document.getElementById("view-wanted");
     var cards = state.wanted.map(function (id) { return state.cardsById[id]; }).filter(Boolean);
 
-    var html = '<div class="view-head"><div><h1>Wanted List</h1><p>Search for cards you’re after, add them here, then see which friends — or anyone else — already own the whole list.</p></div></div>';
+    var html = '<div class="view-head"><div><h1>Wishlist</h1><p>Search for cards you’re after, add them here, then see which friends — or anyone else — already own the whole list.</p></div></div>';
 
     html += '<div class="toolbar">' +
       field("Search cards to add", '<input type="search" id="wt-q" placeholder="Card name…" value="' + escapeHtml(state.wantedQuery) + '">') +

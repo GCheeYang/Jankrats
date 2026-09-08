@@ -22,7 +22,7 @@ test.describe('top nav', () => {
     const cases = [
       ['cards', 'Explore Cards', '/cards'],
       ['collection', 'Collection', '/collection'],
-      ['wanted', 'Wanted', '/wanted'],
+      ['wanted', 'Wishlist', '/wanted'],
       ['decks', 'Decks', '/decks'],
       ['friends', 'Friends', '/friends'],
       ['home', 'Home', '/'],
