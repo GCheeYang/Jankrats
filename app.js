@@ -686,7 +686,7 @@
       "</div>" +
       '<div class="deck-card-body">' +
       '<div class="deck-card-badges">' +
-      '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Ready" : issues.filter(function (i) { return !i.ok; }).length + " issue(s)") + "</span>" +
+      '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Ready" : "Incomplete") + "</span>" +
       (d.domains || []).map(domainChip).join("") +
       "</div>" +
       '<div class="deck-card-title">' + escapeHtml(d.name || "Unnamed deck") + "</div>" +
@@ -707,7 +707,7 @@
       '<div class="drdomains">' + (d.domains || []).map(domainChip).join("") + "</div>" +
       '<div class="drspacer"></div>' +
       '<div class="drmeta">' + mainDeckCount(d) + "/" + RULES.mainDeckSize + " main</div>" +
-      '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Legal" : issues.filter(function(i){return !i.ok;}).length + " issue(s)") + "</span>" +
+      '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Legal" : "Incomplete") + "</span>" +
       "</div>";
   }
 
