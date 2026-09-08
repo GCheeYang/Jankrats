@@ -10,7 +10,7 @@
 
   var STORAGE_PREFIX = "jankvault:v1:";
   var KEYS = {
-    cards: STORAGE_PREFIX + "cards",
+    cardExtras: STORAGE_PREFIX + "cardExtras",
     collection: STORAGE_PREFIX + "collection",
     decks: STORAGE_PREFIX + "decks",
     wanted: STORAGE_PREFIX + "wanted",
@@ -210,9 +210,20 @@
     state.cards.forEach(function (c) { state.cardsById[c.id] = c; });
   }
 
+  // The shipped card list (cards_data.js) is always the source of truth --
+  // it loads fresh every time rather than being frozen into localStorage,
+  // so a data fix (a corrected image URL, a new set) reaches every
+  // returning visitor immediately instead of being shadowed forever by
+  // whatever was cached on their first visit. The only thing persisted is
+  // "extra" cards a shared deck code referenced that aren't in our own
+  // database yet (see ingestSnapshotCards) -- and even those get dropped
+  // once/if a real printing with that id ships.
   function loadAll() {
-    state.cards = loadJSON(KEYS.cards, null) || (REAL_CARDS.length ? REAL_CARDS.slice() : DEMO_CARDS.slice());
-    if (!loadJSON(KEYS.cards, null)) saveJSON(KEYS.cards, state.cards);
+    var base = REAL_CARDS.length ? REAL_CARDS.slice() : DEMO_CARDS.slice();
+    var baseIds = {};
+    base.forEach(function (c) { baseIds[c.id] = true; });
+    var extras = loadJSON(KEYS.cardExtras, []).filter(function (c) { return c && c.id && !baseIds[c.id]; });
+    state.cards = base.concat(extras);
     rebuildCardIndex();
     state.collection = loadJSON(KEYS.collection, {});
     state.decks = loadJSON(KEYS.decks, []);
@@ -220,7 +231,11 @@
     state.profile = loadJSON(KEYS.profile, { name: "" });
   }
 
-  function persistCards() { saveJSON(KEYS.cards, state.cards); }
+  function persistCards() {
+    var baseIds = {};
+    (REAL_CARDS.length ? REAL_CARDS : DEMO_CARDS).forEach(function (c) { baseIds[c.id] = true; });
+    saveJSON(KEYS.cardExtras, state.cards.filter(function (c) { return !baseIds[c.id]; }));
+  }
   function persistCollection() { saveJSON(KEYS.collection, state.collection); }
   function persistWanted() { saveJSON(KEYS.wanted, state.wanted); }
   function persistDecks() {
@@ -1446,8 +1461,11 @@
     html += "<div>" + curveChartHtml(deck) + "</div>";
     if (Object.keys(deck.runes || {}).length) {
       html += '<div><h3>Runes (' + runeCount(deck) + ")</h3>";
-      Object.keys(deck.runes).forEach(function (d) {
-        html += '<div class="slot-line"><span class="sl-qty">' + deck.runes[d] + "×</span><span class=\"sl-name\">" + domainChip(d) + "</span></div>";
+      Object.keys(deck.runes).forEach(function (cid) {
+        var qty = deck.runes[cid];
+        if (!qty) return;
+        var rc = state.cardsById[cid];
+        html += '<div class="slot-line"><span class="sl-qty">' + qty + "×</span><span class=\"sl-name\">" + (rc ? escapeHtml(rc.name) + escapeHtml(variantLabel(rc)) : escapeHtml(cid)) + "</span></div>";
       });
       html += "</div>";
     }
@@ -1564,7 +1582,11 @@
     issues.push({ ok: copyOk, label: "Max " + RULES.maxCopies + " copies per card", detail: copyOk ? "" : copyOffenders.join(", ") + " over the limit" });
 
     var rCount = runeCount(deck);
-    var runeDomainsOk = Object.keys(deck.runes || {}).every(function (d) { return (deck.domains || []).indexOf(d) !== -1 || (deck.runes[d] || 0) === 0; });
+    var runeDomainsOk = Object.keys(deck.runes || {}).every(function (cid) {
+      if (!deck.runes[cid]) return true;
+      var rc = state.cardsById[cid];
+      return !!rc && cardDomainsSubset(rc.domains, deck.domains);
+    });
     issues.push({ ok: rCount === RULES.runeDeckSize && runeDomainsOk, label: "Rune deck is " + RULES.runeDeckSize + " cards", detail: rCount + " / " + RULES.runeDeckSize + (runeDomainsOk ? "" : " — runes must be from your Legend's domains") });
 
     var bfCount = (deck.battlefields || []).length;
@@ -1739,7 +1761,13 @@
     deck.legendId = legend.id;
     deck.domains = (legend.domains || []).slice();
     deck.runes = {};
-    deck.domains.forEach(function (d) { deck.runes[d] = 6; });
+    deck.domains.forEach(function (d) {
+      var pool = runesForDomain(d);
+      var common = pool.filter(function (c) { return c.rarity === "Common"; });
+      var ogn = common.filter(function (c) { return c.set === "OGN"; });
+      var def = ogn[0] || common[0] || pool[0];
+      if (def) deck.runes[def.id] = 6;
+    });
     state.builder.legendVariantPickName = null;
     persistDecks();
     renderBuilder();
@@ -1935,12 +1963,12 @@
       if (!pickPool.length) html += '<div class="empty-state"><h3>No cards in these domains</h3><p>Import more cards for ' + deck.domains.join("/") + ".</p></div>";
       else if (pickPoolFull.length > PICK_POOL_CAP) html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-top:8px;">Showing first ' + PICK_POOL_CAP + ' of ' + pickPoolFull.length + ' — use the search box above to narrow it down.</p>';
     } else if (state.builder.tab === "runes") {
-      html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Split ' + RULES.runeDeckSize + ' runes across your domains (a 6/6 split is standard) — any art works, the count is shared per domain. Click to add one, right-click to remove one.</p>';
+      html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Split ' + RULES.runeDeckSize + ' runes across your domains (a 6/6 split is standard) — each art tracks its own count. Click to add one, right-click to remove one.</p>';
+      var runeCapReached = runeCount(deck) >= RULES.runeDeckSize;
       html += '<div class="card-grid deck-pick-grid" data-pick-runes>' + deck.domains.map(function (d) {
-        var qty = deck.runes[d] || 0;
-        var atCap = runeCount(deck) >= RULES.runeDeckSize;
         return runesForDomain(d).map(function (rc) {
-          return deckPickTileHtml(rc, qty ? "×" + qty : null, atCap && !qty, d);
+          var qty = deck.runes[rc.id] || 0;
+          return deckPickTileHtml(rc, qty ? "×" + qty : null, runeCapReached && !qty);
         }).join("");
       }).join("") + "</div>";
     } else if (state.builder.tab === "battlefields") {
@@ -1997,8 +2025,11 @@
 
     if (Object.keys(deck.runes || {}).length) {
       html += '<div><h3>Runes (' + runeCount(deck) + ")</h3>";
-      Object.keys(deck.runes).forEach(function (d) {
-        html += '<div class="slot-line"><span class="sl-qty">' + deck.runes[d] + "×</span><span class=\"sl-name\">" + domainChip(d) + "</span></div>";
+      Object.keys(deck.runes).forEach(function (cid) {
+        var qty = deck.runes[cid];
+        if (!qty) return;
+        var rc = state.cardsById[cid];
+        html += '<div class="slot-line"><span class="sl-qty">' + qty + "×</span><span class=\"sl-name\">" + (rc ? escapeHtml(rc.name) + escapeHtml(variantLabel(rc)) : escapeHtml(cid)) + "</span></div>";
       });
       html += "</div>";
     }
@@ -2137,8 +2168,8 @@
         var wrap = e.target.closest("[data-card-id]");
         if (!wrap) return;
         if (runeCount(deck) >= RULES.runeDeckSize) { toast("Rune deck is already full (" + RULES.runeDeckSize + ")."); return; }
-        var d = wrap.getAttribute("data-card-id");
-        deck.runes[d] = (deck.runes[d] || 0) + 1;
+        var cid = wrap.getAttribute("data-card-id");
+        deck.runes[cid] = (deck.runes[cid] || 0) + 1;
         persistDecks();
         renderBuilder();
       });
@@ -2146,8 +2177,8 @@
         var wrap = e.target.closest("[data-card-id]");
         if (!wrap) return;
         e.preventDefault();
-        var d = wrap.getAttribute("data-card-id");
-        deck.runes[d] = Math.max(0, (deck.runes[d] || 0) - 1);
+        var cid = wrap.getAttribute("data-card-id");
+        deck.runes[cid] = Math.max(0, (deck.runes[cid] || 0) - 1);
         persistDecks();
         renderBuilder();
       });
