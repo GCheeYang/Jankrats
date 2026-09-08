@@ -3,7 +3,7 @@ const { test, expect } = require('../fixtures');
 test.describe('home page', () => {
   test('shows the hero with both action buttons (search bar lives in the top nav, not here)', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('.home-hero h1')).toContainText('Everything Riftbound');
+    await expect(page.locator('.home-hero h1')).toContainText('Track your bulk');
     await expect(page.locator('.home-hero-ctas [data-nav="cards"]')).toContainText('Trade / Search for Cards');
     await expect(page.locator('.home-hero-ctas [data-nav="collection"]')).toContainText('Add to Collection');
   });

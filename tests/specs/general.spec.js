@@ -52,7 +52,8 @@ test.describe('global search (top bar, next to the logo)', () => {
     await page.fill('#global-search', 'Abandoned Hall');
     await page.press('#global-search', 'Enter');
     await expect(page).toHaveURL(/\/cards$/);
-    await expect(page.locator('#cf-q')).toHaveValue('Abandoned Hall');
-    await expect(page.locator('#view-cards .card-tile')).toHaveCount(1);
+    const tiles = page.locator('#view-cards .card-tile');
+    await expect(tiles).toHaveCount(1);
+    await expect(tiles.first()).toContainText('Abandoned Hall');
   });
 });

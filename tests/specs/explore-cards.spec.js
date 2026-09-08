@@ -9,8 +9,10 @@ test.describe('explore cards', () => {
 
   test('search narrows the grid to matching cards', async ({ page }) => {
     await page.goto('/cards');
-    await page.fill('#cf-q', 'Abandoned Hall');
-    await page.waitForTimeout(200); // debounced re-render (rerenderSoft)
+    // The per-page search box was removed -- searching now only happens
+    // through the global top-bar search, which navigates to /cards.
+    await page.fill('#global-search', 'Abandoned Hall');
+    await page.press('#global-search', 'Enter');
     const tiles = page.locator('#view-cards .card-tile');
     await expect(tiles).toHaveCount(1);
     await expect(tiles.first()).toContainText('Abandoned Hall');
@@ -58,8 +60,8 @@ test.describe('explore cards', () => {
 
   test('regression: rotated Battlefield card art stays inside its tile (no overflow)', async ({ page }) => {
     await page.goto('/cards');
-    await page.fill('#cf-q', 'Abandoned Hall');
-    await page.waitForTimeout(200);
+    await page.fill('#global-search', 'Abandoned Hall');
+    await page.press('#global-search', 'Enter');
     const img = page.locator('#view-cards .card-tile .ct-img img.rot90').first();
     await expect(img).toHaveCount(1);
     const overflow = await img.evaluate((el) => {

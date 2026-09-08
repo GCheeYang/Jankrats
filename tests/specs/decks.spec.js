@@ -9,17 +9,18 @@ test.describe('decks', () => {
   test('"+ New deck" creates a deck and opens the builder', async ({ page }) => {
     await page.goto('/decks');
     await page.click('[data-action="new-deck"]');
-    await expect(page.locator('.deck-row')).toHaveCount(1);
     await expect(page.locator('#builder-host')).not.toBeEmpty();
+    await expect(page.locator('#builder-host')).toContainText('Choose a Legend');
   });
 
   test('deleting a deck removes it after confirmation', async ({ page }) => {
     page.on('dialog', (d) => d.accept());
     await page.goto('/decks');
     await page.click('[data-action="new-deck"]');
-    await expect(page.locator('.deck-row')).toHaveCount(1);
+    await page.click('[data-back-to-list]');
+    await expect(page.locator('.deck-card')).toHaveCount(1);
     await page.click('[data-del]');
-    await expect(page.locator('.deck-row')).toHaveCount(0);
+    await expect(page.locator('.deck-card')).toHaveCount(0);
     await expect(page.locator('#view-decks')).toContainText('No decks yet');
   });
 

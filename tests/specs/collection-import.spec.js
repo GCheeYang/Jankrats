@@ -13,11 +13,13 @@ test.describe('collection', () => {
     await expect(page.locator('#open-import-btn')).toBeVisible();
   });
 
-  test('Import cards button opens a modal with JSON selected by default', async ({ page }) => {
+  test('Import cards button opens a modal defaulting to Photo/Video, with JSON selected on the CSV/JSON tab', async ({ page }) => {
     await page.goto('/collection');
     await page.click('#open-import-btn');
     await expect(page.locator('#import-modal')).toBeVisible();
     await expect(page.locator('#import-modal h2')).toHaveText('Import to Collection');
+    await expect(page.locator('[data-import-method="scan"]')).toHaveClass(/active/);
+    await page.click('[data-import-method="text"]');
     await expect(page.locator('[data-tab2="json"]')).toHaveClass(/active/);
     await expect(page.locator('#import-schema')).toContainText('qty');
   });
@@ -25,6 +27,7 @@ test.describe('collection', () => {
   test('switching to the CSV tab updates the schema hint', async ({ page }) => {
     await page.goto('/collection');
     await page.click('#open-import-btn');
+    await page.click('[data-import-method="text"]');
     await page.click('[data-tab2="csv"]');
     await expect(page.locator('[data-tab2="csv"]')).toHaveClass(/active/);
     await expect(page.locator('#import-schema')).toContainText('id,qty,foil');
@@ -44,6 +47,7 @@ test.describe('collection', () => {
   test('importing JSON updates the collection and Collection refreshes once the modal closes', async ({ page }) => {
     await page.goto('/collection');
     await page.click('#open-import-btn');
+    await page.click('[data-import-method="text"]');
     await page.fill('#import-text', JSON.stringify([{ id: 'OGN-179/298', qty: 3 }]));
     await page.click('#import-run');
     await expect(page.locator('#import-result')).toContainText('1 card updated');
@@ -55,6 +59,7 @@ test.describe('collection', () => {
   test('importing CSV works too', async ({ page }) => {
     await page.goto('/collection');
     await page.click('#open-import-btn');
+    await page.click('[data-import-method="text"]');
     await page.click('[data-tab2="csv"]');
     await page.fill('#import-text', 'id,qty,foil\nOGN-179/298,2,1');
     await page.click('#import-run');
@@ -64,6 +69,7 @@ test.describe('collection', () => {
   test('invalid JSON shows an error instead of silently doing nothing', async ({ page }) => {
     await page.goto('/collection');
     await page.click('#open-import-btn');
+    await page.click('[data-import-method="text"]');
     await page.fill('#import-text', 'not json');
     await page.click('#import-run');
     await expect(page.locator('#import-result')).toContainText("not a valid JSON array");
@@ -72,22 +78,25 @@ test.describe('collection', () => {
   test('an unmatched card id is reported instead of failing the whole import', async ({ page }) => {
     await page.goto('/collection');
     await page.click('#open-import-btn');
+    await page.click('[data-import-method="text"]');
     await page.fill('#import-text', JSON.stringify([{ id: 'NOT-A-REAL-ID/1', qty: 1 }]));
     await page.click('#import-run');
     await expect(page.locator('#import-result')).toContainText('no card found');
   });
 
-  test('the voice/text import section is present with its own textarea', async ({ page }) => {
+  test('the CSV/JSON import section is present with its own textarea', async ({ page }) => {
     await page.goto('/collection');
     await page.click('#open-import-btn');
-    await expect(page.locator('#import-modal')).toContainText('Speak your collection');
-    await expect(page.locator('#voice-transcript')).toBeVisible();
+    await page.click('[data-import-method="text"]');
+    await expect(page.locator('#import-modal')).toContainText('Or paste data');
+    await expect(page.locator('#import-text')).toBeVisible();
   });
 
   test('collection grid paginates automatically past 100 owned cards', async ({ page }) => {
     await page.goto('/collection');
     const ids = await page.evaluate(() => window.__RIFTBOUND_CARDS__.slice(0, 110).map((c) => c.id));
     await page.click('#open-import-btn');
+    await page.click('[data-import-method="text"]');
     await page.fill('#import-text', JSON.stringify(ids.map((id) => ({ id, qty: 1 }))));
     await page.click('#import-run');
     await expect(page.locator('#import-result')).toContainText('110 cards updated');

@@ -19,6 +19,7 @@ test.describe('dashboard', () => {
   test('stat tiles and "Start exploring" reflect a non-empty collection', async ({ page }) => {
     await page.goto('/collection');
     await page.click('#open-import-btn');
+    await page.click('[data-import-method="text"]');
     await page.fill('#import-text', JSON.stringify([{ id: 'OGN-179/298', qty: 2, foil: 1 }]));
     await page.click('#import-run');
     await page.click('#import-modal .modal-close');
