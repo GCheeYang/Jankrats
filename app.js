@@ -2030,7 +2030,6 @@
       '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Tournament legal" : issues.filter(function(i){return !i.ok;}).length + " issue(s)") + "</span>" +
       "</div>";
     html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' + escapeHtml(legend.name) + " · Champion: " + escapeHtml(champion.name) + " · " + domainChips(deck.domains) +
-      ' <button class="btn ghost small" data-restart>restart</button>' +
       ' <button class="btn ghost small" data-export-deck>Export</button></p>';
 
     html += '<div class="builder-grid">';
@@ -2221,8 +2220,6 @@
   function wireBuilderMain(deck, host) {
     var nameInput = host.querySelector("#deck-name-input");
     if (nameInput) nameInput.addEventListener("change", function () { deck.name = nameInput.value || "New deck"; deck.updatedAt = Date.now ? Date.now() : 0; persistDecks(); renderRail(); });
-
-    host.querySelectorAll("[data-restart]").forEach(function (b) { b.addEventListener("click", function () { deck.legendId = null; deck.championId = null; deck.main = []; deck.domains = []; deck.runes = {}; persistDecks(); renderBuilder(); }); });
 
     host.querySelectorAll("[data-tab]").forEach(function (b) { b.addEventListener("click", function () { state.builder.tab = b.getAttribute("data-tab"); renderBuilder(); }); });
 
