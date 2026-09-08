@@ -2433,8 +2433,13 @@
 
     var champLine = buckets.champion[0];
     var champCard = champLine ? findCardByNameForImport(champLine.name, { type: "Unit", id: champLine.id }) : null;
-    if (champCard) d.championId = champCard.id;
-    else if (champLine) unresolved.push("Champion: " + champLine.name);
+    if (champCard) {
+      d.championId = champCard.id;
+      // The Chosen Champion counts toward the 40-card main deck (same as
+      // picking one in the builder normally calls addToMain) -- a list's
+      // separate "Champion:" section is on top of, not instead of, that.
+      d.main.push({ cardId: champCard.id, qty: 1 });
+    } else if (champLine) unresolved.push("Champion: " + champLine.name);
 
     var legendDisplayName = legendCard && (function () {
       var identity = championIdentityTagFor(legendCard);
@@ -2529,8 +2534,14 @@
     if (champion) lines.push("Champion:", "1 " + champion.name + " [" + champion.id + "]", "");
 
     lines.push("MainDeck:");
-    (deck.main || []).map(function (e) { return { c: state.cardsById[e.cardId], qty: e.qty }; })
-      .filter(function (e) { return e.c; })
+    // The Chosen Champion's own copy lives in deck.main (picking one calls
+    // addToMain) but is already listed under "Champion:" above -- only show
+    // any copies beyond that first one here.
+    (deck.main || []).map(function (e) {
+      var qty = (champion && e.cardId === champion.id) ? e.qty - 1 : e.qty;
+      return { c: state.cardsById[e.cardId], qty: qty };
+    })
+      .filter(function (e) { return e.c && e.qty > 0; })
       .sort(function (a, b) { return a.c.name.localeCompare(b.c.name); })
       .forEach(function (e) { lines.push(e.qty + " " + e.c.name + " [" + e.c.id + "]"); });
     lines.push("");
