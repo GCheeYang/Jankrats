@@ -320,7 +320,7 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["home", "cards", "tokens", "collection", "wanted", "decks", "friends", "dashboard", "profile", "shared"];
+  var VIEWS = ["home", "cards", "collection", "wanted", "decks", "friends", "dashboard", "profile", "shared"];
 
   // Maps a route name to/from a clean URL path, e.g. "collection" <->
   // "/collection", with "home" living at the bare root "/".
@@ -369,7 +369,6 @@
     if (state.route === "home") renderHomeView();
     if (state.route === "dashboard") renderDashboard();
     if (state.route === "cards") renderCardsView();
-    if (state.route === "tokens") renderTokensView();
     if (state.route === "collection") renderCollectionView();
     if (state.route === "wanted") renderWantedView();
     if (state.route === "friends") renderFriendsView();
@@ -705,8 +704,7 @@
 
   function renderCardsView() {
     var el = document.getElementById("view-cards");
-    // Tokens aren't cards you draft or own — they live on their own tab.
-    var list = filteredCards(cardsFilterState).filter(function (c) { return c.type !== "Token"; });
+    var list = filteredCards(cardsFilterState);
     list = sortCards(list, cardsFilterState.sort);
     var total = list.length;
     var shown = Math.min(cardsFilterState.limit || CARDS_PAGE_SIZE, total);
@@ -798,32 +796,6 @@
       }
     }, { rootMargin: "400px 0px" });
     io.observe(sentinel);
-  }
-
-  var tokensFilterState = { q: "" };
-
-  function renderTokensView() {
-    var el = document.getElementById("view-tokens");
-    var q = tokensFilterState.q.toLowerCase();
-    var list = state.cards.filter(function (c) {
-      return c.type === "Token" && (!q || (c.name + " " + (c.text || "")).toLowerCase().indexOf(q) !== -1);
-    }).sort(function (a, b) { return a.name.localeCompare(b.name); });
-
-    var html = '<div class="view-head"><div><h1>Tokens</h1><p>Reference art for the tokens card effects create — not cards you draft, own, or add to a deck.</p></div></div>';
-    html += '<div class="toolbar">' + field("Search", '<input type="search" id="tok-q" placeholder="Name…" value="' + escapeHtml(tokensFilterState.q) + '">') + "</div>";
-
-    if (!list.length) {
-      html += '<div class="empty-state"><h3>No tokens match</h3><p>Try clearing the search.</p></div>';
-    } else {
-      html += '<div class="card-grid">' + list.map(cardTileHtml).join("") + "</div>";
-    }
-
-    el.innerHTML = html;
-    var qInput = el.querySelector("#tok-q");
-    if (qInput) qInput.addEventListener("input", function () { tokensFilterState.q = qInput.value; rerenderSoft(el, renderTokensView); });
-    el.querySelectorAll("[data-card-id]").forEach(function (t) {
-      t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
-    });
   }
 
   // avoid losing focus/caret on every keystroke: only re-render the grid portion
@@ -1977,6 +1949,7 @@
       tabBtn("runes", "Runes (" + runeCount(deck) + "/" + RULES.runeDeckSize + ")") +
       tabBtn("battlefields", "Battlefields (" + (deck.battlefields || []).length + "/" + RULES.battlefieldCount + ")") +
       tabBtn("sideboard", "Sideboard (" + sideboardCount(deck) + ")") +
+      tabBtn("tokens", "Tokens") +
       tabBtn("share", "Share") +
       "</div>";
 
@@ -2014,6 +1987,11 @@
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
         return deckPickTileHtml(c, qty ? "×" + qty : null, atLimit && !qty);
       }).join("") + "</div>";
+    } else if (state.builder.tab === "tokens") {
+      var tokenPool = state.cards.filter(function (c) { return c.type === "Token"; }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+      html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Reference art for tokens card effects create — not part of your deck, so they don\'t count toward anything above.</p>';
+      html += '<div class="card-grid" data-token-grid>' + tokenPool.map(cardTileHtml).join("") + "</div>";
+      if (!tokenPool.length) html += '<div class="empty-state"><h3>No tokens yet</h3><p>Import more cards to see token reference art.</p></div>';
     } else if (state.builder.tab === "share") {
       html += shareTabHtml(deck);
     }
@@ -2126,6 +2104,10 @@
     host.querySelectorAll("[data-restart]").forEach(function (b) { b.addEventListener("click", function () { deck.legendId = null; deck.championId = null; deck.main = []; deck.domains = []; deck.runes = {}; persistDecks(); renderBuilder(); }); });
 
     host.querySelectorAll("[data-tab]").forEach(function (b) { b.addEventListener("click", function () { state.builder.tab = b.getAttribute("data-tab"); renderBuilder(); }); });
+
+    host.querySelectorAll("[data-token-grid] [data-card-id]").forEach(function (t) {
+      t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
+    });
 
     var filt = host.querySelector("#deck-card-filter");
     if (filt) filt.addEventListener("input", function () {
