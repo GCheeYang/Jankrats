@@ -598,6 +598,29 @@
     }, { once: true });
   }
 
+  // Card art has no second source to fall back to like splash art does
+  // (some of it -- tokens, runes, battlefields -- only exists on a
+  // third-party CDN that ad-blockers/privacy browsers commonly blocklist
+  // wholesale, since the rest of that site is heavily ad-monetized). A
+  // single capturing listener on the document catches every card-art
+  // <img> load failure app-wide -- "error" doesn't bubble, but it is
+  // still observable during the capture phase -- without needing every
+  // card-tile template to wire its own handler. On failure the broken
+  // image is removed and its wrapper gets a CSS placeholder instead of
+  // the browser's broken-image icon; the card's name is already shown
+  // as text elsewhere in the same tile, so nothing is lost.
+  var CARD_ART_WRAP_SELECTOR = ".ct-img, .cd-img, .lc-img, .pr-img, .deck-card-art";
+  function wireCardArtFallback() {
+    document.addEventListener("error", function (e) {
+      var img = e.target;
+      if (!img || img.tagName !== "IMG") return;
+      var wrap = img.closest(CARD_ART_WRAP_SELECTOR);
+      if (!wrap || wrap.classList.contains("img-fallback")) return;
+      wrap.classList.add("img-fallback");
+      img.remove();
+    }, true);
+  }
+
   function findChampSplashEntry(id) {
     for (var i = 0; i < CHAMPION_SPLASHES.length; i++) if (CHAMPION_SPLASHES[i][0] === id) return CHAMPION_SPLASHES[i];
     return null;
@@ -4097,6 +4120,7 @@
     loadAll();
     wireShell();
     wireAuth();
+    wireCardArtFallback();
     loadCardPrices();
     // A bare "/" always resolves to home via pathToView, which would
     // otherwise shadow an old-style "/#view" bookmark/link before its hash

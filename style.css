@@ -561,6 +561,27 @@ textarea { resize: vertical; min-height: 90px; }
   container-type: size;
 }
 
+/* Shown in place of a card image that failed to load -- some card art
+   (tokens, runes, battlefields) is only hosted on a third-party CDN that
+   ad-blockers commonly blocklist, and there's no second source to retry.
+   The card's name is already visible as text elsewhere in the same
+   tile, so this just needs to read as an empty slot, not an error. */
+.card-tile .ct-img.img-fallback,
+.cd-img.img-fallback,
+.legend-card .lc-img.img-fallback,
+.pick-row .pr-img.img-fallback,
+.deck-card-art.img-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.img-fallback::after {
+  content: "No image";
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+
 .card-tile .ct-img img.rot90,
 .cd-img img.rot90,
 .legend-card .lc-img img.rot90,
