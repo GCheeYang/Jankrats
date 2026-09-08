@@ -1645,6 +1645,14 @@
     return cardDomains.every(function (d) { return legendDomains.indexOf(d) !== -1; });
   }
 
+  // The deck list and "editing deck X" share the same /decks URL; pushing a
+  // history entry here (same path, deckId in the state payload) means a
+  // swipe-back/browser-back gesture pops out to the list instead of leaving
+  // /decks entirely for whatever page preceded it (see popstate handler).
+  function pushDeckBuilderHistoryEntry(deckId) {
+    window.history.pushState({ view: "decks", deckId: deckId }, "", "/decks");
+  }
+
   function startNewDeck() {
     var d = newDeckObject();
     state.decks.push(d);
@@ -1652,6 +1660,7 @@
     state.builder.deckId = d.id;
     state.builder.tab = "main";
     state.builder.legendVariantPickName = null;
+    pushDeckBuilderHistoryEntry(d.id);
     renderDecksView();
   }
 
@@ -1659,6 +1668,7 @@
     state.builder.deckId = id;
     state.builder.tab = "main";
     state.builder.legendVariantPickName = null;
+    pushDeckBuilderHistoryEntry(id);
     renderDecksView();
   }
 
@@ -2964,10 +2974,16 @@
       cardsFilterState.limit = CARDS_PAGE_SIZE;
       navigate("cards");
     });
-    window.addEventListener("popstate", function () {
+    window.addEventListener("popstate", function (e) {
       var v = pathToView(window.location.pathname);
       if (v) {
         state.route = v;
+        // The deck list and "editing deck X" both live at the same /decks
+        // URL (see openDeck/startNewDeck), distinguished only by the state
+        // object pushed alongside it -- restore builder.deckId from that so
+        // back/forward (including a swipe-back gesture) steps out of the
+        // deck builder to the list instead of leaving /decks entirely.
+        if (v === "decks") state.builder.deckId = (e.state && e.state.deckId) || null;
         render();
       }
     });
