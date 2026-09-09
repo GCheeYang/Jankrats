@@ -197,7 +197,7 @@
     wantedQuery: "",     // transient search box text, not persisted
     profile: { name: "" },
     route: "home",
-    builder: { deckId: null, tab: "main", cardFilter: "", legendVariantPickName: null },
+    builder: { deckId: null, tab: "main", cardFilter: "", legendVariantPickName: null, legendFilter: "", ownedFilter: "all" },
     social: {
       session: null,           // Supabase auth session, or null when signed out
       myProfile: null,         // row from public.profiles for the signed-in user
@@ -1956,6 +1956,37 @@
     renderBuilder();
   }
 
+  // Shared "All / Owned / Unowned" filter for every picker step in the
+  // builder (Legend, Champion, Main/Sideboard) -- one setting that carries
+  // across stages rather than resetting each time, since "only show me
+  // what I actually have" is a mode you're in for the whole build, not
+  // just one step of it.
+  function ownedFilterMatch(c) {
+    var f = state.builder.ownedFilter;
+    if (!f || f === "all") return true;
+    var owned = getOwned(c.id) + getOwnedFoil(c.id);
+    return f === "owned" ? owned > 0 : owned === 0;
+  }
+
+  function ownedFilterToggleHtml() {
+    var cur = state.builder.ownedFilter || "all";
+    return '<div class="tabs" style="margin-bottom:10px;">' +
+      [["all", "All"], ["owned", "Owned"], ["unowned", "Unowned"]].map(function (kv) {
+        return '<button class="' + (cur === kv[0] ? "active" : "") + '" data-owned-filter="' + kv[0] + '">' + kv[1] + "</button>";
+      }).join("") + "</div>";
+  }
+
+  function wireOwnedFilterToggle(host) {
+    host.querySelectorAll("[data-owned-filter]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var v = b.getAttribute("data-owned-filter");
+        if (v === state.builder.ownedFilter) return;
+        state.builder.ownedFilter = v;
+        renderBuilder();
+      });
+    });
+  }
+
   function legendPickerTileHtml(l, attr) {
     var owned = getOwned(l.id) + getOwnedFoil(l.id);
     return '<div class="legend-card" ' + attr + '="' + l.id + '">' +
@@ -1970,9 +2001,18 @@
 
   function builderLegendStep(deck) {
     if (state.builder.legendVariantPickName) return builderLegendVariantStep(deck);
-    var legends = legendBasicPool();
+    var allLegends = legendBasicPool();
+    var q = (state.builder.legendFilter || "").toLowerCase().trim();
+    var legends = allLegends.filter(function (l) {
+      return (!q || l.name.toLowerCase().indexOf(q) !== -1) && ownedFilterMatch(l);
+    });
     var html = '<div><h3 style="margin-bottom:10px;">Step 1 — Choose a Legend</h3>';
-    if (!legends.length) html += '<div class="empty-state"><h3>No Legends in your card database</h3><p>Import some Legend cards first.</p></div>';
+    if (allLegends.length) {
+      html += '<div class="field" style="margin-bottom:10px;"><input type="search" id="legend-filter" placeholder="Search legends…" value="' + escapeHtml(state.builder.legendFilter) + '"></div>';
+      html += ownedFilterToggleHtml();
+    }
+    if (!allLegends.length) html += '<div class="empty-state"><h3>No Legends in your card database</h3><p>Import some Legend cards first.</p></div>';
+    else if (!legends.length) html += '<div class="empty-state"><h3>No Legends match</h3><p>Try a different search or switch the filter back to All.</p></div>';
     html += '<div class="legend-picker">' + legends.map(function (l) { return legendPickerTileHtml(l, "data-legend-pick"); }).join("") + "</div></div>";
     return html;
   }
@@ -2006,6 +2046,19 @@
         else finalizeLegendPick(deck, variants[0]);
       });
     });
+    wireOwnedFilterToggle(host);
+    var lf = host.querySelector("#legend-filter");
+    if (lf) lf.addEventListener("input", function () {
+      state.builder.legendFilter = lf.value;
+      clearTimeout(softTimer);
+      softTimer = setTimeout(function () {
+        var hadFocus = document.activeElement === lf;
+        var caret = lf.selectionStart;
+        renderBuilder();
+        var f2 = document.getElementById("legend-filter");
+        if (hadFocus && f2) { f2.focus(); try { f2.setSelectionRange(caret, caret); } catch (e) {} }
+      }, 120);
+    });
   }
 
   // Riftbound's real card data has no "identity" field linking a Legend to
@@ -2025,13 +2078,16 @@
   function builderChampionStep(deck) {
     var legend = state.cardsById[deck.legendId];
     var identityTag = championIdentityTagFor(legend);
-    var champs = state.cards.filter(function (c) {
+    var allChamps = state.cards.filter(function (c) {
       return isChampionEligible(c) && cardDomainsSubset(c.domains, deck.domains) &&
         (!identityTag || c.name.split(",")[0].trim() === identityTag);
     });
+    var champs = allChamps.filter(ownedFilterMatch);
     var html = '<div><h3 style="margin-bottom:4px;">Step 2 — Choose your Chosen Champion</h3>' +
       '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Legend: ' + escapeHtml(legend.name) + " · " + domainChips(deck.domains) + '</p>';
-    if (!champs.length) html += '<div class="empty-state"><h3>No matching Champions</h3><p>Import Champion cards in ' + deck.domains.join("/") + ", or " + '<button class="btn small" data-back-legend>change Legend</button>.</p></div>';
+    if (allChamps.length) html += ownedFilterToggleHtml();
+    if (!allChamps.length) html += '<div class="empty-state"><h3>No matching Champions</h3><p>Import Champion cards in ' + deck.domains.join("/") + ", or " + '<button class="btn small" data-back-legend>change Legend</button>.</p></div>';
+    else if (!champs.length) html += '<div class="empty-state"><h3>No Champions match</h3><p>Switch the filter back to All.</p></div>';
     html += '<div class="legend-picker">' + champs.map(function (c) {
       var owned = getOwned(c.id) + getOwnedFoil(c.id);
       return '<div class="legend-card" data-champ="' + c.id + '">' +
@@ -2059,6 +2115,7 @@
     host.querySelectorAll("[data-back-legend]").forEach(function (b) {
       b.addEventListener("click", function () { deck.legendId = null; deck.domains = []; persistDecks(); renderBuilder(); });
     });
+    wireOwnedFilterToggle(host);
   }
 
   // Still used by the read-only friend-deck viewer (friendDeckDetailHtml),
@@ -2080,9 +2137,11 @@
   // overrides it to the domain name since rune counts are tracked per-domain,
   // not per specific rune printing.
   function deckPickTileHtml(c, badgeText, disabled, key, groupIds) {
+    var owned = getOwned(c.id) + getOwnedFoil(c.id);
     return '<div class="card-tile-wrap' + (badgeText ? " in-deck" : "") + (disabled ? " at-limit" : "") + '" data-card-id="' + escapeHtml(key || c.id) + '"' +
       (groupIds ? ' data-rune-group="' + escapeHtml(groupIds.join(",")) + '"' : "") + '>' +
       '<button class="card-tile" type="button" title="Click to add, right-click to remove">' +
+      (owned ? '<span class="ct-collection-badge">own ' + owned + "</span>" : "") +
       (badgeText ? '<span class="ct-owned qty-badge">' + escapeHtml(badgeText) + "</span>" : "") +
       (c.imageUrl ? '<div class="ct-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</span></div>" +
@@ -2130,7 +2189,8 @@
 
     var pickPoolFull = state.cards.filter(function (c) {
       return ["Unit", "Spell", "Gear"].indexOf(c.type) !== -1 && !isTokenCard(c) && cardDomainsSubset(c.domains, deck.domains) &&
-        (!state.builder.cardFilter || c.name.toLowerCase().indexOf(state.builder.cardFilter.toLowerCase()) !== -1);
+        (!state.builder.cardFilter || c.name.toLowerCase().indexOf(state.builder.cardFilter.toLowerCase()) !== -1) &&
+        ownedFilterMatch(c);
     }).sort(function (a, b) { return (a.cost || 0) - (b.cost || 0) || a.name.localeCompare(b.name); });
     var PICK_POOL_CAP = 150;
     var pickPool = pickPoolFull.slice(0, PICK_POOL_CAP);
@@ -2171,13 +2231,16 @@
 
     if (state.builder.tab === "main") {
       html += '<div class="field" style="margin-bottom:10px;"><input type="search" id="deck-card-filter" placeholder="Filter cards to add…" value="' + escapeHtml(state.builder.cardFilter) + '"></div>';
+      html += ownedFilterToggleHtml();
       html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:8px;">Click a card to add a copy (max ' + RULES.maxCopies + '), right-click to remove one.</p>';
       html += '<div class="card-grid deck-pick-grid" data-pick-section="main">' + pickPool.map(function (c) {
         var qty = sectionQty(deck.main, c.id);
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
         return deckPickTileHtml(c, qty ? "×" + qty : null, atLimit && !qty);
       }).join("") + "</div>";
-      if (!pickPool.length) html += '<div class="empty-state"><h3>No cards in these domains</h3><p>Import more cards for ' + deck.domains.join("/") + ".</p></div>";
+      if (!pickPool.length) html += (state.builder.ownedFilter && state.builder.ownedFilter !== "all")
+        ? '<div class="empty-state"><h3>No cards match that filter</h3><p>Try switching Owned/Unowned back to All.</p></div>'
+        : '<div class="empty-state"><h3>No cards in these domains</h3><p>Import more cards for ' + deck.domains.join("/") + ".</p></div>";
       else if (pickPoolFull.length > PICK_POOL_CAP) html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-top:8px;">Showing first ' + PICK_POOL_CAP + ' of ' + pickPoolFull.length + ' — use the search box above to narrow it down.</p>';
     } else if (state.builder.tab === "runes") {
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Split ' + RULES.runeDeckSize + ' runes across your domains (a 6/6 split is standard) — each art tracks its own count. Click to add one, right-click to remove one.</p>';
@@ -2201,6 +2264,7 @@
       }).join("") + "</div>";
       if (!battlefieldPool.length) html += '<div class="empty-state"><h3>No Battlefield cards yet</h3><p>Import some — Battlefields are colorless.</p></div>';
     } else if (state.builder.tab === "sideboard") {
+      html += ownedFilterToggleHtml();
       html += '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Optional: up to ' + RULES.sideboardMax + ' cards, same domain and copy-limit rules as your main deck. Click to add, right-click to remove.</p>';
       html += '<div class="card-grid deck-pick-grid" data-pick-section="sideboard">' + pickPool.map(function (c) {
         var qty = sectionQty(deck.sideboard, c.id);
@@ -2347,6 +2411,7 @@
     if (nameInput) nameInput.addEventListener("change", function () { deck.name = nameInput.value || "New deck"; deck.updatedAt = Date.now ? Date.now() : 0; persistDecks(); renderRail(); });
 
     host.querySelectorAll("[data-tab]").forEach(function (b) { b.addEventListener("click", function () { state.builder.tab = b.getAttribute("data-tab"); renderBuilder(); }); });
+    wireOwnedFilterToggle(host);
 
     var filt = host.querySelector("#deck-card-filter");
     if (filt) filt.addEventListener("input", function () {
