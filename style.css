@@ -802,6 +802,15 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .deck-panel h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 8px; }
 
+/* Two columns instead of one long vertical list -- with a card image on
+   every row now, a 40-card main deck was scrolling forever. */
+.slot-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 10px;
+}
+.slot-list > p { grid-column: 1 / -1; }
+
 .slot-line {
   display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; min-width: 0;
 }

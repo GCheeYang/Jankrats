@@ -1547,30 +1547,30 @@
     var html = '<div class="deck-panel">';
     html += "<div>" + curveChartHtml(deck) + "</div>";
     if (Object.keys(deck.runes || {}).length) {
-      html += '<div><h3>Runes (' + runeCount(deck) + ")</h3>";
+      html += '<div><h3>Runes (' + runeCount(deck) + ')</h3><div class="slot-list">';
       Object.keys(deck.runes).forEach(function (cid) {
         var qty = deck.runes[cid];
         if (!qty) return;
         var rc = state.cardsById[cid];
         html += '<div class="slot-line">' + slotLineImgHtml(rc) + '<span class="sl-qty">' + qty + "×</span><span class=\"sl-name\">" + (rc ? escapeHtml(rc.name) + escapeHtml(variantLabel(rc)) : escapeHtml(cid)) + "</span></div>";
       });
-      html += "</div>";
+      html += "</div></div>";
     }
     if ((deck.battlefields || []).length) {
-      html += '<div><h3>Battlefields</h3>';
+      html += '<div><h3>Battlefields</h3><div class="slot-list">';
       deck.battlefields.forEach(function (id) {
         var c = state.cardsById[id];
         html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-name">' + escapeHtml(c ? c.name : id) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
       });
-      html += "</div>";
+      html += "</div></div>";
     }
     if ((deck.sideboard || []).length) {
-      html += '<div><h3>Sideboard (' + sideboardCount(deck) + ")</h3>";
+      html += '<div><h3>Sideboard (' + sideboardCount(deck) + ')</h3><div class="slot-list">';
       deck.sideboard.forEach(function (e) {
         var c = state.cardsById[e.cardId];
         html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
       });
-      html += "</div>";
+      html += "</div></div>";
     }
     var failing = issues.filter(function (i) { return !i.ok; });
     if (failing.length) {
@@ -2338,7 +2338,7 @@
     var html = '<div class="deck-panel">';
     html += "<div>" + curveChartHtml(deck) + "</div>";
 
-    html += '<div><h3>Main (' + mainDeckCount(deck) + ")</h3>";
+    html += '<div><h3>Main (' + mainDeckCount(deck) + ')</h3><div class="slot-list">';
     var mainEntries = (deck.main || []).slice().sort(function (a, b) {
       var ca = state.cardsById[a.cardId], cb = state.cardsById[b.cardId];
       return (ca ? ca.cost || 0 : 0) - (cb ? cb.cost || 0 : 0);
@@ -2353,46 +2353,46 @@
         (deck.championId === c.id ? "" : '<button data-rm-main="' + c.id + '" title="Remove one">&times;</button>') +
         "</div>";
     });
-    html += "</div>";
+    html += "</div></div>";
 
     if (Object.keys(deck.runes || {}).length) {
-      html += '<div><h3>Runes (' + runeCount(deck) + ")</h3>";
+      html += '<div><h3>Runes (' + runeCount(deck) + ')</h3><div class="slot-list">';
       Object.keys(deck.runes).forEach(function (cid) {
         var qty = deck.runes[cid];
         if (!qty) return;
         var rc = state.cardsById[cid];
         html += '<div class="slot-line">' + slotLineImgHtml(rc) + '<span class="sl-qty">' + qty + "×</span><span class=\"sl-name\">" + (rc ? escapeHtml(rc.name) + escapeHtml(variantLabel(rc)) : escapeHtml(cid)) + "</span></div>";
       });
-      html += "</div>";
+      html += "</div></div>";
     }
 
     if ((deck.battlefields || []).length) {
-      html += '<div><h3>Battlefields</h3>';
+      html += '<div><h3>Battlefields</h3><div class="slot-list">';
       deck.battlefields.forEach(function (id) {
         var c = state.cardsById[id];
         html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-name">' + escapeHtml(c ? c.name : id) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
       });
-      html += "</div>";
+      html += "</div></div>";
     }
 
     if ((deck.sideboard || []).length) {
-      html += '<div><h3>Sideboard (' + sideboardCount(deck) + ")</h3>";
+      html += '<div><h3>Sideboard (' + sideboardCount(deck) + ')</h3><div class="slot-list">';
       deck.sideboard.forEach(function (e) {
         var c = state.cardsById[e.cardId];
         html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + (c ? escapeHtml(variantLabel(c)) : "") + "</span>" +
           '<button data-rm-sb="' + e.cardId + '" title="Remove one">&times;</button></div>';
       });
-      html += "</div>";
+      html += "</div></div>";
     }
 
     if ((deck.tokens || []).length) {
-      html += '<div><h3>Tokens</h3>';
+      html += '<div><h3>Tokens</h3><div class="slot-list">';
       deck.tokens.forEach(function (e) {
         var c = state.cardsById[e.cardId];
         html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + "</span>" +
           '<button data-rm-token="' + e.cardId + '" title="Remove one">&times;</button></div>';
       });
-      html += "</div>";
+      html += "</div></div>";
     }
 
     if (!legal) {
