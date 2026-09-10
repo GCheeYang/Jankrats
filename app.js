@@ -2602,6 +2602,316 @@
   }
 
   /* ================================================================
+     RIFTATLAS DECK CODE (base32-encoded binary format, e.g.
+     "CUAQIBQCAEBQ...") -- a faithful port of riftatlas.com's own
+     client-side decoder (extracted from their public, unminified-by-us
+     bundle at _next/static/.../11g_3wpbr1ht0.js, module id 33408:
+     getDeckFromCode). Ported rather than called remotely because their
+     decode is 100% client-side with no API endpoint to hit, and this
+     way importing works offline and won't break if their site changes.
+     Only decode is ported (this app only needs to *import* a code, not
+     produce one) -- their encoder (getCodeFromDeck) was left alone.
+
+     The format: base32-decode the string into raw bytes, then read a
+     1-byte header (format nibble must be 1, version nibble 0-5), then
+     the main deck and sideboard as repeated (count, set, variant, card
+     number) groups -- version 5 lists only the distinct counts that
+     actually appear; versions 0-4 scan a fixed count range instead.
+     Numbers are varint-encoded (7 bits/byte, MSB = "more bytes
+     follow"), the same LEB128 style used all over binary formats.
+     Unlike RiftAtlas's own catalog, this resolves each decoded
+     "SET-NUMBERvariant" card code against Jankrats' own card list by
+     matching the id (set + collector number) directly -- exact by
+     printing, and it sidesteps every naming difference between the two
+     sites (their Legends are titled "Champion, Legend Title"; ours
+     store just the bare Legend title).
+     ================================================================ */
+
+  var RIFTATLAS_B32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  var RIFTATLAS_SET_MAP = { OGN: 0, OGS: 1, ARC: 2, SFD: 3, UNL: 4, VEN: 5, RAD: 6 };
+  var RIFTATLAS_VARIANT_MAP = { "": 0, "a": 1, "s": 2, "*": 2, "b": 3 };
+
+  function riftAtlasSetCodeFor(id) {
+    for (var k in RIFTATLAS_SET_MAP) if (RIFTATLAS_SET_MAP[k] === id) return k;
+    return null;
+  }
+  // Both "s" and "*" encode to the same variant id -- RiftAtlas's own
+  // decoder has to pick one canonical text form when decoding (they
+  // default to "s"); id 2 is special-cased here for the same reason.
+  function riftAtlasVariantSuffixFor(variantId, signedSuffix) {
+    if (variantId === 2) return signedSuffix;
+    for (var k in RIFTATLAS_VARIANT_MAP) if (RIFTATLAS_VARIANT_MAP[k] === variantId && k !== "*") return k;
+    return "";
+  }
+
+  function riftAtlasBase32Decode(codeStr) {
+    var out = [];
+    var acc = 0, bits = 0;
+    for (var i = 0; i < codeStr.length; i++) {
+      var idx = RIFTATLAS_B32_ALPHABET.indexOf(codeStr[i].toUpperCase());
+      if (idx === -1) throw new Error("Invalid character in deck code: '" + codeStr[i] + "'");
+      acc = (acc << 5) | idx;
+      bits += 5;
+      while (bits >= 8) { bits -= 8; out.push((acc >> bits) & 255); }
+    }
+    return out;
+  }
+
+  // A little cursor over the decoded byte array -- mirrors RiftAtlas's own
+  // reader (PopVarint consumes a LEB128 varint and advances; get()/advance
+  // read or skip a fixed number of plain bytes) without needing a class.
+  function riftAtlasVarintPop(reader) {
+    if (reader.pos >= reader.bytes.length) throw new Error("No bytes available to read varint");
+    var value = 0, shift = 0;
+    for (var i = reader.pos; i < reader.bytes.length; i++) {
+      var b = reader.bytes[i];
+      value |= (b & 127) << shift;
+      if ((b & 128) !== 128) { reader.pos = i + 1; return value; }
+      shift += 7;
+    }
+    throw new Error("Byte array did not contain valid varints.");
+  }
+  function riftAtlasByteAt(reader, offset) {
+    var i = reader.pos + offset;
+    if (i < 0 || i >= reader.bytes.length) throw new Error("Index out of bounds: " + i);
+    return reader.bytes[i];
+  }
+  function riftAtlasAdvance(reader, n) { reader.pos += n; }
+
+  function riftAtlasDecodeSectionV5(reader, signedSuffix, hasPrefix) {
+    var entries = [];
+    var distinctCounts = riftAtlasVarintPop(reader);
+    for (var i = 0; i < distinctCounts; i++) {
+      var count = riftAtlasVarintPop(reader);
+      var numGroups = riftAtlasVarintPop(reader);
+      for (var g = 0; g < numGroups; g++) {
+        var numCards = riftAtlasVarintPop(reader);
+        var setId = riftAtlasByteAt(reader, 0);
+        var variantId = riftAtlasByteAt(reader, 1);
+        riftAtlasAdvance(reader, 2);
+        var setCode = riftAtlasSetCodeFor(setId);
+        if (!setCode) throw new Error("Unknown set code: " + setId);
+        var variantSuffix = riftAtlasVariantSuffixFor(variantId, signedSuffix);
+        for (var c = 0; c < numCards; c++) {
+          var numberStr;
+          if (!hasPrefix) {
+            numberStr = String(riftAtlasVarintPop(reader)).padStart(3, "0");
+          } else {
+            var prefixType = riftAtlasByteAt(reader, 0);
+            riftAtlasAdvance(reader, 1);
+            var num = riftAtlasVarintPop(reader);
+            if (prefixType === 2) numberStr = "SP" + num;
+            else if (prefixType === 1) numberStr = "R" + String(num).padStart(2, "0");
+            else if (prefixType === 0) numberStr = String(num).padStart(3, "0");
+            else throw new Error("Unknown number-prefix flag: " + prefixType);
+          }
+          entries.push({ cardCode: setCode + "-" + numberStr + variantSuffix, count: count });
+        }
+      }
+    }
+    return entries;
+  }
+
+  function riftAtlasDecodeSectionLegacy(reader, maxCount, signedSuffix, version) {
+    var entries = [];
+    for (var count = maxCount; count >= 1; count--) {
+      var numGroups = riftAtlasVarintPop(reader);
+      for (var g = 0; g < numGroups; g++) {
+        var numCards = riftAtlasVarintPop(reader);
+        var setId = riftAtlasByteAt(reader, 0);
+        var variantId = riftAtlasByteAt(reader, 1);
+        riftAtlasAdvance(reader, 2);
+        var setCode = riftAtlasSetCodeFor(setId);
+        if (!setCode) throw new Error("Unknown set code: " + setId);
+        var variantSuffix = riftAtlasVariantSuffixFor(variantId, signedSuffix);
+        for (var c = 0; c < numCards; c++) {
+          var numberStr;
+          if (version >= 4) {
+            var prefixType = riftAtlasByteAt(reader, 0);
+            riftAtlasAdvance(reader, 1);
+            var num = riftAtlasVarintPop(reader);
+            numberStr = prefixType === 1 ? "R" + String(num).padStart(2, "0") : String(num).padStart(3, "0");
+          } else {
+            numberStr = String(riftAtlasVarintPop(reader)).padStart(3, "0");
+          }
+          entries.push({ cardCode: setCode + "-" + numberStr + variantSuffix, count: count });
+        }
+      }
+    }
+    return entries;
+  }
+
+  function decodeRiftAtlasDeckCode(code) {
+    var signedSuffix = "s";
+    var reader = { bytes: riftAtlasBase32Decode(code), pos: 0 };
+    var header = riftAtlasByteAt(reader, 0);
+    riftAtlasAdvance(reader, 1);
+    var format = (header >> 4) & 15;
+    var version = header & 15;
+    if (format !== 1) throw new Error("That doesn't look like a Riftbound deck code.");
+    if (version > 5) throw new Error("This deck code is from a newer RiftAtlas version this app doesn't support yet.");
+
+    var hasPrefix;
+    if (version >= 5) {
+      var prefixFlag = riftAtlasByteAt(reader, 0);
+      riftAtlasAdvance(reader, 1);
+      if (prefixFlag > 1) throw new Error("Unsupported deck code prefix flag.");
+      hasPrefix = prefixFlag === 1;
+    } else {
+      hasPrefix = version >= 4;
+    }
+
+    var mainDeck, sideboard = [];
+    if (version >= 5) {
+      mainDeck = riftAtlasDecodeSectionV5(reader, signedSuffix, hasPrefix);
+      sideboard = riftAtlasDecodeSectionV5(reader, signedSuffix, hasPrefix);
+    } else {
+      mainDeck = riftAtlasDecodeSectionLegacy(reader, 12, signedSuffix, version);
+      if (version >= 2) sideboard = riftAtlasDecodeSectionLegacy(reader, 3, signedSuffix, version);
+    }
+
+    var chosenChampionCode = null;
+    if (version >= 3) {
+      var hasChampion = riftAtlasByteAt(reader, 0);
+      riftAtlasAdvance(reader, 1);
+      if (hasChampion === 1) {
+        var setId = riftAtlasByteAt(reader, 0);
+        var variantId = riftAtlasByteAt(reader, 1);
+        riftAtlasAdvance(reader, 2);
+        var numberStr;
+        if (hasPrefix) {
+          var prefixType = riftAtlasByteAt(reader, 0);
+          riftAtlasAdvance(reader, 1);
+          var num = riftAtlasVarintPop(reader);
+          if (prefixType === 2) numberStr = "SP" + num;
+          else if (prefixType === 1) numberStr = "R" + String(num).padStart(2, "0");
+          else if (prefixType === 0) numberStr = String(num).padStart(3, "0");
+          else throw new Error("Unknown number-prefix flag in champion.");
+        } else {
+          numberStr = String(riftAtlasVarintPop(reader)).padStart(3, "0");
+        }
+        var setCode = riftAtlasSetCodeFor(setId);
+        if (!setCode) throw new Error("Unknown set code in champion.");
+        var variantSuffix = riftAtlasVariantSuffixFor(variantId, signedSuffix);
+        chosenChampionCode = setCode + "-" + numberStr + variantSuffix;
+      }
+    }
+
+    return { mainDeck: mainDeck, sideboard: sideboard, chosenChampion: chosenChampionCode };
+  }
+
+  function riftAtlasCardIndex() {
+    var idx = {};
+    state.cards.forEach(function (c) {
+      var key = c.id.split("/")[0].toUpperCase();
+      if (!idx[key]) idx[key] = c;
+    });
+    return idx;
+  }
+
+  // "S" (signed/starter-legend variant) and "*" both decode from the same
+  // byte, and Jankrats' own data isn't fully consistent about which text
+  // form a given card uses -- try both before giving up.
+  function resolveRiftAtlasCardCode(code, idx) {
+    var target = code.toUpperCase();
+    if (idx[target]) return idx[target];
+    if (/S$/.test(target)) {
+      var alt = target.slice(0, -1) + "*";
+      if (idx[alt]) return idx[alt];
+    }
+    return null;
+  }
+
+  function mergeRiftAtlasEntries(entries) {
+    var byCode = {}, order = [];
+    entries.forEach(function (e) {
+      if (!byCode[e.cardCode]) { byCode[e.cardCode] = { cardCode: e.cardCode, count: 0 }; order.push(e.cardCode); }
+      byCode[e.cardCode].count += e.count;
+    });
+    return order.map(function (code) { return byCode[code]; });
+  }
+
+  // Converts a decoded deck code into the same {legend, champion, main,
+  // battlefields, runes, sideboard} bucket shape parseDeckListText
+  // produces, so it can share buildDeckFromImportBuckets with the
+  // plain-text importer instead of duplicating that logic. The decoded
+  // mainDeck list includes the Chosen Champion's own copy (RiftAtlas
+  // encodes it as an ordinary main-deck card, the same convention this
+  // app uses) -- pull it out into its own bucket entry here, the same
+  // way RiftAtlas's own decoder does, so buildDeckFromImportBuckets's
+  // "Champion: adds one to Main" behavior doesn't double it up.
+  function buildImportBucketsFromRiftAtlasCode(code) {
+    var decoded = decodeRiftAtlasDeckCode(code);
+    var idx = riftAtlasCardIndex();
+    var buckets = { legend: [], champion: [], main: [], battlefields: [], runes: [], sideboard: [] };
+    var unresolvedCodes = [];
+
+    mergeRiftAtlasEntries(decoded.mainDeck).forEach(function (e) {
+      if (e.count <= 0) return;
+      var card = resolveRiftAtlasCardCode(e.cardCode, idx);
+      if (!card) { unresolvedCodes.push(e.cardCode); return; }
+      var section = card.type === "Legend" ? "legend" : card.type === "Battlefield" ? "battlefields" : card.type === "Rune" ? "runes" : "main";
+      buckets[section].push({ qty: e.count, name: card.name, id: card.id });
+    });
+    mergeRiftAtlasEntries(decoded.sideboard).forEach(function (e) {
+      if (e.count <= 0) return;
+      var card = resolveRiftAtlasCardCode(e.cardCode, idx);
+      if (!card) { unresolvedCodes.push(e.cardCode); return; }
+      buckets.sideboard.push({ qty: e.count, name: card.name, id: card.id });
+    });
+
+    if (buckets.legend.length === 1) {
+      var legendCard = state.cardsById[buckets.legend[0].id];
+      var identity = legendCard ? championIdentityTagFor(legendCard) : null;
+      var pinned = decoded.chosenChampion ? resolveRiftAtlasCardCode(decoded.chosenChampion, idx) : null;
+      var championCard = null;
+      if (pinned && buckets.main.some(function (e) { return e.id === pinned.id; })) championCard = pinned;
+      else if (identity) {
+        var candidates = buckets.main.filter(function (e) {
+          var c = state.cardsById[e.id];
+          return c && isChampionEligible(c) && c.name.split(",")[0].trim() === identity;
+        });
+        if (candidates.length === 1) championCard = state.cardsById[candidates[0].id];
+      }
+      if (championCard) {
+        buckets.champion.push({ qty: 1, name: championCard.name, id: championCard.id });
+        var mainEntry = buckets.main.filter(function (e) { return e.id === championCard.id; })[0];
+        if (mainEntry) {
+          mainEntry.qty -= 1;
+          if (mainEntry.qty <= 0) buckets.main = buckets.main.filter(function (e) { return e !== mainEntry; });
+        }
+      }
+    }
+
+    return { buckets: buckets, unresolvedCodes: unresolvedCodes };
+  }
+
+  function importDeckFromRiftAtlasCode(code, nameOverride) {
+    var result;
+    try {
+      result = buildImportBucketsFromRiftAtlasCode(code);
+    } catch (err) {
+      return { deck: null, unresolved: [], error: "Couldn't read that deck code: " + (err && err.message ? err.message : "invalid format") };
+    }
+    var buckets = result.buckets;
+    var hasAny = buckets.legend.length || buckets.champion.length || buckets.main.length ||
+      buckets.battlefields.length || buckets.runes.length || buckets.sideboard.length;
+    if (!hasAny) return { deck: null, unresolved: [], error: "That deck code didn't decode to any cards." };
+    var built = buildDeckFromImportBuckets(buckets, nameOverride);
+    built.unresolved = built.unresolved.concat(result.unresolvedCodes.map(function (c) { return "Unknown card code: " + c; }));
+    state.decks.push(built.deck);
+    persistDecks();
+    return built;
+  }
+
+  // A deck code is one long unbroken run of base32 characters -- easy to
+  // tell apart from a plain-text list, which always has newlines/spaces.
+  function looksLikeRiftAtlasDeckCode(text) {
+    var t = (text || "").trim();
+    return t.length >= 20 && /^[A-Za-z2-7]+$/.test(t);
+  }
+
+  /* ================================================================
      DECK IMPORT / EXPORT (plain-text list, RiftAtlas-style)
      ================================================================ */
 
@@ -2746,7 +3056,7 @@
     var placeholder = "Legend:\n1 Shen, Eye of Twilight\n\nChampion:\n1 Shen, Kinkou\n\nMainDeck:\n3 Charm\n3 Discipline\n\nBattlefields:\n1 Kinkou Temple\n\nRunes:\n7 Calm Rune\n5 Order Rune\n\nSideboard:\n2 Salvage";
     root.innerHTML = '<div class="modal-backdrop" id="deck-import-modal"><div class="modal modal-wide">' +
       '<div class="modal-head"><h2 style="font-size:19px;">Import a deck</h2><button class="modal-close" data-close>&times;</button></div>' +
-      '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Paste a decklist — Legend, Champion, MainDeck, Battlefields, Runes, and Sideboard sections, each a "qty name" per line. A trailing "[CARD-ID]" (as in Jankrats\' own export) pins the exact printing; it\'s optional otherwise.</p>' +
+      '<p style="font-size:13px;color:var(--ink-soft);margin-bottom:12px;">Paste a decklist — Legend, Champion, MainDeck, Battlefields, Runes, and Sideboard sections, each a "qty name" per line. A trailing "[CARD-ID]" (as in Jankrats\' own export) pins the exact printing; it\'s optional otherwise. A RiftAtlas deck code (the long single-word string from its "Export" button) works too — paste it in as-is.</p>' +
       '<div class="field" style="margin-bottom:10px;"><label>Deck name (optional)</label><input type="text" id="deck-import-name" placeholder="Defaults to Champion / Legend"></div>' +
       '<textarea id="deck-import-text" rows="14" placeholder="' + escapeHtml(placeholder) + '"></textarea>' +
       '<div style="display:flex;gap:8px;margin-top:10px;"><button class="btn primary" id="deck-import-run">Import</button></div>' +
@@ -2757,7 +3067,9 @@
     root.querySelector("#deck-import-run").addEventListener("click", function () {
       var text = document.getElementById("deck-import-text").value;
       var name = document.getElementById("deck-import-name").value.trim();
-      var result = importDeckFromListText(text, name || null);
+      var result = looksLikeRiftAtlasDeckCode(text)
+        ? importDeckFromRiftAtlasCode(text.trim(), name || null)
+        : importDeckFromListText(text, name || null);
       var resultEl = document.getElementById("deck-import-result");
       if (!result.deck) {
         resultEl.innerHTML = '<p style="color:var(--bad);font-size:13px;">' + escapeHtml(result.error || "Couldn't parse that list.") + "</p>";
