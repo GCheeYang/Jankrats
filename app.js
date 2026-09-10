@@ -1956,22 +1956,20 @@
     renderBuilder();
   }
 
-  // Shared "All / Owned / Unowned" filter for every picker step in the
+  // Shared "All / Owned" filter for every picker step in the
   // builder (Legend, Champion, Main/Sideboard) -- one setting that carries
   // across stages rather than resetting each time, since "only show me
   // what I actually have" is a mode you're in for the whole build, not
   // just one step of it.
   function ownedFilterMatch(c) {
-    var f = state.builder.ownedFilter;
-    if (!f || f === "all") return true;
-    var owned = getOwned(c.id) + getOwnedFoil(c.id);
-    return f === "owned" ? owned > 0 : owned === 0;
+    if (state.builder.ownedFilter !== "owned") return true;
+    return (getOwned(c.id) + getOwnedFoil(c.id)) > 0;
   }
 
   function ownedFilterToggleHtml() {
-    var cur = state.builder.ownedFilter || "all";
+    var cur = state.builder.ownedFilter === "owned" ? "owned" : "all";
     return '<div class="tabs" style="margin-bottom:10px;">' +
-      [["all", "All"], ["owned", "Owned"], ["unowned", "Unowned"]].map(function (kv) {
+      [["all", "All"], ["owned", "Owned"]].map(function (kv) {
         return '<button class="' + (cur === kv[0] ? "active" : "") + '" data-owned-filter="' + kv[0] + '">' + kv[1] + "</button>";
       }).join("") + "</div>";
   }
@@ -2250,8 +2248,8 @@
         var atLimit = totalCopies(deck, c.id) >= RULES.maxCopies;
         return deckPickTileHtml(c, qty ? "×" + qty : null, atLimit && !qty);
       }).join("") + "</div>";
-      if (!pickPool.length) html += (state.builder.ownedFilter && state.builder.ownedFilter !== "all")
-        ? '<div class="empty-state"><h3>No cards match that filter</h3><p>Try switching Owned/Unowned back to All.</p></div>'
+      if (!pickPool.length) html += (state.builder.ownedFilter === "owned")
+        ? '<div class="empty-state"><h3>No cards match that filter</h3><p>Try switching back to All.</p></div>'
         : '<div class="empty-state"><h3>No cards in these domains</h3><p>Import more cards for ' + deck.domains.join("/") + ".</p></div>";
       else if (pickPoolFull.length > PICK_POOL_CAP) html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-top:8px;">Showing first ' + PICK_POOL_CAP + ' of ' + pickPoolFull.length + ' — use the search box above to narrow it down.</p>';
     } else if (state.builder.tab === "runes") {
