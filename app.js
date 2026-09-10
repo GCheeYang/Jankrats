@@ -1989,9 +1989,11 @@
 
   function legendPickerTileHtml(l, attr) {
     var owned = getOwned(l.id) + getOwnedFoil(l.id);
+    var identity = championIdentityTagFor(l);
     return '<div class="legend-card" ' + attr + '="' + l.id + '">' +
       (l.imageUrl ? '<div class="lc-img"><img class="' + (isLandscapeCard(l) ? "rot90" : "") + '" src="' + escapeHtml(l.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="lc-name">' + escapeHtml(l.name) + escapeHtml(variantLabel(l)) + "</div>" +
+      (identity ? '<div style="font-size:11.5px;color:var(--ink-faint);margin-top:-4px;">' + escapeHtml(identity) + "</div>" : "") +
       '<span class="coll-id-chip">' + escapeHtml(l.set) + " " + escapeHtml(l.collectorNumber || "") + "</span>" +
       domainChips(l.domains) +
       '<span class="pill neutral">' + escapeHtml(l.rarity || "") + "</span>" +
@@ -2004,11 +2006,17 @@
     var allLegends = legendBasicPool();
     var q = (state.builder.legendFilter || "").toLowerCase().trim();
     var legends = allLegends.filter(function (l) {
-      return (!q || l.name.toLowerCase().indexOf(q) !== -1) && ownedFilterMatch(l);
+      if (!q) return ownedFilterMatch(l);
+      // A Legend's own title is often nothing like the champion it's
+      // built around (e.g. Pyke's Legend is "Bloodharbor Ripper"), so a
+      // search for the champion's name alone needs to match too.
+      var identity = championIdentityTagFor(l);
+      var matches = l.name.toLowerCase().indexOf(q) !== -1 || (identity && identity.toLowerCase().indexOf(q) !== -1);
+      return matches && ownedFilterMatch(l);
     });
     var html = '<div><h3 style="margin-bottom:10px;">Step 1 — Choose a Legend</h3>';
     if (allLegends.length) {
-      html += '<div class="field" style="margin-bottom:10px;"><input type="search" id="legend-filter" placeholder="Search legends…" value="' + escapeHtml(state.builder.legendFilter) + '"></div>';
+      html += '<div class="field" style="margin-bottom:10px;"><input type="search" id="legend-filter" placeholder="Search legends or champions…" value="' + escapeHtml(state.builder.legendFilter) + '"></div>';
       html += ownedFilterToggleHtml();
     }
     if (!allLegends.length) html += '<div class="empty-state"><h3>No Legends in your card database</h3><p>Import some Legend cards first.</p></div>';
@@ -2019,9 +2027,12 @@
 
   function builderLegendVariantStep(deck) {
     var name = state.builder.legendVariantPickName;
-    var variants = legendVariantsOf(name);
+    var allVariants = legendVariantsOf(name);
+    var variants = allVariants.filter(ownedFilterMatch);
     var html = '<div><h3 style="margin-bottom:4px;">Choose ' + escapeHtml(name) + "'s art</h3>" +
       '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:10px;">Same Legend, different printing — pick whichever you\'re building around.</p>';
+    html += ownedFilterToggleHtml();
+    if (!variants.length) html += '<div class="empty-state"><h3>No printings match</h3><p>Switch the filter back to All.</p></div>';
     html += '<div class="legend-picker">' + variants.map(function (l) { return legendPickerTileHtml(l, "data-legend-variant"); }).join("") + "</div>" +
       '<button class="btn ghost small" style="margin-top:12px;" data-back-legend-list>← back to Legends</button>' +
       "</div>";
@@ -2036,6 +2047,7 @@
       host.querySelectorAll("[data-back-legend-list]").forEach(function (b) {
         b.addEventListener("click", function () { state.builder.legendVariantPickName = null; renderBuilder(); });
       });
+      wireOwnedFilterToggle(host);
       return;
     }
     host.querySelectorAll("[data-legend-pick]").forEach(function (b) {
