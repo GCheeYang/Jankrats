@@ -556,7 +556,8 @@ textarea { resize: vertical; min-height: 90px; }
 .cd-img,
 .legend-card .lc-img,
 .pick-row .pr-img,
-.deck-card-art {
+.deck-card-art,
+.sl-img {
   position: relative;
   container-type: size;
 }
@@ -570,7 +571,8 @@ textarea { resize: vertical; min-height: 90px; }
 .cd-img.img-fallback,
 .legend-card .lc-img.img-fallback,
 .pick-row .pr-img.img-fallback,
-.deck-card-art.img-fallback {
+.deck-card-art.img-fallback,
+.sl-img.img-fallback {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -581,12 +583,16 @@ textarea { resize: vertical; min-height: 90px; }
   color: var(--ink-faint);
   letter-spacing: 0.02em;
 }
+/* Too small a box for the "No image" label -- a blank placeholder reads
+   fine here since the card's name is right next to it in the same row. */
+.sl-img.img-fallback::after { content: ""; }
 
 .card-tile .ct-img img.rot90,
 .cd-img img.rot90,
 .legend-card .lc-img img.rot90,
 .pick-row .pr-img img.rot90,
-.deck-card-art img.rot90 {
+.deck-card-art img.rot90,
+.sl-img img.rot90 {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -799,6 +805,15 @@ textarea { resize: vertical; min-height: 90px; }
 .slot-line {
   display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 0; min-width: 0;
 }
+.slot-line .sl-img {
+  flex: none;
+  width: 28px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-raised);
+  aspect-ratio: 744 / 1039;
+}
+.slot-line .sl-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .slot-line .sl-qty { font-family: 'IBM Plex Mono', monospace; font-weight: 700; color: var(--rift); width: 20px; flex: none; }
 .slot-line .sl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slot-line .sl-cost { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--ink-faint); }

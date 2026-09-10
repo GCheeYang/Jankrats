@@ -609,7 +609,7 @@
   // image is removed and its wrapper gets a CSS placeholder instead of
   // the browser's broken-image icon; the card's name is already shown
   // as text elsewhere in the same tile, so nothing is lost.
-  var CARD_ART_WRAP_SELECTOR = ".ct-img, .cd-img, .lc-img, .pr-img, .deck-card-art";
+  var CARD_ART_WRAP_SELECTOR = ".ct-img, .cd-img, .lc-img, .pr-img, .deck-card-art, .sl-img";
   function wireCardArtFallback() {
     document.addEventListener("error", function (e) {
       var img = e.target;
@@ -1552,7 +1552,7 @@
         var qty = deck.runes[cid];
         if (!qty) return;
         var rc = state.cardsById[cid];
-        html += '<div class="slot-line"><span class="sl-qty">' + qty + "×</span><span class=\"sl-name\">" + (rc ? escapeHtml(rc.name) + escapeHtml(variantLabel(rc)) : escapeHtml(cid)) + "</span></div>";
+        html += '<div class="slot-line">' + slotLineImgHtml(rc) + '<span class="sl-qty">' + qty + "×</span><span class=\"sl-name\">" + (rc ? escapeHtml(rc.name) + escapeHtml(variantLabel(rc)) : escapeHtml(cid)) + "</span></div>";
       });
       html += "</div>";
     }
@@ -1560,7 +1560,7 @@
       html += '<div><h3>Battlefields</h3>';
       deck.battlefields.forEach(function (id) {
         var c = state.cardsById[id];
-        html += '<div class="slot-line"><span class="sl-name">' + escapeHtml(c ? c.name : id) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
+        html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-name">' + escapeHtml(c ? c.name : id) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
       });
       html += "</div>";
     }
@@ -1568,7 +1568,7 @@
       html += '<div><h3>Sideboard (' + sideboardCount(deck) + ")</h3>";
       deck.sideboard.forEach(function (e) {
         var c = state.cardsById[e.cardId];
-        html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
+        html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
       });
       html += "</div>";
     }
@@ -2324,6 +2324,16 @@
     return '<button class="' + (state.builder.tab === key ? "active" : "") + '" data-tab="' + key + '">' + escapeHtml(label) + "</button>";
   }
 
+  // Small thumbnail for a deck-panel line item -- a blank placeholder box
+  // when the card has no art (or wasn't found) so every row's text still
+  // lines up in a column instead of jumping left and right.
+  function slotLineImgHtml(c) {
+    if (c && c.imageUrl) {
+      return '<div class="sl-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>';
+    }
+    return '<div class="sl-img"></div>';
+  }
+
   function deckPanelHtml(deck, issues, legal) {
     var html = '<div class="deck-panel">';
     html += "<div>" + curveChartHtml(deck) + "</div>";
@@ -2337,7 +2347,7 @@
     mainEntries.forEach(function (e) {
       var c = state.cardsById[e.cardId];
       if (!c) return;
-      html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c.name) + escapeHtml(variantLabel(c)) +
+      html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c.name) + escapeHtml(variantLabel(c)) +
         (deck.championId === c.id ? ' <span class="pill neutral" style="padding:0 5px;">CH</span>' : "") + "</span>" +
         '<span class="sl-cost">' + (c.cost === null || c.cost === undefined ? "—" : c.cost + "⚡") + "</span>" +
         (deck.championId === c.id ? "" : '<button data-rm-main="' + c.id + '" title="Remove one">&times;</button>') +
@@ -2351,7 +2361,7 @@
         var qty = deck.runes[cid];
         if (!qty) return;
         var rc = state.cardsById[cid];
-        html += '<div class="slot-line"><span class="sl-qty">' + qty + "×</span><span class=\"sl-name\">" + (rc ? escapeHtml(rc.name) + escapeHtml(variantLabel(rc)) : escapeHtml(cid)) + "</span></div>";
+        html += '<div class="slot-line">' + slotLineImgHtml(rc) + '<span class="sl-qty">' + qty + "×</span><span class=\"sl-name\">" + (rc ? escapeHtml(rc.name) + escapeHtml(variantLabel(rc)) : escapeHtml(cid)) + "</span></div>";
       });
       html += "</div>";
     }
@@ -2360,7 +2370,7 @@
       html += '<div><h3>Battlefields</h3>';
       deck.battlefields.forEach(function (id) {
         var c = state.cardsById[id];
-        html += '<div class="slot-line"><span class="sl-name">' + escapeHtml(c ? c.name : id) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
+        html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-name">' + escapeHtml(c ? c.name : id) + (c ? escapeHtml(variantLabel(c)) : "") + "</span></div>";
       });
       html += "</div>";
     }
@@ -2369,7 +2379,7 @@
       html += '<div><h3>Sideboard (' + sideboardCount(deck) + ")</h3>";
       deck.sideboard.forEach(function (e) {
         var c = state.cardsById[e.cardId];
-        html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + (c ? escapeHtml(variantLabel(c)) : "") + "</span>" +
+        html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + (c ? escapeHtml(variantLabel(c)) : "") + "</span>" +
           '<button data-rm-sb="' + e.cardId + '" title="Remove one">&times;</button></div>';
       });
       html += "</div>";
@@ -2379,7 +2389,7 @@
       html += '<div><h3>Tokens</h3>';
       deck.tokens.forEach(function (e) {
         var c = state.cardsById[e.cardId];
-        html += '<div class="slot-line"><span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + "</span>" +
+        html += '<div class="slot-line">' + slotLineImgHtml(c) + '<span class="sl-qty">' + e.qty + "×</span><span class=\"sl-name\">" + escapeHtml(c ? c.name : e.cardId) + "</span>" +
           '<button data-rm-token="' + e.cardId + '" title="Remove one">&times;</button></div>';
       });
       html += "</div>";
