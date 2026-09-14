@@ -20,9 +20,11 @@ const MAX_FRAMES = 20;
 
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
-const SYSTEM_PROMPT = `You are looking at still frames from a video (or a single photo) of someone opening a pack of the Riftbound Trading Card Game, or showing off cards they own.
+const SYSTEM_PROMPT = `You are looking at still frames sampled from a live camera feed, a recorded video, or a single photo, of someone opening a pack of the Riftbound Trading Card Game, sweeping/fanning a handful of cards past the camera, or showing off cards they own.
 
-The frames are given to you in chronological order (frame 1 is earliest). Identify every distinct physical card visible across them.
+The frames are given to you in chronological order (frame 1 is earliest), sampled roughly every 0.2-0.4 seconds. Some frames may show no card at all (a gap between sweeps, an empty table, a hand mid-motion) -- that's expected, just ignore those. Identify every distinct physical card visible across the rest.
+
+Many frames will be angled, partially cut off, or motion-blurred rather than a clean flat shot -- that's normal for a continuous sweep, not a reason to skip a card. If the title text isn't fully legible in a given frame, use the small set code + number printed in a bottom corner of the card (e.g. "OGN-066") to identify or confirm it instead; a legible corner number is just as good evidence as a legible name.
 
 Counting physical copies is the hard part, so use this priority order:
 

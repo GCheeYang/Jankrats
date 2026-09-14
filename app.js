@@ -3638,31 +3638,21 @@
      ================================================================ */
 
   var scanImportState = { results: [], busy: false };
-  // "camera" is the default -- scanning one card at a time is far more
-  // reliable than trying to infer counts from a panned video of a
-  // fanned hand (duplicates stacked behind the front card are
-  // genuinely ambiguous in a single frame, no matter how it's sampled;
-  // seen firsthand debugging the old video-only flow this replaces).
   var scanCaptureMode = "camera";
-  // autoTimer polls every 200ms, but that's a *check*, not a capture --
-  // prevFrameData/stableStreak track a cheap frame-to-frame difference so
-  // a capture (and the Claude vision call behind it) only actually fires
-  // once the picture has held still for a beat, and capturedThisHold +
-  // cooldownUntil stop it firing again for the same still card once it
-  // has. Blindly sending a frame every 200ms would be both expensive
-  // (5 API calls/sec) and low-quality (most of those frames would be
-  // mid-motion blur between cards).
-  var cameraScanState = {
-    stream: null, busy: false, autoTimer: null, diffCanvas: null,
-    prevFrameData: null, stableStreak: 0, capturedThisHold: false, cooldownUntil: 0
-  };
+  // autoTimer grabs a frame into frameBuffer every CAMERA_POLL_MS as the
+  // user sweeps/fans cards past the camera -- no per-frame API call, that
+  // would be both expensive (5 calls/sec) and low-quality (most individual
+  // frames land mid-motion, blurred). Once the buffer reaches
+  // CAMERA_BATCH_FRAMES it's flushed as one batch to identify-cards, which
+  // already tracks a card reappearing across chronological frames to count
+  // duplicates -- the same logic built for the old pack-opening-video flow,
+  // now fed by a live continuous sweep instead of a pre-recorded upload.
+  var cameraScanState = { stream: null, busy: false, autoTimer: null, frameBuffer: [] };
   var CAMERA_POLL_MS = 200;
-  var CAMERA_STABLE_TICKS = 3;   // ~600ms of stillness before it captures
-  var CAMERA_DIFF_THRESHOLD = 6; // average per-channel delta, tuned loosely
-  var CAMERA_COOLDOWN_MS = 1500; // guards against a hand tremor double-capturing the same still card
+  var CAMERA_BATCH_FRAMES = 20; // matches the Edge Function's own MAX_FRAMES cap -- 20 * 200ms = one batch every ~4s
 
   function renderScanImportSection() {
-    var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Scan your cards one at a time with your camera, or upload a photo/video instead, and we'll add them to your collection. Simply review and confirm the matches after!</p>";
+    var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Sweep your cards past the camera, or upload a photo/video instead, and we'll add them to your collection. Simply review and confirm the matches after!</p>";
 
     if (!JVBackend.isConfigured()) {
       html += '<div class="callout" style="margin-bottom:14px;">Card scanning needs the backend connected (see SETUP.md) plus an <code>identify-cards</code> Edge Function deployed with an Anthropic API key.</div>';
@@ -3680,13 +3670,13 @@
   }
 
   function cameraScanBodyHtml() {
-    var html = '<div class="callout" style="margin-bottom:14px;">Hold one card so it fills the frame and keep it steady for a moment — it captures automatically once the picture settles, then move to the next card. Scan the same card again to add another copy.</div>';
+    var html = '<div class="callout" style="margin-bottom:14px;">Keep the camera pointed at your cards and sweep through them steadily — it keeps sampling in the background and adds cards in batches as it goes. No need to hold each one still.</div>';
     if (!cameraScanState.stream) {
       html += '<button class="btn primary" id="scan-camera-start" type="button">Start camera</button>';
     } else {
       html += '<div class="scan-camera-wrap"><video id="scan-camera-video" autoplay playsinline muted></video></div>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">' +
-        '<button class="btn ghost small" id="scan-camera-capture" type="button">Capture now</button>' +
+        '<button class="btn ghost small" id="scan-camera-capture" type="button">Scan now</button>' +
         '<button class="btn ghost" id="scan-camera-stop" type="button">Stop camera</button>' +
         "</div>";
     }
@@ -3846,7 +3836,7 @@
     var video = el.querySelector("#scan-camera-video");
     if (video && cameraScanState.stream) video.srcObject = cameraScanState.stream;
     var captureBtn = el.querySelector("#scan-camera-capture");
-    if (captureBtn) captureBtn.addEventListener("click", function () { captureCameraFrame(el); });
+    if (captureBtn) captureBtn.addEventListener("click", function () { flushCameraBatch(el); });
     var stopBtn = el.querySelector("#scan-camera-stop");
     if (stopBtn) stopBtn.addEventListener("click", function () { stopCameraScan(); refreshScanCaptureBody(el); });
   }
@@ -3880,16 +3870,13 @@
     }
   }
 
-  // Polls the video every CAMERA_POLL_MS, but only actually fires a capture
-  // once the frame has held still for CAMERA_STABLE_TICKS in a row -- that
-  // avoids both wasting API calls on 5 frames/sec and sending blurry
-  // mid-motion shots while the person is swapping to the next card.
+  // Grabs a frame into frameBuffer every CAMERA_POLL_MS regardless of
+  // whether anything is currently steady in view -- the whole point is to
+  // let someone sweep/fan a stack past the camera without pausing. Once
+  // the buffer hits CAMERA_BATCH_FRAMES it's sent off as one batch.
   function startAutoCaptureLoop(el) {
     stopAutoCaptureLoop();
-    cameraScanState.prevFrameData = null;
-    cameraScanState.stableStreak = 0;
-    cameraScanState.capturedThisHold = false;
-    cameraScanState.cooldownUntil = 0;
+    cameraScanState.frameBuffer = [];
     cameraScanState.autoTimer = setInterval(function () { autoCaptureTick(el); }, CAMERA_POLL_MS);
   }
 
@@ -3898,78 +3885,65 @@
       clearInterval(cameraScanState.autoTimer);
       cameraScanState.autoTimer = null;
     }
+    cameraScanState.frameBuffer = [];
   }
 
   function autoCaptureTick(el) {
-    if (cameraScanState.busy || Date.now() < cameraScanState.cooldownUntil) return;
+    // Pause buffering while a batch is in flight rather than letting the
+    // buffer grow unbounded -- capture resumes as soon as the request
+    // resolves, a few seconds later at most.
+    if (cameraScanState.busy) return;
     var video = el.querySelector("#scan-camera-video");
     if (!video || !video.videoWidth) return;
 
-    if (!cameraScanState.diffCanvas) cameraScanState.diffCanvas = document.createElement("canvas");
-    var dc = cameraScanState.diffCanvas;
-    dc.width = 32; dc.height = 32;
-    var ctx = dc.getContext("2d");
-    ctx.drawImage(video, 0, 0, 32, 32);
-    var frameData = ctx.getImageData(0, 0, 32, 32).data;
-
-    var prev = cameraScanState.prevFrameData;
-    cameraScanState.prevFrameData = frameData;
-    if (!prev) return;
-
-    var diffSum = 0;
-    for (var i = 0; i < frameData.length; i += 4) {
-      diffSum += Math.abs(frameData[i] - prev[i]) + Math.abs(frameData[i + 1] - prev[i + 1]) + Math.abs(frameData[i + 2] - prev[i + 2]);
-    }
-    var avgDiff = diffSum / ((frameData.length / 4) * 3);
-
-    if (avgDiff > CAMERA_DIFF_THRESHOLD) {
-      cameraScanState.stableStreak = 0;
-      cameraScanState.capturedThisHold = false;
-      return;
-    }
-    cameraScanState.stableStreak++;
-    if (cameraScanState.stableStreak >= CAMERA_STABLE_TICKS && !cameraScanState.capturedThisHold) {
-      cameraScanState.capturedThisHold = true;
-      captureCameraFrame(el, { auto: true });
-    }
+    cameraScanState.frameBuffer.push(grabVideoFrame(video));
+    if (cameraScanState.frameBuffer.length >= CAMERA_BATCH_FRAMES) flushCameraBatch(el);
   }
 
-  function captureCameraFrame(el, opts) {
-    if (cameraScanState.busy) return;
-    var video = el.querySelector("#scan-camera-video");
-    if (!video || !video.videoWidth) {
-      if (!opts || !opts.auto) toast("Camera isn't ready yet — give it a second.");
-      return;
-    }
-    if (!JVBackend.isConfigured()) { toast("Card scanning needs the backend connected — see SETUP.md."); return; }
-
-    var captureBtn = el.querySelector("#scan-camera-capture");
-    cameraScanState.busy = true;
-    if (captureBtn) captureBtn.disabled = true;
-    scanSetLoadingStatus(el, "Reading card…");
-
+  // Cards are stacked/fanned in a real hand the same way they were in the
+  // old pack-opening-video flow, worth the same resolution/quality bump
+  // (see extractVideoFrames below) -- and it's what makes a small
+  // bottom-corner collector number legible when the card name itself is
+  // angled or cut off mid-sweep.
+  function grabVideoFrame(video) {
     var canvas = document.createElement("canvas");
     var maxW = 1100;
     var scale = Math.min(1, maxW / video.videoWidth);
     canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
     canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
     canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-    var frame = canvas.toDataURL("image/jpeg", 0.85);
+    return canvas.toDataURL("image/jpeg", 0.85);
+  }
 
-    JVBackend.identifyCards([frame]).then(function (res) {
+  // Sends whatever's currently buffered off to identify-cards as one
+  // batch and merges the result in. Fires automatically once the buffer
+  // fills, or on demand from the "Scan now" button to process a partial
+  // buffer without waiting.
+  function flushCameraBatch(el) {
+    if (cameraScanState.busy) return;
+    var frames = cameraScanState.frameBuffer;
+    cameraScanState.frameBuffer = [];
+    if (!frames.length) { toast("Nothing captured yet — give it a second."); return; }
+    if (!JVBackend.isConfigured()) { toast("Card scanning needs the backend connected — see SETUP.md."); return; }
+
+    var captureBtn = el.querySelector("#scan-camera-capture");
+    cameraScanState.busy = true;
+    if (captureBtn) captureBtn.disabled = true;
+    scanSetLoadingStatus(el, "Reading " + frames.length + " frame" + (frames.length === 1 ? "" : "s") + "…");
+
+    JVBackend.identifyCards(frames).then(function (res) {
       var cards = (res && res.cards) || [];
       if (!cards.length) {
-        scanSetStatus(el, "Couldn't identify a card in that shot — try better lighting or hold it steadier.");
+        scanSetStatus(el, "Couldn't identify any cards in that sweep — try slower, closer, or better lit.");
         return;
       }
       scanImportState.results = mergeScanResults(scanImportState.results, cards);
       var names = cards.map(function (c) { return c && c.name; }).filter(Boolean).join(", ");
       scanSetStatus(el, names ? "Added: " + names : "");
       rerenderScanResults();
-      cameraScanState.cooldownUntil = Date.now() + CAMERA_COOLDOWN_MS;
     }).catch(function (err) {
       console.error(err);
-      scanSetStatus(el, "Something went wrong: " + (err && err.message ? err.message : "couldn't read that frame."));
+      scanSetStatus(el, "Something went wrong: " + (err && err.message ? err.message : "couldn't read that batch."));
     }).then(function () {
       cameraScanState.busy = false;
       if (captureBtn) captureBtn.disabled = false;
