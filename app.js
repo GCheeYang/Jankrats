@@ -3330,14 +3330,15 @@
   // button there) rather than as its own nav tab, since it's just another
   // way to fill in the same data Collection shows.
   function openImportModal() {
+    stopCameraScan();
     importMethodTab = "scan";
     var root = document.getElementById("modal-root");
     root.innerHTML = '<div class="modal-backdrop" id="import-modal"><div class="modal modal-wide">' +
       '<div class="modal-head"><h2 style="font-size:19px;">Import to Collection</h2><button class="modal-close" data-close>&times;</button></div>' +
       importBodyHtml() +
       "</div></div>";
-    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
-    root.querySelector("#import-modal").addEventListener("click", function (e) { if (e.target.id === "import-modal") closeModal(); });
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", function () { stopCameraScan(); closeModal(); }); });
+    root.querySelector("#import-modal").addEventListener("click", function (e) { if (e.target.id === "import-modal") { stopCameraScan(); closeModal(); } });
     wireImportBody(root);
   }
 
@@ -3373,6 +3374,7 @@
       b.addEventListener("click", function () {
         var key = b.getAttribute("data-import-method");
         if (key === importMethodTab) return;
+        stopCameraScan();
         importMethodTab = key;
         root.querySelectorAll("[data-import-method]").forEach(function (x) {
           x.classList.toggle("active", x.getAttribute("data-import-method") === key);
@@ -3626,34 +3628,66 @@
   }
 
   /* ================================================================
-     SCAN IMPORT: upload a photo or short video of a pull/pack, have an
-     AI (via the identify-cards Edge Function) read off the card names,
-     then run those through the fuzzy card-name matcher.
+     SCAN IMPORT: identify cards via the identify-cards Edge Function,
+     either from a live camera capture (one card at a time -- the
+     pattern apps like Collectr, RareCandy, and DeckTradr all use:
+     point at exactly one card, recognize it in under a second, scan
+     the same card again to bump its count) or an uploaded photo/video
+     for anyone who'd rather not use their camera live. Both feed the
+     same fuzzy card-name matcher and the same review table below.
      ================================================================ */
 
   var scanImportState = { results: [], busy: false };
+  // "camera" is the default -- scanning one card at a time is far more
+  // reliable than trying to infer counts from a panned video of a
+  // fanned hand (duplicates stacked behind the front card are
+  // genuinely ambiguous in a single frame, no matter how it's sampled;
+  // seen firsthand debugging the old video-only flow this replaces).
+  var scanCaptureMode = "camera";
+  var cameraScanState = { stream: null, busy: false };
 
   function renderScanImportSection() {
-    var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Upload a photo of your pull, or a short video panning across the cards, and we'll add them to your collection. Simply review and confirm the matches after!</p>";
+    var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Scan your cards one at a time with your camera, or upload a photo/video instead, and we'll add them to your collection. Simply review and confirm the matches after!</p>";
 
     if (!JVBackend.isConfigured()) {
       html += '<div class="callout" style="margin-bottom:14px;">Card scanning needs the backend connected (see SETUP.md) plus an <code>identify-cards</code> Edge Function deployed with an Anthropic API key.</div>';
-    } else {
-      html += '<div class="callout" style="margin-bottom:14px;">Works best with good lighting. Show one card\'s full face at a time and pause on it for a beat (four-tenths of a second or so) — duplicates of the same card are easiest to count correctly when each copy gets its own moment in front, rather than fanned in a hand where only a sliver of the ones behind is visible. Videos are capped at 60 seconds.</div>';
+      return html;
     }
 
+    html += '<div class="tabs" style="margin-bottom:14px;">' +
+      '<button class="' + (scanCaptureMode === "camera" ? "active" : "") + '" data-scan-mode="camera">Live camera</button>' +
+      '<button class="' + (scanCaptureMode === "upload" ? "active" : "") + '" data-scan-mode="upload">Upload photo/video</button>' +
+      "</div>";
+    html += '<div id="scan-capture-body">' + (scanCaptureMode === "camera" ? cameraScanBodyHtml() : uploadScanBodyHtml()) + "</div>";
+    html += '<div id="scan-status" style="margin-top:10px;"></div>';
+    html += '<div id="scan-results" style="margin-top:14px;">' + scanResultsHtml() + "</div>";
+    return html;
+  }
+
+  function cameraScanBodyHtml() {
+    var html = '<div class="callout" style="margin-bottom:14px;">Hold one card so it fills the frame, then tap Capture. Scan the same card again to add another copy — no need to count duplicates by eye.</div>';
+    if (!cameraScanState.stream) {
+      html += '<button class="btn primary" id="scan-camera-start" type="button">Start camera</button>';
+    } else {
+      html += '<div class="scan-camera-wrap"><video id="scan-camera-video" autoplay playsinline muted></video></div>';
+      html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">' +
+        '<button class="btn primary" id="scan-camera-capture" type="button">Capture card</button>' +
+        '<button class="btn ghost" id="scan-camera-stop" type="button">Stop camera</button>' +
+        "</div>";
+    }
+    return html;
+  }
+
+  function uploadScanBodyHtml() {
+    var html = '<div class="callout" style="margin-bottom:14px;">Works best with good lighting. Show one card\'s full face at a time and pause on it for a beat (four-tenths of a second or so) — duplicates of the same card are easiest to count correctly when each copy gets its own moment in front, rather than fanned in a hand where only a sliver of the ones behind is visible. Videos are capped at 60 seconds.</div>';
     html += '<div style="margin-bottom:10px;">' +
       '<label for="scan-file" class="btn primary" style="display:inline-flex;align-items:center;padding:12px 22px;font-size:15px;cursor:pointer;">Upload Cards</label>' +
       '<input type="file" id="scan-file" accept="image/*,video/*" style="display:none;">' +
       '<div id="scan-file-name" style="margin-top:6px;color:var(--ink-soft);font-size:13px;">No file chosen</div>' +
       "</div>";
-
     html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
       '<button class="btn primary" id="scan-run" type="button">Identify cards</button>' +
       "</div>";
-
-    html += '<div id="scan-status" style="margin-top:10px;"></div>';
-    html += '<div id="scan-results" style="margin-top:14px;">' + scanResultsHtml() + "</div>";
     return html;
   }
 
@@ -3693,17 +3727,65 @@
     });
   }
 
+  // Same {phrase, qty, cardId} conversion as scanResultsFromCards, but adds
+  // onto an existing results list instead of replacing it -- a live-camera
+  // capture identifies one card at a time, so scanning the same physical
+  // card again should bump its row's qty rather than add a duplicate row.
+  function mergeScanResults(existingResults, cards) {
+    var results = existingResults.slice();
+    (cards || []).forEach(function (c) {
+      var name = String((c && c.name) || "").trim();
+      var qty = clamp(parseInt(c && c.qty, 10) || 1, 1, 999);
+      var match = name ? bestCardMatch(name, null) : null;
+      var cardId = match ? match.card.id : null;
+      var label = (name || "(unnamed)") + (c && c.collectorNumber ? " (" + c.collectorNumber + ")" : "");
+      var existing = cardId && results.filter(function (r) { return r.cardId === cardId; })[0];
+      if (existing) existing.qty = clamp(existing.qty + qty, 1, 999);
+      else results.push({ phrase: label, qty: qty, cardId: cardId });
+    });
+    return results;
+  }
+
   function wireScanImport(el) {
+    el.querySelectorAll("[data-scan-mode]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var mode = b.getAttribute("data-scan-mode");
+        if (mode === scanCaptureMode) return;
+        stopCameraScan();
+        scanCaptureMode = mode;
+        el.querySelectorAll("[data-scan-mode]").forEach(function (x) { x.classList.toggle("active", x.getAttribute("data-scan-mode") === mode); });
+        refreshScanCaptureBody(el);
+      });
+    });
+    wireScanCaptureBody(el);
+  }
+
+  function refreshScanCaptureBody(el) {
+    var body = el.querySelector("#scan-capture-body");
+    if (!body) return;
+    body.innerHTML = scanCaptureMode === "camera" ? cameraScanBodyHtml() : uploadScanBodyHtml();
+    wireScanCaptureBody(el);
+  }
+
+  function wireScanCaptureBody(el) {
+    if (scanCaptureMode === "camera") wireCameraScanControls(el);
+    else wireUploadScanControls(el);
+  }
+
+  function scanSetStatus(el, msg) {
+    var statusEl = el.querySelector("#scan-status");
+    if (statusEl) statusEl.textContent = msg || "";
+  }
+  function scanSetLoadingStatus(el, msg) {
+    var statusEl = el.querySelector("#scan-status");
+    if (statusEl) statusEl.innerHTML = '<span class="spinner"></span><span>' + escapeHtml(msg) + "</span>";
+  }
+
+  function wireUploadScanControls(el) {
     var runBtn = el.querySelector("#scan-run");
     var fileInput = el.querySelector("#scan-file");
-    var statusEl = el.querySelector("#scan-status");
     var fileNameEl = el.querySelector("#scan-file-name");
     if (!runBtn) return;
-
-    function setStatus(msg) { if (statusEl) statusEl.textContent = msg || ""; }
-    function setLoadingStatus(msg) {
-      if (statusEl) statusEl.innerHTML = '<span class="spinner"></span><span>' + escapeHtml(msg) + "</span>";
-    }
 
     if (fileInput && fileNameEl) {
       fileInput.addEventListener("change", function () {
@@ -3720,23 +3802,102 @@
 
       scanImportState.busy = true;
       runBtn.disabled = true;
-      setLoadingStatus("Uploading cards…");
+      scanSetLoadingStatus(el, "Uploading cards…");
 
       extractFramesFromMediaFile(file).then(function (frames) {
-        setLoadingStatus("Uploading cards…");
+        scanSetLoadingStatus(el, "Uploading cards…");
         return JVBackend.identifyCards(frames);
       }).then(function (res) {
         var cards = (res && res.cards) || [];
         scanImportState.results = scanResultsFromCards(cards);
-        setStatus(cards.length ? "" : "Couldn't identify any cards in that — try better lighting or a steadier shot.");
+        scanSetStatus(el, cards.length ? "" : "Couldn't identify any cards in that — try better lighting or a steadier shot.");
         rerenderScanResults();
       }).catch(function (err) {
         console.error(err);
-        setStatus("Something went wrong: " + (err && err.message ? err.message : "couldn't scan that file."));
+        scanSetStatus(el, "Something went wrong: " + (err && err.message ? err.message : "couldn't scan that file."));
       }).then(function () {
         scanImportState.busy = false;
         runBtn.disabled = false;
       });
+    });
+  }
+
+  function wireCameraScanControls(el) {
+    var startBtn = el.querySelector("#scan-camera-start");
+    if (startBtn) {
+      startBtn.addEventListener("click", function () { startCameraScan(el); });
+      return;
+    }
+    var video = el.querySelector("#scan-camera-video");
+    if (video && cameraScanState.stream) video.srcObject = cameraScanState.stream;
+    var captureBtn = el.querySelector("#scan-camera-capture");
+    if (captureBtn) captureBtn.addEventListener("click", function () { captureCameraFrame(el); });
+    var stopBtn = el.querySelector("#scan-camera-stop");
+    if (stopBtn) stopBtn.addEventListener("click", function () { stopCameraScan(); refreshScanCaptureBody(el); });
+  }
+
+  function startCameraScan(el) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast("This browser can't access the camera.");
+      return;
+    }
+    var startBtn = el.querySelector("#scan-camera-start");
+    if (startBtn) { startBtn.disabled = true; startBtn.textContent = "Starting camera…"; }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }).then(function (stream) {
+      cameraScanState.stream = stream;
+      refreshScanCaptureBody(el);
+    }).catch(function (err) {
+      toast("Couldn't access the camera" + (err && err.message ? ": " + err.message : "."));
+      if (startBtn) { startBtn.disabled = false; startBtn.textContent = "Start camera"; }
+    });
+  }
+
+  // Stops and releases the camera stream -- called whenever the live-scan
+  // UI goes away (switching mode/method tabs, closing the import modal,
+  // the user's own "Stop camera" button) so the camera light doesn't stay
+  // on after the scanner is no longer visible.
+  function stopCameraScan() {
+    if (cameraScanState.stream) {
+      cameraScanState.stream.getTracks().forEach(function (t) { t.stop(); });
+      cameraScanState.stream = null;
+    }
+  }
+
+  function captureCameraFrame(el) {
+    if (cameraScanState.busy) return;
+    var video = el.querySelector("#scan-camera-video");
+    if (!video || !video.videoWidth) { toast("Camera isn't ready yet — give it a second."); return; }
+    if (!JVBackend.isConfigured()) { toast("Card scanning needs the backend connected — see SETUP.md."); return; }
+
+    var captureBtn = el.querySelector("#scan-camera-capture");
+    cameraScanState.busy = true;
+    if (captureBtn) captureBtn.disabled = true;
+    scanSetLoadingStatus(el, "Reading card…");
+
+    var canvas = document.createElement("canvas");
+    var maxW = 1100;
+    var scale = Math.min(1, maxW / video.videoWidth);
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    var frame = canvas.toDataURL("image/jpeg", 0.85);
+
+    JVBackend.identifyCards([frame]).then(function (res) {
+      var cards = (res && res.cards) || [];
+      if (!cards.length) {
+        scanSetStatus(el, "Couldn't identify a card in that shot — try better lighting or hold it steadier.");
+        return;
+      }
+      scanImportState.results = mergeScanResults(scanImportState.results, cards);
+      var names = cards.map(function (c) { return c && c.name; }).filter(Boolean).join(", ");
+      scanSetStatus(el, names ? "Added: " + names : "");
+      rerenderScanResults();
+    }).catch(function (err) {
+      console.error(err);
+      scanSetStatus(el, "Something went wrong: " + (err && err.message ? err.message : "couldn't read that frame."));
+    }).then(function () {
+      cameraScanState.busy = false;
+      if (captureBtn) captureBtn.disabled = false;
     });
   }
 
