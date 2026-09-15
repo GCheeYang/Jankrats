@@ -922,7 +922,15 @@ textarea { resize: vertical; min-height: 90px; }
 
 @media (max-width: 760px) {
   .topbar-main { padding: 10px 16px; flex-wrap: wrap; row-gap: 8px; }
-  .nav { padding: 0 16px; gap: 18px; }
+  .nav {
+    padding: 0 16px;
+    gap: 22px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display: none; }
   .wordmark { order: 1; }
   .topbar-right { order: 2; }
   .topbar-search-wrap { order: 3; flex-basis: 100%; }
