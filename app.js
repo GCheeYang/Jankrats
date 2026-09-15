@@ -1798,8 +1798,9 @@
     if (state.builder.deckId === id) state.builder.deckId = null;
     renderDecksView();
     if (JVBackend.isConfigured() && JVBackend.currentUserId()) {
-      JVBackend.deleteDeckRemote(id).then(function () { clearDeckTombstone(id); }).catch(function () {
-        toast("Couldn't remove that deck from your account.");
+      JVBackend.deleteDeckRemote(id).then(function () { clearDeckTombstone(id); }).catch(function (err) {
+        console.error("deleteDeckRemote failed", err);
+        toast("Couldn't remove that deck from your account" + (err && err.message ? ": " + err.message : "."));
       });
     }
   }
