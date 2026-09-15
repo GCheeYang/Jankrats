@@ -251,13 +251,46 @@
     if (!c || !uid) return Promise.reject(new Error("Not signed in"));
     if (!decks || !decks.length) return Promise.resolve();
     var rows = decks.map(function (d) { return deckToRow(uid, d); });
-    return Promise.resolve(c.from("decks").upsert(rows, { onConflict: "user_id,id" }));
+    return c.from("decks").upsert(rows, { onConflict: "user_id,id" }).then(function (r) {
+      if (r.error) throw r.error;
+    });
   }
 
+  // Callers (deleteDeck's tombstone cleanup, syncDecksOnSignIn's retry)
+  // treat a resolved promise as "the row is really gone" -- Supabase's
+  // query builder resolves even when the delete failed server-side
+  // (RLS denial, bad filter, etc.), it just sets r.error instead of
+  // rejecting, so this has to check r.error and throw itself or a failed
+  // delete would look successful and the tombstone protecting against
+  // resurrection would get cleared too early.
+  //
+  // Records the deletion in deck_deletions BEFORE deleting the row, not
+  // after: bulkUpsertDecks re-uploads a caller's *entire* local deck
+  // list on every edit, so a different tab/device that still has this
+  // deck cached can re-insert it moments later. The permanent
+  // deck_deletions row is what syncDecksOnSignIn checks (and self-heals
+  // against) on every future sign-in, on any device -- writing it first
+  // means even a delete that fails partway still leaves that guard in place.
   function deleteDeckRemote(deckId) {
     var c = client_(); var uid = currentUserId();
     if (!c || !uid) return Promise.reject(new Error("Not signed in"));
-    return Promise.resolve(c.from("decks").delete().eq("user_id", uid).eq("id", deckId));
+    return c.from("deck_deletions").upsert({ user_id: uid, deck_id: deckId }, { onConflict: "user_id,deck_id" }).then(function (r) {
+      if (r.error) throw r.error;
+      return c.from("decks").delete().eq("user_id", uid).eq("id", deckId);
+    }).then(function (r) {
+      if (r.error) throw r.error;
+    });
+  }
+
+  // Every deck id this player has ever deleted, per deck_deletions above --
+  // used by syncDecksOnSignIn to keep a resurrected row from re-entering
+  // local state, and to re-delete it server-side if some other device's
+  // stale upload brought it back.
+  function listDeckDeletionIds(userId) {
+    var c = client_();
+    if (!c) return Promise.resolve([]);
+    return c.from("deck_deletions").select("deck_id").eq("user_id", userId)
+      .then(function (r) { return (r.data || []).map(function (row) { return row.deck_id; }); });
   }
 
   /* ---------------- posts / feed ---------------- */
@@ -492,6 +525,7 @@
     listDecksFor: listDecksFor,
     bulkUpsertDecks: bulkUpsertDecks,
     deleteDeckRemote: deleteDeckRemote,
+    listDeckDeletionIds: listDeckDeletionIds,
     listPosts: listPosts,
     createDeckPost: createDeckPost,
     createPullPost: createPullPost,

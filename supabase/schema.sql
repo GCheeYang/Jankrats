@@ -129,6 +129,32 @@ create policy "users manage their own decks"
   with check (auth.uid() = user_id);
 
 -- ---------------------------------------------------------------------------
+-- deck_deletions: a permanent, server-side record of every deck id a
+-- player has deleted. Deleting a deck uploads the player's whole local
+-- deck list on the next unrelated edit from any OTHER signed-in tab or
+-- device that still has a stale copy of it in memory (bulkUpsertDecks
+-- re-uploads the full list, not just the one changed deck) -- that would
+-- silently resurrect the row. Recording the id here, and having every
+-- sign-in re-check it and re-delete anything that snuck back, makes the
+-- deletion durable no matter which device it happened on.
+-- ---------------------------------------------------------------------------
+create table if not exists public.deck_deletions (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  deck_id text not null,
+  deleted_at timestamptz not null default now(),
+  primary key (user_id, deck_id)
+);
+
+alter table public.deck_deletions enable row level security;
+
+drop policy if exists "users manage their own deck deletions" on public.deck_deletions;
+create policy "users manage their own deck deletions"
+  on public.deck_deletions for all
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
 -- posts: the two post types (deck / pull) live in one table.
 -- ---------------------------------------------------------------------------
 create table if not exists public.posts (

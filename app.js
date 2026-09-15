@@ -286,10 +286,17 @@
 
   // Fire-and-forget, mirroring syncCollectionEntryToCloud: keeps the
   // signed-in player's cloud decks (what the Friends tab reads) in step
-  // with every local deck edit.
+  // with every local deck edit. This uploads the *whole* local deck list
+  // (bulkUpsertDecks doesn't take a single row), so it has to exclude
+  // anything tombstoned on this browser -- otherwise a second tab open
+  // since before a delete, editing some other deck, would re-upload its
+  // own stale copy of the deleted one right back into the cloud.
   function syncDecksToCloud() {
     if (!JVBackend.isConfigured() || !JVBackend.currentUserId() || !state.decks.length) return;
-    JVBackend.bulkUpsertDecks(state.decks).catch(function () {
+    var tombstones = loadJSON(KEYS.deletedDeckIds, []);
+    var decks = tombstones.length ? state.decks.filter(function (d) { return tombstones.indexOf(d.id) === -1; }) : state.decks;
+    if (!decks.length) return;
+    JVBackend.bulkUpsertDecks(decks).catch(function () {
       toast("Couldn't sync your decks to your account.");
     });
   }
@@ -4190,17 +4197,28 @@
   // fully offline), so this merges rather than replaces: any deck that
   // exists on only one side is kept, and one that exists on both keeps
   // whichever copy was edited more recently -- except a deck tombstoned
-  // by markDeckDeletedLocally, which is deliberately excluded from that
-  // "keep" logic so a cloud row a previous delete never reached can't
-  // come back from the dead.
+  // either locally (markDeckDeletedLocally, this browser's own delete) or
+  // server-side (deck_deletions, a delete made on ANY device), which is
+  // deliberately excluded from that "keep" logic so it can't come back
+  // from the dead. The server-side list is what makes a deletion durable
+  // across devices/tabs -- see the comment on deleteDeckRemote.
   function syncDecksOnSignIn() {
-    var tombstones = loadJSON(KEYS.deletedDeckIds, []);
-    JVBackend.listDecksFor(JVBackend.currentUserId()).then(function (cloud) {
+    var localTombstones = loadJSON(KEYS.deletedDeckIds, []);
+    var uid = JVBackend.currentUserId();
+    Promise.all([
+      JVBackend.listDecksFor(uid),
+      JVBackend.listDeckDeletionIds(uid)
+    ]).then(function (results) {
+      var cloud = results[0];
+      var serverTombstones = results[1];
+      var tombstones = localTombstones.concat(serverTombstones);
       var stillOnServer = {};
       cloud.forEach(function (cd) { stillOnServer[cd.id] = true; });
 
       var byId = {};
-      state.decks.forEach(function (d) { byId[d.id] = d; });
+      state.decks.forEach(function (d) {
+        if (tombstones.indexOf(d.id) === -1) byId[d.id] = d;
+      });
       cloud.forEach(function (cd) {
         if (tombstones.indexOf(cd.id) !== -1) return;
         var local = byId[cd.id];
@@ -4214,12 +4232,19 @@
         });
       }
 
-      // Retry any delete that never made it to the server now that we're
-      // definitely signed in, and stop tracking tombstones the server has
-      // already forgotten about so this list doesn't grow forever.
-      tombstones.forEach(function (id) {
+      // Self-heal: re-delete any tombstoned deck that's still (or is
+      // again) sitting in the decks table -- either this browser's own
+      // delete never reached the server, or some other device's blanket
+      // upload resurrected it there since. Local tombstones this browser
+      // no longer needs to track (server has confirmed them, or the row
+      // is already gone) get cleared so the list doesn't grow forever;
+      // server-side tombstones are permanent and untouched here.
+      localTombstones.forEach(function (id) {
         if (stillOnServer[id]) JVBackend.deleteDeckRemote(id).then(function () { clearDeckTombstone(id); }).catch(function () {});
         else clearDeckTombstone(id);
+      });
+      serverTombstones.forEach(function (id) {
+        if (stillOnServer[id]) JVBackend.deleteDeckRemote(id).catch(function () {});
       });
 
       if (state.route === "decks") renderDecksView();
