@@ -121,6 +121,25 @@ Pro) subscription; Pro doesn't include API access.
 That's it — the app calls this function itself; nothing else to wire up in
 the dashboard.
 
+### Auto-deploying Edge Functions from GitHub
+
+Steps 1-3 above only need doing once by hand. After that, a GitHub Actions
+workflow (`.github/workflows/deploy-functions.yml`) redeploys every function
+under `supabase/functions/` automatically whenever that folder changes on
+`main` — the same way Vercel redeploys the site on every push, so you don't
+need to run the CLI again for future function edits.
+
+It needs one more one-time secret, since deploying still requires proving
+who you are:
+
+1. Go to supabase.com/dashboard/account/tokens and generate a new access
+   token.
+2. In the GitHub repo: **Settings → Secrets and variables → Actions → New
+   repository secret**, name it `SUPABASE_ACCESS_TOKEN`, and paste the token
+   in. (Add it there, not in chat — it's a credential.)
+
+That's it; the next push that touches `supabase/functions/` deploys itself.
+
 ## 5. Pick hosting
 
 Push notifications (and the service worker they need) only work over HTTPS
