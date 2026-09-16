@@ -4183,11 +4183,16 @@
     var nameInput = document.getElementById("profile-name");
     if (nameInput) nameInput.addEventListener("change", function () { state.profile.name = nameInput.value; persistProfile(); renderRail(); });
     var globalSearch = document.getElementById("global-search");
-    globalSearch.addEventListener("keydown", function (e) {
-      if (e.key !== "Enter") return;
-      cardsFilterState.q = globalSearch.value.trim();
+    // Live search: the first keystroke jumps to Explore Cards (one
+    // history entry), then further typing just re-filters the already-
+    // open grid instead of pushing a new history entry per character --
+    // global-search itself lives in the topbar, outside what
+    // renderCardsView() replaces, so it never loses focus either way.
+    globalSearch.addEventListener("input", function () {
+      cardsFilterState.q = globalSearch.value;
       cardsFilterState.limit = CARDS_PAGE_SIZE;
-      navigate("cards");
+      if (state.route !== "cards") { navigate("cards"); return; }
+      rerenderSoft(null, renderCardsView);
     });
     window.addEventListener("popstate", function (e) {
       var v = pathToView(window.location.pathname);
