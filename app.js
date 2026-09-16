@@ -429,7 +429,11 @@
 
   function renderRail() {
     document.querySelectorAll(".nav button").forEach(function (b) {
-      b.classList.toggle("active", b.getAttribute("data-view") === state.route);
+      var view = b.getAttribute("data-view");
+      // Decks no longer has its own nav button (it's a tab inside
+      // Collection now) -- Collection stays highlighted while there so
+      // the nav doesn't go dark with nothing active.
+      b.classList.toggle("active", view === state.route || (view === "collection" && state.route === "decks"));
     });
     var nameInput = document.getElementById("profile-name");
     if (nameInput && document.activeElement !== nameInput) nameInput.value = state.profile.name || "";
@@ -1059,10 +1063,31 @@
       '<div class="coll-steppers">' + steppersHtml + "</div></div></div>";
   }
 
+  // Decks used to be its own top-level nav item; it's now reached through
+  // Collection's own tab strip instead, rendered by both renderCollectionView
+  // and renderDecksView. It has to sit outside collection's sign-in gate
+  // below (Decks has always worked fully offline, unlike Collection) so a
+  // signed-out person can still get to it without hitting a wall first.
+  function collectionTopTabsHtml(active) {
+    return '<div class="tabs" style="margin-bottom:14px;">' +
+      '<button class="' + (active === "cards" ? "active" : "") + '" data-collection-tab="cards">My Cards</button>' +
+      '<button class="' + (active === "decks" ? "active" : "") + '" data-collection-tab="decks">Decks</button>' +
+      "</div>";
+  }
+  function wireCollectionTopTabs(el) {
+    el.querySelectorAll("[data-collection-tab]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        navigate(b.getAttribute("data-collection-tab") === "decks" ? "decks" : "collection");
+      });
+    });
+  }
+
   function renderCollectionView() {
     var el = document.getElementById("view-collection");
+    var topTabsHtml = collectionTopTabsHtml("cards");
     if (JVBackend.isConfigured() && !state.social.session) {
-      el.innerHTML = signInGateHtml("Sign in to track your collection — it'll sync to your account and follow you across devices.");
+      el.innerHTML = topTabsHtml + signInGateHtml("Sign in to track your collection — it'll sync to your account and follow you across devices.");
+      wireCollectionTopTabs(el);
       wireSignInPrompt(el);
       return;
     }
@@ -1075,7 +1100,7 @@
     var shown = Math.min(collFilterState.limit || COLL_PAGE_SIZE, total);
     var page = list.slice(0, shown);
 
-    var html = '<div class="view-head"><div><h1>Collection</h1><p>You own — ' + uniqueOwned + " / " + state.cards.length + " unique cards! (" + pct + '%). Browse <b>Explore Cards</b> to find search for new cards.</p></div>' +
+    var html = topTabsHtml + '<div class="view-head"><div><h1>Collection</h1><p>You own — ' + uniqueOwned + " / " + state.cards.length + " unique cards! (" + pct + '%). Browse <b>Explore Cards</b> to find search for new cards.</p></div>' +
       '<button class="btn primary" id="open-import-btn">Import cards</button></div>';
 
     html += '<div class="toolbar">' +
@@ -1096,6 +1121,7 @@
     }
 
     el.innerHTML = html;
+    wireCollectionTopTabs(el);
     el.querySelector("#open-import-btn").addEventListener("click", openImportModal);
     var q = el.querySelector("#cof-q");
     if (q) q.addEventListener("input", function () { collFilterState.q = q.value; collFilterState.limit = COLL_PAGE_SIZE; rerenderSoft(el, renderCollectionView); });
@@ -1860,7 +1886,7 @@
     var el = document.getElementById("view-decks");
     var deck = currentDeck();
 
-    var html = "";
+    var html = collectionTopTabsHtml("decks");
     if (!deck) {
       html += '<div class="view-head"><div><h1>Deck builder</h1><p>Build against real Riftbound construction rules: one Legend, one Chosen Champion, a 40-card main deck, a 12-card rune deck, and 3 battlefields.</p></div>' +
         '<div style="display:flex;gap:8px;"><button class="btn" data-action="import-deck">Import deck</button><button class="btn primary" data-action="new-deck">+ New deck</button></div></div>';
@@ -1880,6 +1906,7 @@
     html += '<div id="builder-host"></div>';
 
     el.innerHTML = html;
+    wireCollectionTopTabs(el);
     if (!deck) {
       el.querySelector('[data-action="new-deck"]').addEventListener("click", startNewDeck);
       el.querySelector('[data-action="import-deck"]').addEventListener("click", openDeckImportModal);

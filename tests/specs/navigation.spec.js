@@ -23,7 +23,6 @@ test.describe('top nav', () => {
       ['cards', 'Explore Cards', '/cards'],
       ['collection', 'Collection', '/collection'],
       ['wanted', 'Wishlist', '/wanted'],
-      ['decks', 'Decks', '/decks'],
       ['friends', 'Friends', '/friends'],
       ['home', 'Home', '/'],
     ];
@@ -33,6 +32,17 @@ test.describe('top nav', () => {
       await expect(page.locator(`.nav button[data-view="${view}"]`)).toHaveClass(/active/);
       await expect(page).toHaveURL(new RegExp(path.replace('/', '\\/') + '$'));
     }
+  });
+
+  test('Decks is reached via a tab inside Collection, not its own nav button', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.nav button[data-view="decks"]')).toHaveCount(0);
+    await page.locator('.nav button[data-view="collection"]').click();
+    await page.locator('[data-collection-tab="decks"]').click();
+    await expect(page.locator('#view-decks')).toBeVisible();
+    await expect(page).toHaveURL(/\/decks$/);
+    // Collection stays highlighted in the top nav since Decks is nested under it.
+    await expect(page.locator('.nav button[data-view="collection"]')).toHaveClass(/active/);
   });
 
   test('direct navigation to a clean URL path loads the right view (deep link)', async ({ page }) => {
@@ -60,9 +70,11 @@ test.describe('top nav', () => {
       if (msg.type() === 'error' && !msg.text().includes('Failed to load resource')) errors.push(msg.text());
     });
     await page.goto('/');
-    for (const view of ['cards', 'collection', 'wanted', 'decks', 'friends', 'home']) {
+    for (const view of ['cards', 'collection', 'wanted', 'friends', 'home']) {
       await page.locator(`.nav button[data-view="${view}"]`).click();
     }
+    await page.locator('.nav button[data-view="collection"]').click();
+    await page.locator('[data-collection-tab="decks"]').click();
     await page.goto('/dashboard');
     expect(errors).toEqual([]);
   });
