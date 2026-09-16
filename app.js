@@ -28,6 +28,11 @@
     Order: { color: "var(--d-order)" }
   };
   var DOMAIN_NAMES = Object.keys(DOMAINS);
+  // Plain-English names for each domain's accent color (see the --d-*
+  // values in style.css) -- a native <select>'s <option> text can't carry
+  // a colored dot the way the dot(name) badge elsewhere in the app does,
+  // so the domain filter spells the color out instead.
+  var DOMAIN_COLOR_NAMES = { Fury: "Red", Calm: "Green", Mind: "Blue", Chaos: "Purple", Body: "Orange", Order: "Yellow" };
 
   var CARD_TYPES = ["Legend", "Unit", "Spell", "Gear", "Battlefield", "Rune", "Token"];
 
@@ -793,7 +798,7 @@
     var html = '<div class="view-head"><div><h1>Explore Cards</h1><p>Search, filter, and click a card to see the full text or log how many you own.</p></div></div>';
 
     html += '<div class="toolbar">' +
-      field("Domain", selectHtml("cf-domain", optionList(["", "Any"], DOMAIN_NAMES, cardsFilterState.domain))) +
+      field("Domain", selectHtml("cf-domain", explicitOptions([["", "Any"]].concat(DOMAIN_NAMES.map(function (d) { return [d, d + " – " + DOMAIN_COLOR_NAMES[d]]; })), cardsFilterState.domain))) +
       field("Rarity", selectHtml("cf-rarity", optionList(["", "Any"], uniqueValues("rarity"), cardsFilterState.rarity))) +
       field("Set", selectHtml("cf-set", optionList(["", "Any"], uniqueValues("set"), cardsFilterState.set))) +
       field("Sort", selectHtml("cf-sort", explicitOptions([["name", "Name"], ["cost", "Cost"], ["price", "Price"], ["id", "Card ID"]], cardsFilterState.sort))) +
