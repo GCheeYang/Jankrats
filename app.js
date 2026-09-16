@@ -3662,8 +3662,15 @@
     frameBuffer: [], guideResetTimer: null
   };
   var CAMERA_POLL_MS = 200;
-  var CAMERA_BATCH_FRAMES = 20; // safety cap on the buffer -- matches the Edge Function's own MAX_FRAMES
-  var CAMERA_FLUSH_INTERVAL_MS = 2000;
+  var CAMERA_BATCH_FRAMES = 20; // matches the Edge Function's own MAX_FRAMES -- no point buffering past what it'll look at
+  // Sized so a flush uses the full CAMERA_BATCH_FRAMES the server accepts
+  // (20 * 200ms), not some smaller number -- a shorter interval means more,
+  // smaller, *independent* API calls, and identify-cards has no memory
+  // across calls. A card whose "turn at the front" straddles a flush
+  // boundary gets split into two partial, less-legible views instead of
+  // one clean one, which is a real accuracy loss the batched-upload path
+  // (one call sees the whole clip) doesn't have.
+  var CAMERA_FLUSH_INTERVAL_MS = CAMERA_BATCH_FRAMES * CAMERA_POLL_MS;
 
   function renderScanImportSection() {
     var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Sweep your cards past the camera, or upload a photo/video instead, and we'll add them to your collection. Simply review and confirm the matches after!</p>";
