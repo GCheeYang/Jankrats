@@ -784,6 +784,20 @@
     return out.sort();
   }
 
+  // Common < Uncommon < Rare < Epic, with Showcase (an alt-art reprint
+  // tier layered on top of a card's base rarity, not a step in that
+  // progression) last -- plain alphabetical sort put it third. Any
+  // value this doesn't recognize sorts after the known ones instead of
+  // disappearing.
+  var RARITY_ORDER = ["Common", "Uncommon", "Rare", "Epic", "Showcase"];
+  function sortedRarities() {
+    return uniqueValues("rarity").sort(function (a, b) {
+      var ai = RARITY_ORDER.indexOf(a); if (ai === -1) ai = RARITY_ORDER.length;
+      var bi = RARITY_ORDER.indexOf(b); if (bi === -1) bi = RARITY_ORDER.length;
+      return ai - bi;
+    });
+  }
+
   var cardsFilterState = { q: "", domain: "", rarity: "", set: "", sort: "name", limit: 60 };
   var CARDS_PAGE_SIZE = 60;
 
@@ -798,10 +812,10 @@
     var html = '<div class="view-head"><div><h1>Explore Cards</h1><p>Search, filter, and click a card to see the full text or log how many you own.</p></div></div>';
 
     html += '<div class="toolbar">' +
-      field("Domain", selectHtml("cf-domain", explicitOptions([["", "Any"]].concat(DOMAIN_NAMES.map(function (d) { return [d, d + " – " + DOMAIN_COLOR_NAMES[d]]; })), cardsFilterState.domain))) +
-      field("Rarity", selectHtml("cf-rarity", optionList(["", "Any"], uniqueValues("rarity"), cardsFilterState.rarity))) +
-      field("Set", selectHtml("cf-set", optionList(["", "Any"], uniqueValues("set"), cardsFilterState.set))) +
-      field("Sort", selectHtml("cf-sort", explicitOptions([["name", "Name"], ["cost", "Cost"], ["price", "Price"], ["id", "Card ID"]], cardsFilterState.sort))) +
+      field("Domain", selectHtml("cf-domain", explicitOptions([["", "All Domains"]].concat(DOMAIN_NAMES.map(function (d) { return [d, d + " – " + DOMAIN_COLOR_NAMES[d]]; })), cardsFilterState.domain))) +
+      field("Rarity", selectHtml("cf-rarity", optionList(["", "All Rarities"], sortedRarities(), cardsFilterState.rarity))) +
+      field("Set", selectHtml("cf-set", optionList(["", "All Sets"], uniqueValues("set"), cardsFilterState.set))) +
+      field("Sort", selectHtml("cf-sort", explicitOptions([["name", "Name"], ["cost", "Energy Cost"], ["price", "Price"], ["id", "Card ID"]], cardsFilterState.sort))) +
       "</div>";
 
     if (!total) {
@@ -839,7 +853,7 @@
     return '<div class="field"><label>' + escapeHtml(label) + "</label>" + inner + "</div>";
   }
 
-  // optionList(["", "Any"], ["Fury","Calm",...], currentValue) -> <option> list with a placeholder first
+  // optionList(["", "All Domains"], ["Fury","Calm",...], currentValue) -> <option> list with a placeholder first
   function optionList(placeholder, values, current) {
     var html = '<option value="' + escapeHtml(placeholder[0]) + '">' + escapeHtml(placeholder[1]) + "</option>";
     (values || []).forEach(function (v) {
@@ -1112,9 +1126,9 @@
 
     html += '<div class="toolbar">' +
       field("Search", '<input type="search" id="cof-q" placeholder="Name or text…" value="' + escapeHtml(collFilterState.q) + '">') +
-      field("Domain", selectHtml("cof-domain", optionList(["", "Any"], DOMAIN_NAMES, collFilterState.domain))) +
-      field("Type", selectHtml("cof-type", optionList(["", "Any"], CARD_TYPES, collFilterState.type))) +
-      field("Rarity", selectHtml("cof-rarity", optionList(["", "Any"], uniqueValues("rarity"), collFilterState.rarity))) +
+      field("Domain", selectHtml("cof-domain", optionList(["", "All Domains"], DOMAIN_NAMES, collFilterState.domain))) +
+      field("Type", selectHtml("cof-type", optionList(["", "All Types"], CARD_TYPES, collFilterState.type))) +
+      field("Rarity", selectHtml("cof-rarity", optionList(["", "All Rarities"], sortedRarities(), collFilterState.rarity))) +
       "</div>";
 
     if (!total) {
@@ -1503,9 +1517,9 @@
 
     var html = '<div class="toolbar">' +
       field("Search", '<input type="search" id="frf-q" placeholder="Name or text…" value="' + escapeHtml(friendsFilterState.q) + '">') +
-      field("Domain", selectHtml("frf-domain", optionList(["", "Any"], DOMAIN_NAMES, friendsFilterState.domain))) +
-      field("Type", selectHtml("frf-type", optionList(["", "Any"], CARD_TYPES, friendsFilterState.type))) +
-      field("Rarity", selectHtml("frf-rarity", optionList(["", "Any"], uniqueValues("rarity"), friendsFilterState.rarity))) +
+      field("Domain", selectHtml("frf-domain", optionList(["", "All Domains"], DOMAIN_NAMES, friendsFilterState.domain))) +
+      field("Type", selectHtml("frf-type", optionList(["", "All Types"], CARD_TYPES, friendsFilterState.type))) +
+      field("Rarity", selectHtml("frf-rarity", optionList(["", "All Rarities"], sortedRarities(), friendsFilterState.rarity))) +
       "</div>";
 
     if (!total) {
