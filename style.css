@@ -379,7 +379,11 @@ textarea { resize: vertical; min-height: 90px; }
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  /* auto-fill would happily pack 7+ columns on a wide screen -- the
+     minmax floor here is whichever is bigger, 190px or a fifth of the
+     row, so a 6th tile never fits and columns just grow wider instead
+     of multiplying past 5. */
+  grid-template-columns: repeat(auto-fill, minmax(max(190px, calc((100% - 48px) / 5)), 1fr));
   gap: 12px;
 }
 
@@ -643,7 +647,8 @@ textarea { resize: vertical; min-height: 90px; }
 
 .coll-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  /* Same 5-column cap as .card-grid -- see its comment. */
+  grid-template-columns: repeat(auto-fill, minmax(max(190px, calc((100% - 56px) / 5)), 1fr));
   gap: 14px;
 }
 
