@@ -938,6 +938,33 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .tabs button.active { color: var(--ink); border-color: var(--accent); }
 
+/* Collection's "My Cards / Decks" switch -- a filled segmented pill
+   rather than the thin underline .tabs style above, since this choice
+   is a primary way into the deck builder now (Decks lost its own top
+   nav button) and needed to read as more than a secondary sub-nav. */
+.collection-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  margin-bottom: 18px;
+}
+.collection-toggle button {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: none; border: none;
+  color: var(--ink-soft);
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.collection-toggle button svg { width: 16px; height: 16px; flex: none; }
+.collection-toggle button:hover { color: var(--ink); }
+.collection-toggle button.active { background: var(--accent); color: var(--accent-ink); }
+
 .toast {
   position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
   background: var(--ink); color: var(--ground); padding: 9px 16px; border-radius: 999px;

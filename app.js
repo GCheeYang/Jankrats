@@ -1069,9 +1069,11 @@
   // below (Decks has always worked fully offline, unlike Collection) so a
   // signed-out person can still get to it without hitting a wall first.
   function collectionTopTabsHtml(active) {
-    return '<div class="tabs" style="margin-bottom:14px;">' +
-      '<button class="' + (active === "cards" ? "active" : "") + '" data-collection-tab="cards">My Cards</button>' +
-      '<button class="' + (active === "decks" ? "active" : "") + '" data-collection-tab="decks">Decks</button>' +
+    var cardsIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>';
+    var decksIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>';
+    return '<div class="collection-toggle">' +
+      '<button class="' + (active === "cards" ? "active" : "") + '" data-collection-tab="cards">' + cardsIcon + "My Cards</button>" +
+      '<button class="' + (active === "decks" ? "active" : "") + '" data-collection-tab="decks">' + decksIcon + "Decks</button>" +
       "</div>";
   }
   function wireCollectionTopTabs(el) {
