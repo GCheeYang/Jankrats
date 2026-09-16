@@ -926,6 +926,7 @@
     return '<div class="card-tile-wrap">' +
       '<button class="card-tile" data-card-id="' + c.id + '" data-cost="' + (c.cost !== null && c.cost !== undefined ? c.cost : "") + '" data-type="' + escapeHtml(c.type || "") + '">' +
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
+      (c.banned && c.banned.length ? '<span class="ct-banned">Banned</span>' : "") +
       (c.imageUrl ? '<div class="ct-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span></div>" +
       '<div>' + domainChips(c.domains) + "</div>" +
@@ -1075,6 +1076,7 @@
       '<div class="ct-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '" data-open-card="' + c.id + '">' +
       (c.imageUrl ? '<img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
       '<span class="coll-owned-badge" style="' + (totalOwned ? "" : "display:none;") + '">×' + totalOwned + "</span>" +
+      (c.banned && c.banned.length ? '<span class="ct-banned">Banned</span>' : "") +
       "</div>" +
       '<div class="coll-body">' +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</span>" +
