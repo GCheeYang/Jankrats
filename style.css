@@ -779,6 +779,34 @@ textarea { resize: vertical; min-height: 90px; }
   width: 100%; height: 100%; object-fit: cover; display: block;
 }
 
+/* A visible target box tells the person exactly where to hold a card
+   instead of leaving them to guess how much of the frame the AI actually
+   needs -- centering consistently is what makes each capture crop
+   cleanly around one card instead of catching a neighbor or a hand. The
+   surrounding box-shadow spotlight (clipped by scan-camera-wrap's own
+   overflow:hidden) dims everything outside the box as a visual cue. */
+.scan-guide {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.scan-guide-frame {
+  width: 64%;
+  aspect-ratio: 744 / 1039;
+  border: 2px dashed rgba(255, 255, 255, 0.6);
+  border-radius: 10px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.2s ease, border-style 0.2s ease;
+}
+.scan-guide.found .scan-guide-frame {
+  border-color: var(--accent-strong);
+  border-style: solid;
+}
+.scan-guide-label {
+  position: absolute; left: 10px; right: 10px; bottom: 10px; text-align: center;
+  color: #fff; font-size: 12.5px; font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
 /* ============================================================
    Deck builder
    ============================================================ */

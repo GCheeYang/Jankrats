@@ -3658,7 +3658,7 @@
   // a live continuous sweep instead of a pre-recorded one.
   var cameraScanState = {
     stream: null, busy: false, scanning: false, autoTimer: null, flushTimer: null,
-    frameBuffer: []
+    frameBuffer: [], guideResetTimer: null
   };
   var CAMERA_POLL_MS = 200;
   var CAMERA_BATCH_FRAMES = 20; // safety cap on the buffer -- matches the Edge Function's own MAX_FRAMES
@@ -3683,11 +3683,13 @@
   }
 
   function cameraScanBodyHtml() {
-    var html = '<div class="callout" style="margin-bottom:14px;">Start the camera, point it at your cards, then tap Scan now — it keeps scanning and adding cards on its own until you tap Stop camera.</div>';
+    var html = '<div class="callout" style="margin-bottom:14px;">Start the camera, center one card in the guide box, then tap Scan now — it keeps scanning on its own. When a card is added, move the next card into the box.</div>';
     if (!cameraScanState.stream) {
       html += '<button class="btn primary" id="scan-camera-start" type="button">Start camera</button>';
     } else {
-      html += '<div class="scan-camera-wrap"><video id="scan-camera-video" autoplay playsinline muted></video></div>';
+      html += '<div class="scan-camera-wrap"><video id="scan-camera-video" autoplay playsinline muted></video>' +
+        '<div class="scan-guide" id="scan-guide"><div class="scan-guide-frame"></div>' +
+        '<div class="scan-guide-label" id="scan-guide-label">Center one card here</div></div></div>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">' +
         '<button class="btn primary small" id="scan-camera-capture" type="button">Scan now</button>' +
         '<button class="btn ghost" id="scan-camera-stop" type="button">Stop camera</button>' +
@@ -3906,7 +3908,26 @@
     cameraScanState.scanning = false;
     if (cameraScanState.autoTimer) { clearInterval(cameraScanState.autoTimer); cameraScanState.autoTimer = null; }
     if (cameraScanState.flushTimer) { clearInterval(cameraScanState.flushTimer); cameraScanState.flushTimer = null; }
+    if (cameraScanState.guideResetTimer) { clearTimeout(cameraScanState.guideResetTimer); cameraScanState.guideResetTimer = null; }
     cameraScanState.frameBuffer = [];
+  }
+
+  // Briefly highlights the guide box and swaps its label to tell the
+  // person their card landed and it's safe to move the next one in --
+  // without this, "keeps scanning on its own" gives no cue for *when* to
+  // swap cards, which is exactly the accuracy problem a plain continuous
+  // sweep has (cards moved mid-batch get caught half in, half out of frame).
+  function showScanGuideFound(el) {
+    var guide = el.querySelector("#scan-guide");
+    var label = el.querySelector("#scan-guide-label");
+    if (!guide) return;
+    guide.classList.add("found");
+    if (label) label.textContent = "Got it — move the next card in";
+    if (cameraScanState.guideResetTimer) clearTimeout(cameraScanState.guideResetTimer);
+    cameraScanState.guideResetTimer = setTimeout(function () {
+      guide.classList.remove("found");
+      if (label) label.textContent = "Center one card here";
+    }, 1600);
   }
 
   function bufferFrameTick(el) {
@@ -3953,6 +3974,7 @@
       scanImportState.results = mergeScanResults(scanImportState.results, cards);
       var names = cards.map(function (c) { return c && c.name; }).filter(Boolean).join(", ");
       scanSetStatus(el, (names ? "Added: " + names + " — " : "") + "still scanning…");
+      showScanGuideFound(el);
       rerenderScanResults();
     }).catch(function (err) {
       console.error(err);
