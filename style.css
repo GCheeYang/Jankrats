@@ -544,37 +544,16 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .cd-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-/* Battlefield card art is scanned landscape — rotate it upright in the
-   portrait-shaped slots every other card type uses. A plain rotate(90deg)
-   swaps the image's own box to landscape, which no longer fits inside its
-   portrait container (it used to spill out past overflow:hidden). Sizing
-   the image in container-query units *before* rotating — 100cqh wide,
-   100cqw tall — means the box is already landscape pre-rotation, so after
-   rotating it lands exactly back on the container's portrait footprint,
-   with nothing cropped and nothing overflowing.
-   These target the bare wrapper class names rather than e.g.
-   ".card-tile .ct-img", matching CARD_ART_WRAP_SELECTOR in app.js (which
-   uses img.closest(".ct-img, ...") and so already works from any ancestor)
-   — so any tile type that reuses .ct-img/.lc-img/etc gets correct rotation
-   and fallback styling automatically, instead of silently missing it like
-   the Collection grid's .coll-tile .ct-img did (Battlefields there rendered
-   unrotated and center-cropped into an unreadable sliver). */
-.ct-img,
-.cd-img,
-.lc-img,
-.pr-img,
-.deck-card-art,
-.sl-img,
-.tcr-img {
-  position: relative;
-  container-type: size;
-}
-
 /* Shown in place of a card image that failed to load -- some card art
    (tokens, runes, battlefields) is only hosted on a third-party CDN that
    ad-blockers commonly blocklist, and there's no second source to retry.
    The card's name is already visible as text elsewhere in the same
-   tile, so this just needs to read as an empty slot, not an error. */
+   tile, so this just needs to read as an empty slot, not an error.
+   These target the bare wrapper class names rather than e.g.
+   ".card-tile .ct-img", matching CARD_ART_WRAP_SELECTOR in app.js (which
+   uses img.closest(".ct-img, ...") and so already works from any ancestor)
+   — so any tile type that reuses .ct-img/.lc-img/etc gets the fallback
+   automatically instead of silently missing it. */
 .ct-img.img-fallback,
 .cd-img.img-fallback,
 .lc-img.img-fallback,
@@ -597,29 +576,27 @@ textarea { resize: vertical; min-height: 90px; }
 .sl-img.img-fallback::after,
 .tcr-img.img-fallback::after { content: ""; }
 
-.ct-img img.rot90,
-.cd-img img.rot90,
-.lc-img img.rot90,
-.pr-img img.rot90,
-.deck-card-art img.rot90,
-.sl-img img.rot90,
-.tcr-img img.rot90 {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 100cqh;
-  height: 100cqw;
-  max-width: none;
-  transform: translate(-50%, -50%) rotate(90deg);
+/* Battlefield card art is scanned landscape. Earlier this rotated the
+   image 90deg to cram it into the same portrait-shaped slot every other
+   card type uses -- but that meant scaling the (already close to 2:1)
+   landscape image up to fill a portrait box, cropping off a big chunk of
+   the art no matter which way it was rotated. Simpler and nothing gets
+   cut: the .is-landscape tiles below just use the art's own aspect ratio
+   instead of forcing a portrait one, so the whole card shows uncropped
+   and unrotated -- the tile is shorter than a Unit/Spell tile, which is
+   differentiation enough without a label. */
+.card-tile .ct-img.is-landscape,
+.coll-tile .ct-img.is-landscape,
+.cd-img.is-landscape,
+.deck-card-art.is-landscape,
+.pick-row .pr-img.is-landscape,
+.slot-line .sl-img.is-landscape,
+.legend-card .lc-img.is-landscape {
+  aspect-ratio: 1038 / 744;
 }
-
-/* Marks a Battlefield tile in card grids, so its sideways art reads as an
-   intentionally different card shape rather than a rendering glitch. */
-.bf-badge {
-  position: absolute; top: 10px; left: 10px; z-index: 1;
-  background: var(--surface); color: var(--ink-soft);
-  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-  padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line-strong);
+.tcr-img.is-landscape {
+  width: 47px;
+  height: 34px;
 }
 
 /* ============================================================
