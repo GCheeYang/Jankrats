@@ -716,9 +716,9 @@
       ? new Date(d.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
       : null;
     return '<div class="deck-card" data-open="' + d.id + '">' +
-      '<div class="deck-card-art">' +
+      '<div class="deck-card-art' + (isLandscapeCard(art) ? " is-landscape" : "") + '">' +
       (art && art.imageUrl
-        ? '<img class="' + (isLandscapeCard(art) ? "rot90" : "") + '" src="' + escapeHtml(art.imageUrl) + '" alt="" loading="lazy">'
+        ? '<img src="' + escapeHtml(art.imageUrl) + '" alt="" loading="lazy">'
         : "") +
       "</div>" +
       '<div class="deck-card-body">' +
@@ -902,7 +902,7 @@
     return '<div class="card-tile-wrap">' +
       '<button class="card-tile" data-card-id="' + c.id + '" data-cost="' + (c.cost !== null && c.cost !== undefined ? c.cost : "") + '" data-type="' + escapeHtml(c.type || "") + '">' +
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
-      (c.imageUrl ? '<div class="ct-img">' + (isLandscapeCard(c) ? '<span class="bf-badge">Battlefield</span>' : "") + '<img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
+      (c.imageUrl ? '<div class="ct-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span></div>" +
       '<div>' + domainChips(c.domains) + "</div>" +
       '<div class="ct-meta"><span>' + escapeHtml(c.rarity || "") + "</span>" +
@@ -938,7 +938,7 @@
       '<div style="margin-top:6px;">' + domainChips(c.domains) + "</div></div>" +
       '<button class="modal-close" data-close>&times;</button></div>' +
       '<div style="display:flex;gap:18px;flex-wrap:wrap;">' +
-      (c.imageUrl ? '<div class="cd-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt=""></div>' : "") +
+      (c.imageUrl ? '<div class="cd-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt=""></div>' : "") +
       '<div style="flex:1;min-width:200px;">' +
       '<div style="display:flex;gap:14px;margin-bottom:12px;font-size:13px;color:var(--ink-soft);flex-wrap:wrap;">' +
       "<span><b>" + escapeHtml(c.type) + "</b></span>" +
@@ -1046,9 +1046,8 @@
       : '<div class="coll-stepper-row"><span class="csr-label">Owned</span><span class="val">' + owned + "</span></div>" +
         '<div class="coll-stepper-row"><span class="csr-label">Foil</span><span class="val">' + foil + "</span></div>";
     return '<div class="coll-tile" data-card-id="' + c.id + '">' +
-      '<div class="ct-img" data-open-card="' + c.id + '">' +
-      (isLandscapeCard(c) ? '<span class="bf-badge">Battlefield</span>' : "") +
-      (c.imageUrl ? '<img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
+      '<div class="ct-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '" data-open-card="' + c.id + '">' +
+      (c.imageUrl ? '<img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
       '<span class="coll-owned-badge" style="' + (totalOwned ? "" : "display:none;") + '">×' + totalOwned + "</span>" +
       "</div>" +
       '<div class="coll-body">' +
@@ -1998,7 +1997,7 @@
     var owned = getOwned(l.id) + getOwnedFoil(l.id);
     var identity = championIdentityTagFor(l);
     return '<div class="legend-card" ' + attr + '="' + l.id + '">' +
-      (l.imageUrl ? '<div class="lc-img"><img class="' + (isLandscapeCard(l) ? "rot90" : "") + '" src="' + escapeHtml(l.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
+      (l.imageUrl ? '<div class="lc-img' + (isLandscapeCard(l) ? " is-landscape" : "") + '"><img src="' + escapeHtml(l.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="lc-name">' + escapeHtml(l.name) + escapeHtml(variantLabel(l)) + "</div>" +
       (identity ? '<div style="font-size:11.5px;color:var(--ink-faint);margin-top:-4px;">' + escapeHtml(identity) + "</div>" : "") +
       '<span class="coll-id-chip">' + escapeHtml(l.set) + " " + escapeHtml(l.collectorNumber || "") + "</span>" +
@@ -2110,7 +2109,7 @@
     html += '<div class="legend-picker">' + champs.map(function (c) {
       var owned = getOwned(c.id) + getOwnedFoil(c.id);
       return '<div class="legend-card" data-champ="' + c.id + '">' +
-        (c.imageUrl ? '<div class="lc-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
+        (c.imageUrl ? '<div class="lc-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
         '<div class="lc-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</div><div class=\"ct-meta\">" + c.cost + "⚡ / " + c.power + "★</div>" +
         '<span class="coll-id-chip">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
         domainChips(c.domains) +
@@ -2141,7 +2140,7 @@
   // which keeps the plain row layout since it has no add/remove controls.
   function pickRowImgHtml(c) {
     return c.imageUrl
-      ? '<div class="pr-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>'
+      ? '<div class="pr-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>'
       : '<div class="pr-img placeholder"></div>';
   }
 
@@ -2162,7 +2161,7 @@
       '<button class="card-tile" type="button" title="Click to add, right-click to remove">' +
       (owned ? '<span class="ct-collection-badge">own ' + owned + "</span>" : "") +
       (badgeText ? '<span class="ct-owned qty-badge">' + escapeHtml(badgeText) + "</span>" : "") +
-      (c.imageUrl ? '<div class="ct-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
+      (c.imageUrl ? '<div class="ct-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</span></div>" +
       '<div class="ct-meta"><span>' + (c.cost === null || c.cost === undefined ? escapeHtml(c.type || "") : c.cost + "⚡") + "</span>" +
       (c.power !== null && c.power !== undefined ? '<span class="ct-power">' + c.power + "★</span>" : "") +
@@ -2338,7 +2337,7 @@
   // lines up in a column instead of jumping left and right.
   function slotLineImgHtml(c) {
     if (c && c.imageUrl) {
-      return '<div class="sl-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>';
+      return '<div class="sl-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>';
     }
     return '<div class="sl-img"></div>';
   }
@@ -4691,7 +4690,7 @@
         var name = c ? c.name : row.card_id;
         return '<div class="top-card-row">' +
           '<span class="tcr-rank">#' + (i + 1) + "</span>" +
-          (c && c.imageUrl ? '<div class="tcr-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt=""></div>' : '<span class="tcr-img placeholder"></span>') +
+          (c && c.imageUrl ? '<div class="tcr-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt=""></div>' : '<span class="tcr-img placeholder"></span>') +
           '<span class="tcr-name">' + escapeHtml(name) + "</span>" +
           '<span class="tcr-count">' + row.post_count + " post" + (row.post_count === 1 ? "" : "s") + "</span>" +
           "</div>";
