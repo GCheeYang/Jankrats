@@ -616,7 +616,7 @@
   // image is removed and its wrapper gets a CSS placeholder instead of
   // the browser's broken-image icon; the card's name is already shown
   // as text elsewhere in the same tile, so nothing is lost.
-  var CARD_ART_WRAP_SELECTOR = ".ct-img, .cd-img, .lc-img, .pr-img, .deck-card-art, .sl-img";
+  var CARD_ART_WRAP_SELECTOR = ".ct-img, .cd-img, .lc-img, .pr-img, .deck-card-art, .sl-img, .tcr-img";
   function wireCardArtFallback() {
     document.addEventListener("error", function (e) {
       var img = e.target;
@@ -902,7 +902,7 @@
     return '<div class="card-tile-wrap">' +
       '<button class="card-tile" data-card-id="' + c.id + '" data-cost="' + (c.cost !== null && c.cost !== undefined ? c.cost : "") + '" data-type="' + escapeHtml(c.type || "") + '">' +
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
-      (c.imageUrl ? '<div class="ct-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
+      (c.imageUrl ? '<div class="ct-img">' + (isLandscapeCard(c) ? '<span class="bf-badge">Battlefield</span>' : "") + '<img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span></div>" +
       '<div>' + domainChips(c.domains) + "</div>" +
       '<div class="ct-meta"><span>' + escapeHtml(c.rarity || "") + "</span>" +
@@ -1047,6 +1047,7 @@
         '<div class="coll-stepper-row"><span class="csr-label">Foil</span><span class="val">' + foil + "</span></div>";
     return '<div class="coll-tile" data-card-id="' + c.id + '">' +
       '<div class="ct-img" data-open-card="' + c.id + '">' +
+      (isLandscapeCard(c) ? '<span class="bf-badge">Battlefield</span>' : "") +
       (c.imageUrl ? '<img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
       '<span class="coll-owned-badge" style="' + (totalOwned ? "" : "display:none;") + '">×' + totalOwned + "</span>" +
       "</div>" +
@@ -4670,7 +4671,7 @@
         var name = c ? c.name : row.card_id;
         return '<div class="top-card-row">' +
           '<span class="tcr-rank">#' + (i + 1) + "</span>" +
-          (c && c.imageUrl ? '<img class="tcr-img' + (isLandscapeCard(c) ? " rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt="">' : '<span class="tcr-img placeholder"></span>') +
+          (c && c.imageUrl ? '<div class="tcr-img"><img class="' + (isLandscapeCard(c) ? "rot90" : "") + '" src="' + escapeHtml(c.imageUrl) + '" alt=""></div>' : '<span class="tcr-img placeholder"></span>') +
           '<span class="tcr-name">' + escapeHtml(name) + "</span>" +
           '<span class="tcr-count">' + row.post_count + " post" + (row.post_count === 1 ? "" : "s") + "</span>" +
           "</div>";
