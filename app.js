@@ -3637,12 +3637,13 @@
 
   /* ================================================================
      SCAN IMPORT: identify cards via the identify-cards Edge Function,
-     either from a live camera capture (one card at a time -- the
-     pattern apps like Collectr, RareCandy, and DeckTradr all use:
-     point at exactly one card, recognize it in under a second, scan
-     the same card again to bump its count) or an uploaded photo/video
-     for anyone who'd rather not use their camera live. Both feed the
-     same fuzzy card-name matcher and the same review table below.
+     either from a live camera capture (continuous scanning while the
+     person flips through a fanned stack at their own pace, the same
+     chronological-reappearance duplicate tracking built for the old
+     pack-opening-video flow now driving a live sweep instead) or an
+     uploaded photo/video for anyone who'd rather not use their camera
+     live. Both feed the same fuzzy card-name matcher and the same
+     review table below.
      ================================================================ */
 
   var scanImportState = { results: [], busy: false };
@@ -3683,13 +3684,13 @@
   }
 
   function cameraScanBodyHtml() {
-    var html = '<div class="callout" style="margin-bottom:14px;">Start the camera, center one card in the guide box, then tap Scan now — it keeps scanning on its own. When a card is added, move the next card into the box.</div>';
+    var html = '<div class="callout" style="margin-bottom:14px;">Start the camera, keep your cards inside the guide box, then tap Scan now — flip through them at your own pace and it keeps scanning on its own.</div>';
     if (!cameraScanState.stream) {
       html += '<button class="btn primary" id="scan-camera-start" type="button">Start camera</button>';
     } else {
       html += '<div class="scan-camera-wrap"><video id="scan-camera-video" autoplay playsinline muted></video>' +
         '<div class="scan-guide" id="scan-guide"><div class="scan-guide-frame"></div>' +
-        '<div class="scan-guide-label" id="scan-guide-label">Center one card here</div></div></div>';
+        '<div class="scan-guide-label" id="scan-guide-label">Keep your cards in the box</div></div></div>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">' +
         '<button class="btn primary small" id="scan-camera-capture" type="button">Scan now</button>' +
         '<button class="btn ghost" id="scan-camera-stop" type="button">Stop camera</button>' +
@@ -3912,22 +3913,21 @@
     cameraScanState.frameBuffer = [];
   }
 
-  // Briefly highlights the guide box and swaps its label to tell the
-  // person their card landed and it's safe to move the next one in --
-  // without this, "keeps scanning on its own" gives no cue for *when* to
-  // swap cards, which is exactly the accuracy problem a plain continuous
-  // sweep has (cards moved mid-batch get caught half in, half out of frame).
+  // Briefly highlights the guide box as a quick "got it" acknowledgment
+  // whenever a batch finds a card -- purely a confirmation, not a cue to
+  // pause, since the guide box itself is just framing for the whole stack
+  // (fits more of it in the shot) rather than a one-card-at-a-time slot.
   function showScanGuideFound(el) {
     var guide = el.querySelector("#scan-guide");
     var label = el.querySelector("#scan-guide-label");
     if (!guide) return;
     guide.classList.add("found");
-    if (label) label.textContent = "Got it — move the next card in";
+    if (label) label.textContent = "Got it!";
     if (cameraScanState.guideResetTimer) clearTimeout(cameraScanState.guideResetTimer);
     cameraScanState.guideResetTimer = setTimeout(function () {
       guide.classList.remove("found");
-      if (label) label.textContent = "Center one card here";
-    }, 1600);
+      if (label) label.textContent = "Keep your cards in the box";
+    }, 1000);
   }
 
   function bufferFrameTick(el) {
