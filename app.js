@@ -3867,6 +3867,11 @@
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }).then(function (stream) {
       cameraScanState.stream = stream;
       refreshScanCaptureBody(el);
+      // The video preview + its buttons often land below the fold on a
+      // phone once the modal grows to fit them -- scroll them into view
+      // instead of leaving the person to find them by hand.
+      var wrap = el.querySelector(".scan-camera-wrap");
+      if (wrap) wrap.scrollIntoView({ behavior: "smooth", block: "start" });
     }).catch(function (err) {
       toast("Couldn't access the camera" + (err && err.message ? ": " + err.message : "."));
       if (startBtn) { startBtn.disabled = false; startBtn.textContent = "Start camera"; }
