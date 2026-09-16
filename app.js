@@ -926,6 +926,7 @@
     return '<div class="card-tile-wrap">' +
       '<button class="card-tile" data-card-id="' + c.id + '" data-cost="' + (c.cost !== null && c.cost !== undefined ? c.cost : "") + '" data-type="' + escapeHtml(c.type || "") + '">' +
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
+      (c.banned && c.banned.length ? '<span class="ct-banned">Banned</span>' : "") +
       (c.imageUrl ? '<div class="ct-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span></div>" +
       '<div>' + domainChips(c.domains) + "</div>" +
@@ -959,7 +960,9 @@
       : ownedStepperHtml(cardId, "Owned", owned, "qty") + ownedStepperHtml(cardId, "Foil", foil, "foil");
     var html = '<div class="modal-backdrop" id="card-modal"><div class="modal">' +
       '<div class="modal-head"><div><h2 style="font-size:19px;">' + escapeHtml(c.name) + "</h2>" +
-      '<div style="margin-top:6px;">' + domainChips(c.domains) + "</div></div>" +
+      '<div style="margin-top:6px;">' + domainChips(c.domains) +
+      (c.banned && c.banned.length ? '<span class="pill bad" style="margin-left:6px;">Banned — ' + escapeHtml(c.banned.join(", ")) + "</span>" : "") +
+      "</div></div>" +
       '<button class="modal-close" data-close>&times;</button></div>' +
       '<div style="display:flex;gap:18px;flex-wrap:wrap;">' +
       (c.imageUrl ? '<div class="cd-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt=""></div>' : "") +
@@ -1073,6 +1076,7 @@
       '<div class="ct-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '" data-open-card="' + c.id + '">' +
       (c.imageUrl ? '<img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy">' : "") +
       '<span class="coll-owned-badge" style="' + (totalOwned ? "" : "display:none;") + '">×' + totalOwned + "</span>" +
+      (c.banned && c.banned.length ? '<span class="ct-banned">Banned</span>' : "") +
       "</div>" +
       '<div class="coll-body">' +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</span>" +
