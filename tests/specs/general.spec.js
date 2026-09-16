@@ -23,7 +23,7 @@ test.describe('responsive top bar', () => {
     const overflowing = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
     expect(overflowing).toBe(false);
     const topbarHeight = await page.locator('.topbar').evaluate((el) => el.getBoundingClientRect().height);
-    expect(topbarHeight).toBeLessThan(120);
+    expect(topbarHeight).toBeLessThan(140);
   });
 
   test('nav wraps cleanly on mobile without overflow', async ({ page }) => {

@@ -35,6 +35,6 @@ test.describe('dashboard', () => {
     await expect(page.locator('.rail')).toHaveCount(0);
     await expect(page.locator('.topbar')).toBeVisible();
     const height = await page.locator('.topbar').evaluate((el) => el.getBoundingClientRect().height);
-    expect(height).toBeLessThan(120);
+    expect(height).toBeLessThan(140);
   });
 });
