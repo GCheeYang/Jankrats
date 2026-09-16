@@ -3647,17 +3647,25 @@
 
   var scanImportState = { results: [], busy: false };
   var scanCaptureMode = "camera";
-  // autoTimer grabs a frame into frameBuffer every CAMERA_POLL_MS as the
-  // user sweeps/fans cards past the camera -- no per-frame API call, that
-  // would be both expensive (5 calls/sec) and low-quality (most individual
-  // frames land mid-motion, blurred). Once the buffer reaches
-  // CAMERA_BATCH_FRAMES it's flushed as one batch to identify-cards, which
-  // already tracks a card reappearing across chronological frames to count
-  // duplicates -- the same logic built for the old pack-opening-video flow,
-  // now fed by a live continuous sweep instead of a pre-recorded upload.
-  var cameraScanState = { stream: null, busy: false, autoTimer: null, frameBuffer: [] };
+  // "Scan now" flips scanning on rather than firing a single shot: autoTimer
+  // grabs a frame into frameBuffer every CAMERA_POLL_MS (no per-frame API
+  // call, that'd be both expensive and low-quality -- most individual
+  // frames land mid-motion, blurred), flushTimer sends off whatever's
+  // buffered as one batch every CAMERA_FLUSH_INTERVAL_MS, and this repeats
+  // on its own -- "keeps scanning" -- until the user hits Stop camera, or
+  // CAMERA_IDLE_STOP_MS passes with no card found (lastCardFoundAt tracks
+  // that), which stops the camera automatically so it doesn't sit running
+  // once someone's done. Batching still reuses identify-cards' chronological
+  // duplicate-tracking, the same logic built for the old pack-opening-video
+  // flow, just fed by a live continuous sweep instead of a pre-recorded one.
+  var cameraScanState = {
+    stream: null, busy: false, scanning: false, autoTimer: null, flushTimer: null,
+    frameBuffer: [], lastCardFoundAt: 0
+  };
   var CAMERA_POLL_MS = 200;
-  var CAMERA_BATCH_FRAMES = 20; // matches the Edge Function's own MAX_FRAMES cap -- 20 * 200ms = one batch every ~4s
+  var CAMERA_BATCH_FRAMES = 20; // safety cap on the buffer -- matches the Edge Function's own MAX_FRAMES
+  var CAMERA_FLUSH_INTERVAL_MS = 2000;
+  var CAMERA_IDLE_STOP_MS = 5000;
 
   function renderScanImportSection() {
     var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Sweep your cards past the camera, or upload a photo/video instead, and we'll add them to your collection. Simply review and confirm the matches after!</p>";
@@ -3678,13 +3686,13 @@
   }
 
   function cameraScanBodyHtml() {
-    var html = '<div class="callout" style="margin-bottom:14px;">Keep the camera pointed at your cards and sweep through them steadily — it keeps sampling in the background and adds cards in batches as it goes. No need to hold each one still.</div>';
+    var html = '<div class="callout" style="margin-bottom:14px;">Start the camera, point it at your cards, then tap Scan now — it keeps scanning and adding cards on its own until you stop it, or automatically stops after a few seconds with nothing new to find.</div>';
     if (!cameraScanState.stream) {
       html += '<button class="btn primary" id="scan-camera-start" type="button">Start camera</button>';
     } else {
       html += '<div class="scan-camera-wrap"><video id="scan-camera-video" autoplay playsinline muted></video></div>';
       html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">' +
-        '<button class="btn ghost small" id="scan-camera-capture" type="button">Scan now</button>' +
+        '<button class="btn primary small" id="scan-camera-capture" type="button">Scan now</button>' +
         '<button class="btn ghost" id="scan-camera-stop" type="button">Stop camera</button>' +
         "</div>";
     }
@@ -3844,7 +3852,7 @@
     var video = el.querySelector("#scan-camera-video");
     if (video && cameraScanState.stream) video.srcObject = cameraScanState.stream;
     var captureBtn = el.querySelector("#scan-camera-capture");
-    if (captureBtn) captureBtn.addEventListener("click", function () { flushCameraBatch(el); });
+    if (captureBtn) captureBtn.addEventListener("click", function () { startContinuousScan(el); });
     var stopBtn = el.querySelector("#scan-camera-stop");
     if (stopBtn) stopBtn.addEventListener("click", function () { stopCameraScan(); refreshScanCaptureBody(el); });
   }
@@ -3859,7 +3867,6 @@
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false }).then(function (stream) {
       cameraScanState.stream = stream;
       refreshScanCaptureBody(el);
-      startAutoCaptureLoop(el);
     }).catch(function (err) {
       toast("Couldn't access the camera" + (err && err.message ? ": " + err.message : "."));
       if (startBtn) { startBtn.disabled = false; startBtn.textContent = "Start camera"; }
@@ -3868,44 +3875,56 @@
 
   // Stops and releases the camera stream -- called whenever the live-scan
   // UI goes away (switching mode/method tabs, closing the import modal,
-  // the user's own "Stop camera" button) so the camera light doesn't stay
-  // on after the scanner is no longer visible.
+  // the user's own "Stop camera" button, or the idle timeout below) so the
+  // camera light doesn't stay on after the scanner is no longer in use.
   function stopCameraScan() {
-    stopAutoCaptureLoop();
+    stopContinuousScan();
     if (cameraScanState.stream) {
       cameraScanState.stream.getTracks().forEach(function (t) { t.stop(); });
       cameraScanState.stream = null;
     }
   }
 
-  // Grabs a frame into frameBuffer every CAMERA_POLL_MS regardless of
-  // whether anything is currently steady in view -- the whole point is to
-  // let someone sweep/fan a stack past the camera without pausing. Once
-  // the buffer hits CAMERA_BATCH_FRAMES it's sent off as one batch.
-  function startAutoCaptureLoop(el) {
-    stopAutoCaptureLoop();
+  // "Scan now" is a start switch, not a one-shot capture: this keeps
+  // running -- buffering frames, flushing a batch every
+  // CAMERA_FLUSH_INTERVAL_MS -- until stopCameraScan() is called by hand
+  // or by the idle timeout in bufferFrameTick.
+  function startContinuousScan(el) {
+    if (cameraScanState.scanning) return;
+    if (!JVBackend.isConfigured()) { toast("Card scanning needs the backend connected — see SETUP.md."); return; }
+    cameraScanState.scanning = true;
     cameraScanState.frameBuffer = [];
-    cameraScanState.autoTimer = setInterval(function () { autoCaptureTick(el); }, CAMERA_POLL_MS);
+    cameraScanState.lastCardFoundAt = Date.now();
+    var captureBtn = el.querySelector("#scan-camera-capture");
+    if (captureBtn) { captureBtn.disabled = true; captureBtn.textContent = "Scanning…"; }
+    scanSetStatus(el, "Scanning… point your cards at the camera.");
+    cameraScanState.autoTimer = setInterval(function () { bufferFrameTick(el); }, CAMERA_POLL_MS);
+    cameraScanState.flushTimer = setInterval(function () { flushCameraBatch(el); }, CAMERA_FLUSH_INTERVAL_MS);
   }
 
-  function stopAutoCaptureLoop() {
-    if (cameraScanState.autoTimer) {
-      clearInterval(cameraScanState.autoTimer);
-      cameraScanState.autoTimer = null;
+  function stopContinuousScan() {
+    cameraScanState.scanning = false;
+    if (cameraScanState.autoTimer) { clearInterval(cameraScanState.autoTimer); cameraScanState.autoTimer = null; }
+    if (cameraScanState.flushTimer) { clearInterval(cameraScanState.flushTimer); cameraScanState.flushTimer = null; }
+    cameraScanState.frameBuffer = [];
+  }
+
+  // Runs every CAMERA_POLL_MS while scanning -- both the actual frame
+  // capture and the idle-timeout check live here so the 5s cutoff is
+  // accurate to ~200ms regardless of how the batch flush is going, rather
+  // than only being checked once per multi-second flush cycle.
+  function bufferFrameTick(el) {
+    if (!cameraScanState.scanning) return;
+    if (Date.now() - cameraScanState.lastCardFoundAt >= CAMERA_IDLE_STOP_MS) {
+      stopCameraScan();
+      refreshScanCaptureBody(el);
+      toast("Stopped the camera — no cards found for a few seconds.");
+      return;
     }
-    cameraScanState.frameBuffer = [];
-  }
-
-  function autoCaptureTick(el) {
-    // Pause buffering while a batch is in flight rather than letting the
-    // buffer grow unbounded -- capture resumes as soon as the request
-    // resolves, a few seconds later at most.
-    if (cameraScanState.busy) return;
     var video = el.querySelector("#scan-camera-video");
     if (!video || !video.videoWidth) return;
-
+    if (cameraScanState.frameBuffer.length >= CAMERA_BATCH_FRAMES) return;
     cameraScanState.frameBuffer.push(grabVideoFrame(video));
-    if (cameraScanState.frameBuffer.length >= CAMERA_BATCH_FRAMES) flushCameraBatch(el);
   }
 
   // Cards are stacked/fanned in a real hand the same way they were in the
@@ -3923,38 +3942,34 @@
     return canvas.toDataURL("image/jpeg", 0.85);
   }
 
-  // Sends whatever's currently buffered off to identify-cards as one
-  // batch and merges the result in. Fires automatically once the buffer
-  // fills, or on demand from the "Scan now" button to process a partial
-  // buffer without waiting.
+  // Sends whatever's buffered since the last tick off to identify-cards as
+  // one batch and merges the result in -- called on CAMERA_FLUSH_INTERVAL_MS
+  // repeat by startContinuousScan, not on demand.
   function flushCameraBatch(el) {
     if (cameraScanState.busy) return;
     var frames = cameraScanState.frameBuffer;
     cameraScanState.frameBuffer = [];
-    if (!frames.length) { toast("Nothing captured yet — give it a second."); return; }
-    if (!JVBackend.isConfigured()) { toast("Card scanning needs the backend connected — see SETUP.md."); return; }
+    if (!frames.length) return;
 
-    var captureBtn = el.querySelector("#scan-camera-capture");
     cameraScanState.busy = true;
-    if (captureBtn) captureBtn.disabled = true;
     scanSetLoadingStatus(el, "Reading " + frames.length + " frame" + (frames.length === 1 ? "" : "s") + "…");
 
     JVBackend.identifyCards(frames).then(function (res) {
       var cards = (res && res.cards) || [];
       if (!cards.length) {
-        scanSetStatus(el, "Couldn't identify any cards in that sweep — try slower, closer, or better lit.");
+        if (cameraScanState.scanning) scanSetStatus(el, "Scanning… point your cards at the camera.");
         return;
       }
+      cameraScanState.lastCardFoundAt = Date.now();
       scanImportState.results = mergeScanResults(scanImportState.results, cards);
       var names = cards.map(function (c) { return c && c.name; }).filter(Boolean).join(", ");
-      scanSetStatus(el, names ? "Added: " + names : "");
+      scanSetStatus(el, (names ? "Added: " + names + " — " : "") + "still scanning…");
       rerenderScanResults();
     }).catch(function (err) {
       console.error(err);
       scanSetStatus(el, "Something went wrong: " + (err && err.message ? err.message : "couldn't read that batch."));
     }).then(function () {
       cameraScanState.busy = false;
-      if (captureBtn) captureBtn.disabled = false;
     });
   }
 
