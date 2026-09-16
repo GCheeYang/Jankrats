@@ -58,11 +58,11 @@ test.describe('explore cards', () => {
     await expect(page.locator('#view-cards .card-tile')).toHaveCount(120);
   });
 
-  test('regression: rotated Battlefield card art stays inside its tile (no overflow)', async ({ page }) => {
+  test('regression: Battlefield card art renders unrotated in its landscape box (no overflow)', async ({ page }) => {
     await page.goto('/cards');
     await page.fill('#global-search', 'Abandoned Hall');
     await page.press('#global-search', 'Enter');
-    const img = page.locator('#view-cards .card-tile .ct-img img.rot90').first();
+    const img = page.locator('#view-cards .card-tile .ct-img.is-landscape img').first();
     await expect(img).toHaveCount(1);
     const overflow = await img.evaluate((el) => {
       const imgRect = el.getBoundingClientRect();
