@@ -172,7 +172,8 @@
       id: c.id, name: c.name, set: c.set, setName: c.setName,
       collectorNumber: c.collectorNumber, type: c.type, domains: c.domains || [],
       rarity: c.rarity, cost: c.cost, power: c.power, tags: c.tags || [],
-      imageUrl: c.imageUrl || null, text: "", isPlaceholder: false
+      imageUrl: c.imageUrl || null, text: "", isPlaceholder: false,
+      banned: c.banned || null
     };
   });
 
@@ -958,7 +959,9 @@
       : ownedStepperHtml(cardId, "Owned", owned, "qty") + ownedStepperHtml(cardId, "Foil", foil, "foil");
     var html = '<div class="modal-backdrop" id="card-modal"><div class="modal">' +
       '<div class="modal-head"><div><h2 style="font-size:19px;">' + escapeHtml(c.name) + "</h2>" +
-      '<div style="margin-top:6px;">' + domainChips(c.domains) + "</div></div>" +
+      '<div style="margin-top:6px;">' + domainChips(c.domains) +
+      (c.banned && c.banned.length ? '<span class="pill bad" style="margin-left:6px;">Banned — ' + escapeHtml(c.banned.join(", ")) + "</span>" : "") +
+      "</div></div>" +
       '<button class="modal-close" data-close>&times;</button></div>' +
       '<div style="display:flex;gap:18px;flex-wrap:wrap;">' +
       (c.imageUrl ? '<div class="cd-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt=""></div>' : "") +
