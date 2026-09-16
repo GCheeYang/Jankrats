@@ -791,7 +791,7 @@ textarea { resize: vertical; min-height: 90px; }
   pointer-events: none;
 }
 .scan-guide-frame {
-  width: 64%;
+  width: 85%;
   aspect-ratio: 744 / 1039;
   border: 2px dashed rgba(255, 255, 255, 0.6);
   border-radius: 10px;
