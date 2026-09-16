@@ -796,11 +796,6 @@ textarea { resize: vertical; min-height: 90px; }
   border: 2px dashed rgba(255, 255, 255, 0.6);
   border-radius: 10px;
   box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.3);
-  transition: border-color 0.2s ease, border-style 0.2s ease;
-}
-.scan-guide.found .scan-guide-frame {
-  border-color: var(--accent-strong);
-  border-style: solid;
 }
 .scan-guide-label {
   position: absolute; left: 10px; right: 10px; bottom: 10px; text-align: center;

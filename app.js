@@ -3637,40 +3637,35 @@
 
   /* ================================================================
      SCAN IMPORT: identify cards via the identify-cards Edge Function,
-     either from a live camera capture (continuous scanning while the
-     person flips through a fanned stack at their own pace, the same
-     chronological-reappearance duplicate tracking built for the old
-     pack-opening-video flow now driving a live sweep instead) or an
-     uploaded photo/video for anyone who'd rather not use their camera
-     live. Both feed the same fuzzy card-name matcher and the same
-     review table below.
+     either from a live camera capture (record while the person flips
+     through a fanned stack at their own pace, then analyze the whole
+     recording in one batch once they tap Stop camera -- the same
+     one-shot, whole-clip approach the uploaded-video path already
+     uses, just sourced live instead of from a file) or an uploaded
+     photo/video for anyone who'd rather not use their camera live.
+     Both feed the same fuzzy card-name matcher and the same review
+     table below.
      ================================================================ */
 
   var scanImportState = { results: [], busy: false };
   var scanCaptureMode = "camera";
-  // "Scan now" flips scanning on rather than firing a single shot: autoTimer
-  // grabs a frame into frameBuffer every CAMERA_POLL_MS (no per-frame API
-  // call, that'd be both expensive and low-quality -- most individual
-  // frames land mid-motion, blurred), flushTimer sends off whatever's
-  // buffered as one batch every CAMERA_FLUSH_INTERVAL_MS, and this repeats
-  // on its own -- "keeps scanning" -- until the user hits Stop camera.
-  // Batching still reuses identify-cards' chronological duplicate-tracking,
-  // the same logic built for the old pack-opening-video flow, just fed by
-  // a live continuous sweep instead of a pre-recorded one.
+  // autoTimer grabs a frame into frameBuffer every CAMERA_POLL_MS for as
+  // long as scanning is on -- no API call happens during recording at
+  // all. Analysis only fires once, when Stop camera is tapped (see
+  // finishScanAndStop), sending the whole recording as one batch instead
+  // of splitting it into several memoryless chunks the way a periodic
+  // flush would -- the same reason the uploaded-video path already
+  // outperforms a chunked live one. CAMERA_MAX_RECORD_MS is a safety
+  // valve, not the normal path: if someone leaves the camera running
+  // far longer than a real sweep needs, it analyzes what's captured so
+  // far and keeps recording, rather than growing memory unboundedly.
   var cameraScanState = {
-    stream: null, busy: false, scanning: false, autoTimer: null, flushTimer: null,
-    frameBuffer: [], guideResetTimer: null
+    stream: null, scanning: false, autoTimer: null,
+    frameBuffer: [], scanStartedAt: 0
   };
   var CAMERA_POLL_MS = 200;
-  var CAMERA_BATCH_FRAMES = 20; // matches the Edge Function's own MAX_FRAMES -- no point buffering past what it'll look at
-  // Sized so a flush uses the full CAMERA_BATCH_FRAMES the server accepts
-  // (20 * 200ms), not some smaller number -- a shorter interval means more,
-  // smaller, *independent* API calls, and identify-cards has no memory
-  // across calls. A card whose "turn at the front" straddles a flush
-  // boundary gets split into two partial, less-legible views instead of
-  // one clean one, which is a real accuracy loss the batched-upload path
-  // (one call sees the whole clip) doesn't have.
-  var CAMERA_FLUSH_INTERVAL_MS = CAMERA_BATCH_FRAMES * CAMERA_POLL_MS;
+  var CAMERA_MAX_FRAMES = 20; // matches the Edge Function's own MAX_FRAMES -- a longer recording gets downsampled to this, not truncated
+  var CAMERA_MAX_RECORD_MS = 60000; // matches the uploaded-video path's own 60s cap
 
   function renderScanImportSection() {
     var html = "<p style=\"color:var(--ink-soft);margin-bottom:14px;\">Sweep your cards past the camera, or upload a photo/video instead, and we'll add them to your collection. Simply review and confirm the matches after!</p>";
@@ -3691,7 +3686,7 @@
   }
 
   function cameraScanBodyHtml() {
-    var html = '<div class="callout" style="margin-bottom:14px;">Start the camera, keep your cards inside the guide box, then tap Scan now — flip through them at your own pace and it keeps scanning on its own.</div>';
+    var html = '<div class="callout" style="margin-bottom:14px;">Start the camera, keep your cards inside the guide box, then tap Scan now and flip through them at your own pace. Tap Stop camera when you\'re done and it\'ll read the whole recording back in one go.</div>';
     if (!cameraScanState.stream) {
       html += '<button class="btn primary" id="scan-camera-start" type="button">Start camera</button>';
     } else {
@@ -3861,7 +3856,7 @@
     var captureBtn = el.querySelector("#scan-camera-capture");
     if (captureBtn) captureBtn.addEventListener("click", function () { startContinuousScan(el); });
     var stopBtn = el.querySelector("#scan-camera-stop");
-    if (stopBtn) stopBtn.addEventListener("click", function () { stopCameraScan(); refreshScanCaptureBody(el); });
+    if (stopBtn) stopBtn.addEventListener("click", function () { finishScanAndStop(el); });
   }
 
   function startCameraScan(el) {
@@ -3897,52 +3892,57 @@
     }
   }
 
-  // "Scan now" is a start switch, not a one-shot capture: this keeps
-  // running -- buffering frames, flushing a batch every
-  // CAMERA_FLUSH_INTERVAL_MS -- until stopCameraScan() is called by hand.
+  // "Scan now" starts recording: buffers frames until Stop camera is
+  // tapped, at which point finishScanAndStop hands the whole recording
+  // to identify-cards as one batch. CAMERA_MAX_RECORD_MS is the only
+  // thing that can trigger analysis before then -- see bufferFrameTick.
   function startContinuousScan(el) {
     if (cameraScanState.scanning) return;
     if (!JVBackend.isConfigured()) { toast("Card scanning needs the backend connected — see SETUP.md."); return; }
     cameraScanState.scanning = true;
     cameraScanState.frameBuffer = [];
+    cameraScanState.scanStartedAt = Date.now();
     var captureBtn = el.querySelector("#scan-camera-capture");
     if (captureBtn) { captureBtn.disabled = true; captureBtn.textContent = "Scanning…"; }
-    scanSetStatus(el, "Scanning… point your cards at the camera.");
+    scanSetStatus(el, "Recording… flip through your cards, then tap Stop camera when you're done.");
     cameraScanState.autoTimer = setInterval(function () { bufferFrameTick(el); }, CAMERA_POLL_MS);
-    cameraScanState.flushTimer = setInterval(function () { flushCameraBatch(el); }, CAMERA_FLUSH_INTERVAL_MS);
   }
 
+  // Used for every cleanup path that ISN'T the Stop camera button
+  // (switching mode/method tabs, closing the import modal) -- those are
+  // the person navigating away, not signaling "I'm done, read this
+  // back," so whatever's been recorded so far is just discarded rather
+  // than analyzed. finishScanAndStop below is the one path that analyzes.
   function stopContinuousScan() {
     cameraScanState.scanning = false;
     if (cameraScanState.autoTimer) { clearInterval(cameraScanState.autoTimer); cameraScanState.autoTimer = null; }
-    if (cameraScanState.flushTimer) { clearInterval(cameraScanState.flushTimer); cameraScanState.flushTimer = null; }
-    if (cameraScanState.guideResetTimer) { clearTimeout(cameraScanState.guideResetTimer); cameraScanState.guideResetTimer = null; }
     cameraScanState.frameBuffer = [];
   }
 
-  // Briefly highlights the guide box as a quick "got it" acknowledgment
-  // whenever a batch finds a card -- purely a confirmation, not a cue to
-  // pause, since the guide box itself is just framing for the whole stack
-  // (fits more of it in the shot) rather than a one-card-at-a-time slot.
-  function showScanGuideFound(el) {
-    var guide = el.querySelector("#scan-guide");
-    var label = el.querySelector("#scan-guide-label");
-    if (!guide) return;
-    guide.classList.add("found");
-    if (label) label.textContent = "Got it!";
-    if (cameraScanState.guideResetTimer) clearTimeout(cameraScanState.guideResetTimer);
-    cameraScanState.guideResetTimer = setTimeout(function () {
-      guide.classList.remove("found");
-      if (label) label.textContent = "Keep your cards in the box";
-    }, 1000);
+  // The Stop camera button: grabs whatever's recorded before
+  // stopCameraScan() clears it, turns the camera off immediately (no
+  // reason to keep the light on while the analysis call is in flight --
+  // the frames are already captured, independent of the live stream),
+  // then analyzes that recording as one batch.
+  function finishScanAndStop(el) {
+    var wasScanning = cameraScanState.scanning;
+    var frames = cameraScanState.frameBuffer;
+    stopCameraScan();
+    refreshScanCaptureBody(el);
+    if (wasScanning && frames.length) analyzeCameraFrames(el, frames);
   }
 
   function bufferFrameTick(el) {
     if (!cameraScanState.scanning) return;
     var video = el.querySelector("#scan-camera-video");
     if (!video || !video.videoWidth) return;
-    if (cameraScanState.frameBuffer.length >= CAMERA_BATCH_FRAMES) return;
     cameraScanState.frameBuffer.push(grabVideoFrame(video));
+    if (Date.now() - cameraScanState.scanStartedAt >= CAMERA_MAX_RECORD_MS) {
+      var frames = cameraScanState.frameBuffer;
+      cameraScanState.frameBuffer = [];
+      cameraScanState.scanStartedAt = Date.now();
+      analyzeCameraFrames(el, frames);
+    }
   }
 
   // Cards are stacked/fanned in a real hand the same way they were in the
@@ -3960,34 +3960,41 @@
     return canvas.toDataURL("image/jpeg", 0.85);
   }
 
-  // Sends whatever's buffered since the last tick off to identify-cards as
-  // one batch and merges the result in -- called on CAMERA_FLUSH_INTERVAL_MS
-  // repeat by startContinuousScan, not on demand.
-  function flushCameraBatch(el) {
-    if (cameraScanState.busy) return;
-    var frames = cameraScanState.frameBuffer;
-    cameraScanState.frameBuffer = [];
-    if (!frames.length) return;
+  // Spreads frames evenly across the whole recording rather than just
+  // keeping the first/last CAMERA_MAX_FRAMES -- same approach
+  // extractVideoFrames uses for an uploaded file, so a longer recording
+  // stays represented start to finish instead of losing whichever end
+  // gets cut off.
+  function downsampleFrames(frames, maxCount) {
+    if (frames.length <= maxCount) return frames;
+    var picked = [];
+    for (var i = 0; i < maxCount; i++) {
+      picked.push(frames[Math.min(frames.length - 1, Math.floor((i + 0.5) * (frames.length / maxCount)))]);
+    }
+    return picked;
+  }
 
-    cameraScanState.busy = true;
-    scanSetLoadingStatus(el, "Reading " + frames.length + " frame" + (frames.length === 1 ? "" : "s") + "…");
+  // Sends a whole recording to identify-cards as one batch and merges
+  // the result in -- called once from finishScanAndStop when the person
+  // taps Stop camera, or, rarely, from bufferFrameTick's
+  // CAMERA_MAX_RECORD_MS safety valve on an unusually long recording.
+  function analyzeCameraFrames(el, frames) {
+    var picked = downsampleFrames(frames, CAMERA_MAX_FRAMES);
+    scanSetLoadingStatus(el, "Reading " + picked.length + " frame" + (picked.length === 1 ? "" : "s") + "…");
 
-    JVBackend.identifyCards(frames).then(function (res) {
+    JVBackend.identifyCards(picked).then(function (res) {
       var cards = (res && res.cards) || [];
       if (!cards.length) {
-        if (cameraScanState.scanning) scanSetStatus(el, "Scanning… point your cards at the camera.");
+        scanSetStatus(el, "Couldn't identify any cards in that recording — try slower, closer, or better lit.");
         return;
       }
       scanImportState.results = mergeScanResults(scanImportState.results, cards);
       var names = cards.map(function (c) { return c && c.name; }).filter(Boolean).join(", ");
-      scanSetStatus(el, (names ? "Added: " + names + " — " : "") + "still scanning…");
-      showScanGuideFound(el);
+      scanSetStatus(el, names ? "Added: " + names : "");
       rerenderScanResults();
     }).catch(function (err) {
       console.error(err);
-      scanSetStatus(el, "Something went wrong: " + (err && err.message ? err.message : "couldn't read that batch."));
-    }).then(function () {
-      cameraScanState.busy = false;
+      scanSetStatus(el, "Something went wrong: " + (err && err.message ? err.message : "couldn't read that recording."));
     });
   }
 
