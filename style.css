@@ -880,6 +880,25 @@ textarea { resize: vertical; min-height: 90px; }
 .tourney-match-row .tm-draw.chosen { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
 .tourney-match-row .tm-draw:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* Bo3: a header naming both players, then one pick-row per game (game 2/3
+   only appear once they're actually relevant) instead of the single-row
+   Bo1 layout above. */
+.tourney-match-row.bo3 { flex-direction: column; align-items: stretch; gap: 8px; }
+.tourney-match-header {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-weight: 600; font-size: 13.5px; color: var(--ink-soft);
+}
+.tourney-game-row { display: flex; align-items: center; gap: 8px; }
+.tourney-game-row .tg-label { flex: none; width: 52px; font-size: 11px; color: var(--ink-faint); }
+.tourney-match-row .tm-pick.small { padding: 4px 8px; font-size: 12.5px; }
+.tourney-match-result { font-size: 12.5px; color: var(--good); font-weight: 600; margin: 2px 0 0; }
+.tm-intentional-draw {
+  align-self: flex-start; background: none; border: none; color: var(--ink-faint);
+  font-size: 11px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; padding: 2px 0;
+}
+.tm-intentional-draw.chosen { color: var(--warn); }
+.tm-intentional-draw:disabled { opacity: 0.6; cursor: not-allowed; }
+
 /* Two columns instead of one long vertical list -- with a card image on
    every row now, a 40-card main deck was scrolling forever. */
 .slot-list {

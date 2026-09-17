@@ -3534,8 +3534,8 @@
   function tourneyPairSequential(list) {
     var matches = [];
     for (var i = 0; i < list.length; i += 2) {
-      if (i + 1 < list.length) matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: list[i + 1].id, result: null });
-      else matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: null, result: "p1" });
+      if (i + 1 < list.length) matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: list[i + 1].id, result: null, games: [null, null, null] });
+      else matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: null, result: "p1", games: [null, null, null] });
     }
     return matches;
   }
@@ -3556,14 +3556,14 @@
       }
       if (byeIdx === -1) byeIdx = remaining.length - 1;
       var byePlayer = remaining.splice(byeIdx, 1)[0];
-      matches.push({ id: uid("match"), p1Id: byePlayer.id, p2Id: null, result: "p1" });
+      matches.push({ id: uid("match"), p1Id: byePlayer.id, p2Id: null, result: "p1", games: [null, null, null] });
     }
     while (remaining.length) {
       var p1 = remaining.shift();
       var idx = remaining.findIndex(function (p) { return !tourneyPlayedBefore(t, p1.id, p.id); });
       if (idx === -1) idx = 0;
       var p2 = remaining.splice(idx, 1)[0];
-      matches.push({ id: uid("match"), p1Id: p1.id, p2Id: p2.id, result: null });
+      matches.push({ id: uid("match"), p1Id: p1.id, p2Id: p2.id, result: null, games: [null, null, null] });
     }
     return matches;
   }
@@ -3693,6 +3693,16 @@
     });
   }
 
+  // A Bo3 match win goes to whoever reaches 2 game wins first -- game 3
+  // is only relevant (and only ever shown) when games 1-2 split evenly.
+  function tourneyDeriveMatchResult(games) {
+    var p1Wins = games.filter(function (g) { return g === "p1"; }).length;
+    var p2Wins = games.filter(function (g) { return g === "p2"; }).length;
+    if (p1Wins >= 2) return "p1";
+    if (p2Wins >= 2) return "p2";
+    return null;
+  }
+
   function tourneyMatchRowHtml(t, m) {
     var p1 = tourneyPlayerById(t, m.p1Id);
     if (m.p2Id === null) {
@@ -3700,11 +3710,45 @@
     }
     var p2 = tourneyPlayerById(t, m.p2Id);
     var locked = t.status === "complete";
-    return '<div class="tourney-match-row" data-match="' + m.id + '">' +
-      '<button type="button" class="tm-pick' + (m.result === "p1" ? " chosen" : "") + '" data-pick="p1"' + (locked ? " disabled" : "") + ">" + escapeHtml(p1.name) + "</button>" +
-      '<button type="button" class="tm-draw' + (m.result === "draw" ? " chosen" : "") + '" data-pick="draw"' + (locked ? " disabled" : "") + '>Draw</button>' +
-      '<button type="button" class="tm-pick right' + (m.result === "p2" ? " chosen" : "") + '" data-pick="p2"' + (locked ? " disabled" : "") + ">" + escapeHtml(p2.name) + "</button>" +
-      "</div>";
+
+    if (t.format !== "bo3") {
+      return '<div class="tourney-match-row" data-match="' + m.id + '">' +
+        '<button type="button" class="tm-pick' + (m.result === "p1" ? " chosen" : "") + '" data-pick="p1"' + (locked ? " disabled" : "") + ">" + escapeHtml(p1.name) + "</button>" +
+        '<button type="button" class="tm-draw' + (m.result === "draw" ? " chosen" : "") + '" data-pick="draw"' + (locked ? " disabled" : "") + '>Draw</button>' +
+        '<button type="button" class="tm-pick right' + (m.result === "p2" ? " chosen" : "") + '" data-pick="p2"' + (locked ? " disabled" : "") + ">" + escapeHtml(p2.name) + "</button>" +
+        "</div>";
+    }
+
+    // Bo3: report which player won each individual game -- game 1 always
+    // shown, game 2 once game 1 has a winner, game 3 only if 1-2 are split.
+    var games = m.games || [null, null, null];
+    var p1Wins = games.filter(function (g) { return g === "p1"; }).length;
+    var p2Wins = games.filter(function (g) { return g === "p2"; }).length;
+    var decided = p1Wins >= 2 || p2Wins >= 2;
+    var showGame2 = games[0] !== null;
+    var showGame3 = games[0] !== null && games[1] !== null && !decided;
+
+    function gameRow(idx) {
+      var g = games[idx];
+      return '<div class="tourney-game-row">' +
+        '<span class="tg-label">Game ' + (idx + 1) + "</span>" +
+        '<button type="button" class="tm-pick small' + (g === "p1" ? " chosen" : "") + '" data-game="' + idx + '" data-pick="p1"' + (locked ? " disabled" : "") + ">" + escapeHtml(p1.name) + "</button>" +
+        '<button type="button" class="tm-pick small right' + (g === "p2" ? " chosen" : "") + '" data-game="' + idx + '" data-pick="p2"' + (locked ? " disabled" : "") + ">" + escapeHtml(p2.name) + "</button>" +
+        "</div>";
+    }
+
+    var html = '<div class="tourney-match-row bo3" data-match="' + m.id + '">' +
+      '<div class="tourney-match-header"><span>' + escapeHtml(p1.name) + "</span><span>" + escapeHtml(p2.name) + "</span></div>" +
+      gameRow(0) +
+      (showGame2 ? gameRow(1) : "") +
+      (showGame3 ? gameRow(2) : "");
+    if (decided) {
+      html += '<p class="tourney-match-result">' + escapeHtml(p1Wins > p2Wins ? p1.name : p2.name) + " wins " + Math.max(p1Wins, p2Wins) + "–" + Math.min(p1Wins, p2Wins) + "</p>";
+    } else if (games[0] === null) {
+      html += '<button type="button" class="tm-intentional-draw' + (m.result === "draw" ? " chosen" : "") + '" data-pick="draw"' + (locked ? " disabled" : "") + ">Intentional draw (no games played)</button>";
+    }
+    html += "</div>";
+    return html;
   }
 
   function tourneyStandingsTableHtml(rows) {
@@ -3743,7 +3787,11 @@
       html += '<div class="callout" style="margin-bottom:16px;font-size:15px;">🏆 <b>' + escapeHtml(standings[0].player.name) + "</b> wins the tournament!</div>";
     }
     html += '<h3 style="margin-bottom:4px;">Round ' + round.number + " pairings</h3>";
-    if (t.status === "active") html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">Click the winner\'s name to report a match (or Draw).</p>';
+    if (t.status === "active") {
+      html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">' +
+        (t.format === "bo3" ? "Click the winner of each game as you play it." : "Click the winner’s name to report a match (or Draw).") +
+        "</p>";
+    }
     html += '<div class="tourney-match-list">' + round.matches.map(function (m) { return tourneyMatchRowHtml(t, m); }).join("") + "</div>";
     if (t.status === "active") {
       var allReported = round.matches.every(function (m) { return m.p2Id === null || !!m.result; });
@@ -3771,7 +3819,18 @@
         btn.addEventListener("click", function () {
           var match = tourneyFindMatch(t, matchId);
           if (!match) return;
-          match.result = btn.getAttribute("data-pick");
+          var gameAttr = btn.getAttribute("data-game");
+          if (gameAttr !== null) {
+            // Bo3 per-game pick -- the match result is always derived from
+            // the games recorded so far, never set directly.
+            if (!match.games) match.games = [null, null, null];
+            match.games[parseInt(gameAttr, 10)] = btn.getAttribute("data-pick");
+            match.result = tourneyDeriveMatchResult(match.games);
+          } else {
+            // Bo1 winner/draw pick, or a Bo3 intentional draw called before
+            // any games were played.
+            match.result = btn.getAttribute("data-pick");
+          }
           t.updatedAt = Date.now ? Date.now() : 0;
           persistTournaments();
           renderTournamentView();
