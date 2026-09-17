@@ -211,7 +211,10 @@
     // straight away would blow away an in-progress rename mid-keystroke,
     // so it waits for them to click "Refresh" instead (see
     // applyRemoteTournamentData).
-    tourneyBuilder: { tournamentId: null, pendingRosterUpdate: null },
+    // viewingRound: null means "the current/latest round" -- set to a
+    // specific number when browsing an earlier round's pairings via the
+    // round tabs on the rounds screen.
+    tourneyBuilder: { tournamentId: null, pendingRosterUpdate: null, viewingRound: null },
     social: {
       session: null,           // Supabase auth session, or null when signed out
       myProfile: null,         // row from public.profiles for the signed-in user
@@ -3524,6 +3527,7 @@
 
   function openTournament(id) {
     state.tourneyBuilder.tournamentId = id;
+    state.tourneyBuilder.viewingRound = null;
     renderTournamentView();
     // The local copy is only as fresh as the last time this device had it
     // open -- pull the latest (e.g. participants who joined while nobody's
@@ -3791,9 +3795,9 @@
       html += '<div class="view-head"><div><h1>Tournaments</h1><p>Run a 3-round Swiss event — enter participants, report each round\'s match scores, and the standings sort out who plays who next.</p></div>' +
         '<button class="btn primary" data-action="new-tourney">+ New Tournament</button></div>';
       if (JVBackend.isConfigured()) {
-        html += '<div class="field" style="max-width:320px;margin-bottom:16px;display:flex;gap:8px;align-items:flex-end;">' +
-          '<div style="flex:1;"><label>Join a tournament</label><input type="text" id="tourney-join-code" placeholder="Enter code…" style="text-transform:uppercase;"></div>' +
-          '<button class="btn" data-action="join-tourney">Join</button></div>';
+        html += '<div class="field" style="max-width:420px;margin-bottom:16px;display:flex;flex-wrap:nowrap;gap:8px;align-items:flex-end;">' +
+          '<div style="flex:1;min-width:0;"><label>Join a tournament</label><input type="text" id="tourney-join-code" placeholder="Enter code…" style="text-transform:uppercase;"></div>' +
+          '<button class="btn" style="flex:none;" data-action="join-tourney">Join</button></div>';
       }
       html += '<div class="deck-row-list">';
       if (!state.tournaments.length) {
@@ -4038,7 +4042,11 @@
   }
 
   function tournamentRoundsHtml(t) {
-    var round = t.rounds[t.rounds.length - 1];
+    var latestRound = t.rounds[t.rounds.length - 1];
+    var viewingNum = state.tourneyBuilder.viewingRound;
+    if (!viewingNum || !t.rounds[viewingNum - 1]) viewingNum = latestRound.number;
+    var round = t.rounds[viewingNum - 1];
+    var viewingLatest = viewingNum === latestRound.number;
     var standings = tourneyStandings(t);
     var isOrganizer = tourneyIsOrganizer(t);
     var html = "<div>";
@@ -4048,7 +4056,7 @@
         : '<h2 style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;">' + escapeHtml(t.name) + "</h2>") +
       '<span style="display:flex;gap:8px;align-items:center;">' +
       '<span class="pill neutral">' + (t.format === "bo1" ? "Best of 1" : "Best of 3") + "</span>" +
-      '<span class="pill ' + (t.status === "complete" ? "good" : "neutral") + '">' + (t.status === "complete" ? "Complete" : "Round " + round.number + " / " + TOURNEY_ROUNDS) + "</span>" +
+      '<span class="pill ' + (t.status === "complete" ? "good" : "neutral") + '">' + (t.status === "complete" ? "Complete" : "Round " + latestRound.number + " / " + TOURNEY_ROUNDS) + "</span>" +
       "</span>" +
       "</div>";
 
@@ -4061,29 +4069,35 @@
       var myId = JVBackend.currentUserId();
       var mePlayer = myId ? t.players.filter(function (p) { return p.userId === myId; })[0] : null;
       if (mePlayer && t.status === "active") {
-        var myMatch = round.matches.filter(function (m) { return m.p1Id === mePlayer.id || m.p2Id === mePlayer.id; })[0];
+        var myMatch = latestRound.matches.filter(function (m) { return m.p1Id === mePlayer.id || m.p2Id === mePlayer.id; })[0];
         if (myMatch && myMatch.p2Id === null) {
           html += '<div class="callout" style="margin-bottom:16px;">You have a <b>bye</b> this round.</div>';
         } else if (myMatch) {
           var oppId = myMatch.p1Id === mePlayer.id ? myMatch.p2Id : myMatch.p1Id;
           var opp = tourneyPlayerById(t, oppId);
-          var myTable = tourneyTableNumbers(round)[myMatch.id];
+          var myTable = tourneyTableNumbers(latestRound)[myMatch.id];
           html += '<div class="callout" style="margin-bottom:16px;">You\'re at <b>Table ' + myTable + "</b> vs <b>" + escapeHtml(opp.name) + "</b></div>";
         }
       }
     }
 
-    html += '<h3 style="margin-bottom:4px;">Round ' + round.number + " pairings</h3>";
+    if (t.rounds.length > 1) {
+      html += '<div style="display:flex;gap:6px;margin-bottom:10px;">' + t.rounds.map(function (r) {
+        return '<button type="button" class="btn small' + (r.number === viewingNum ? " primary" : " ghost") + '" data-view-round="' + r.number + '">Round ' + r.number + "</button>";
+      }).join("") + "</div>";
+    }
+
+    html += '<h3 style="margin-bottom:4px;">Round ' + round.number + " pairings" + (viewingLatest ? "" : " (past round)") + "</h3>";
     if (t.status === "active") {
       html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">' +
-        (!isOrganizer ? "Live view — updates as the organizer reports scores." : t.format === "bo3" ? "Click the winner of each game as you play it." : "Click the winner’s name to report a match (or Draw).") +
+        (!isOrganizer ? "Live view — updates as the organizer reports scores." : t.format === "bo3" ? "Click the winner of each game as you play it. Past rounds stay editable too." : "Click the winner’s name to report a match (or Draw). Past rounds stay editable too.") +
         "</p>";
     }
     var tableNums = tourneyTableNumbers(round);
     html += '<div class="tourney-match-list">' + round.matches.map(function (m) {
       return tourneyMatchRowHtml(t, m, tableNums[m.id]);
     }).join("") + "</div>";
-    if (t.status === "active" && isOrganizer) {
+    if (t.status === "active" && isOrganizer && viewingLatest) {
       var allReported = round.matches.every(function (m) { return m.p2Id === null || !!m.result; });
       html += '<button class="btn primary" style="margin-top:16px;" data-action="advance-round"' + (allReported ? "" : " disabled") + ">" +
         (round.number < TOURNEY_ROUNDS ? "Report results & pair Round " + (round.number + 1) : "Report results & finish tournament") + "</button>";
@@ -4095,9 +4109,18 @@
   }
 
   function wireTournamentRounds(el, t) {
-    // Participants get a read-only render (no rename input, no pick
-    // buttons, no advance button), so there's nothing here for them to
-    // wire up -- they just watch it update live via realtime.
+    // Round tabs are available to everyone (organizer and participants
+    // alike) -- switching them is just a view change, not a write.
+    el.querySelectorAll("[data-view-round]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        state.tourneyBuilder.viewingRound = parseInt(b.getAttribute("data-view-round"), 10);
+        renderTournamentView();
+      });
+    });
+
+    // Participants get a read-only render otherwise (no rename input, no
+    // pick buttons, no advance button), so there's nothing else here for
+    // them to wire up -- they just watch it update live via realtime.
     if (!tourneyIsOrganizer(t)) return;
 
     var nameInput = el.querySelector("#tourney-name-input");
