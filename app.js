@@ -4501,7 +4501,7 @@
     frameBuffer: [], scanStartedAt: 0
   };
   var CAMERA_POLL_MS = 200;
-  var CAMERA_MAX_FRAMES = 20; // matches the Edge Function's own MAX_FRAMES -- a longer recording gets downsampled to this, not truncated
+  var CAMERA_MAX_FRAMES = 40; // matches the Edge Function's own MAX_FRAMES -- the size of each chunk analyzeCameraFrames sends per call
   var CAMERA_MAX_RECORD_MS = 60000; // matches the uploaded-video path's own 60s cap
 
   function renderScanImportSection() {
@@ -4885,7 +4885,7 @@
   // so a card held for less than ~0.8s could land between two samples
   // and never get a clean frame at all. Halving the interval roughly
   // halves the minimum hold time needed to guarantee a hit.
-  var SCAN_MAX_FRAMES = 20;
+  var SCAN_MAX_FRAMES = 40;
   var SCAN_FRAME_INTERVAL_S = 0.4;
 
   // Grabs still frames at fixed intervals by seeking a hidden <video> and

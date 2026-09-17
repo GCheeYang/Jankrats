@@ -16,7 +16,7 @@ import Anthropic from "npm:@anthropic-ai/sdk@latest";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const MODEL = Deno.env.get("ANTHROPIC_MODEL") || "claude-opus-5";
-const MAX_FRAMES = 20;
+const MAX_FRAMES = 40;
 
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
