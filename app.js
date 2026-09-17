@@ -3403,9 +3403,10 @@
       id: uid("tourney"),
       name: "New Tournament",
       status: "setup",   // "setup" | "active" | "complete"
+      format: "bo3",     // "bo1" | "bo3" -- how many games each match is played in real life; reporting only records the match winner either way
       setupCount: 8,
       players: [],       // [{id, name, dropped}]
-      rounds: [],        // [{number, matches: [{id, p1Id, p2Id (null = bye), p1Games, p2Games}]}]
+      rounds: [],        // [{number, matches: [{id, p1Id, p2Id (null = bye), result: null | "p1" | "p2" | "draw"}]}]
       createdAt: Date.now ? Date.now() : 0,
       updatedAt: Date.now ? Date.now() : 0
     };
@@ -3474,33 +3475,35 @@
   }
 
   // Per-player raw record across every reported match so far -- wins,
-  // losses, draws, byes, and game counts, plus which opponents were
-  // actually played (byes excluded, since UVS's OMW% only counts real
-  // opponents).
+  // losses, draws, byes, plus which opponents were actually played (byes
+  // excluded, since UVS's OMW% only counts real opponents). Reporting
+  // only captures who won each match (see tourneyMatchRowHtml), not a
+  // per-game score, so "Game Win %" is derived from real (non-bye)
+  // match results rather than individual games -- still the same UVS
+  // shape (a distinct, coarser tiebreaker below Match Points and OMW%),
+  // just without fabricating a game count nobody entered.
   function tourneyPlayerStats(t, playerId) {
-    var wins = 0, losses = 0, draws = 0, byes = 0, gamesWon = 0, gamesPlayed = 0, opponents = [];
+    var wins = 0, losses = 0, draws = 0, byes = 0, opponents = [];
     t.rounds.forEach(function (r) {
       r.matches.forEach(function (m) {
         if (m.p1Id !== playerId && m.p2Id !== playerId) return;
         if (m.p2Id === null) { if (m.p1Id === playerId) byes++; return; }
-        if (m.p1Games === null || m.p1Games === undefined || m.p2Games === null || m.p2Games === undefined) return;
+        if (!m.result) return;
         var isP1 = m.p1Id === playerId;
-        var mine = isP1 ? m.p1Games : m.p2Games;
-        var theirs = isP1 ? m.p2Games : m.p1Games;
-        gamesWon += mine;
-        gamesPlayed += mine + theirs;
         opponents.push(isP1 ? m.p2Id : m.p1Id);
-        if (mine > theirs) wins++; else if (mine < theirs) losses++; else draws++;
+        if (m.result === "draw") draws++;
+        else if ((m.result === "p1") === isP1) wins++;
+        else losses++;
       });
     });
     var matchesCounted = wins + losses + draws + byes;
     var matchPoints = wins * 3 + draws * 1 + byes * 3;
+    var realMatches = wins + losses + draws;
     return {
-      wins: wins, losses: losses, draws: draws, byes: byes,
-      gamesWon: gamesWon, gamesPlayed: gamesPlayed, opponents: opponents,
+      wins: wins, losses: losses, draws: draws, byes: byes, opponents: opponents,
       matchesCounted: matchesCounted, matchPoints: matchPoints,
       matchWinPct: matchesCounted ? clamp(matchPoints / (matchesCounted * 3), 0.33, 1) : 0.33,
-      gameWinPct: gamesPlayed ? clamp(gamesWon / gamesPlayed, 0.33, 1) : 0.33
+      gameWinPct: realMatches ? clamp(wins / realMatches, 0.33, 1) : 0.33
     };
   }
 
@@ -3531,8 +3534,8 @@
   function tourneyPairSequential(list) {
     var matches = [];
     for (var i = 0; i < list.length; i += 2) {
-      if (i + 1 < list.length) matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: list[i + 1].id, p1Games: null, p2Games: null });
-      else matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: null, p1Games: 2, p2Games: 0 });
+      if (i + 1 < list.length) matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: list[i + 1].id, result: null });
+      else matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: null, result: "p1" });
     }
     return matches;
   }
@@ -3553,14 +3556,14 @@
       }
       if (byeIdx === -1) byeIdx = remaining.length - 1;
       var byePlayer = remaining.splice(byeIdx, 1)[0];
-      matches.push({ id: uid("match"), p1Id: byePlayer.id, p2Id: null, p1Games: 2, p2Games: 0 });
+      matches.push({ id: uid("match"), p1Id: byePlayer.id, p2Id: null, result: "p1" });
     }
     while (remaining.length) {
       var p1 = remaining.shift();
       var idx = remaining.findIndex(function (p) { return !tourneyPlayedBefore(t, p1.id, p.id); });
       if (idx === -1) idx = 0;
       var p2 = remaining.splice(idx, 1)[0];
-      matches.push({ id: uid("match"), p1Id: p1.id, p2Id: p2.id, p1Games: null, p2Games: null });
+      matches.push({ id: uid("match"), p1Id: p1.id, p2Id: p2.id, result: null });
     }
     return matches;
   }
@@ -3629,11 +3632,18 @@
     }
   }
 
+  function tourneyFormatBtnHtml(t, key, label) {
+    return '<button type="button" class="btn small' + (t.format === key ? " primary" : "") + '" data-format="' + key + '">' + escapeHtml(label) + "</button>";
+  }
+
   function tournamentSetupHtml(t) {
     var count = t.setupCount || t.players.length || 8;
     var html = '<div><h3 style="margin-bottom:10px;">Set up players</h3>';
     html += '<div class="field" style="max-width:220px;margin-bottom:10px;"><label>Number of participants</label>' +
       '<input type="number" min="2" max="64" id="tourney-count" value="' + count + '"></div>';
+    html += '<div class="field" style="margin-bottom:10px;"><label>Match format</label><div style="display:flex;gap:8px;">' +
+      tourneyFormatBtnHtml(t, "bo1", "Best of 1") + tourneyFormatBtnHtml(t, "bo3", "Best of 3") +
+      "</div></div>";
     html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">3 rounds of Swiss. An odd number of players means someone sits out with a bye each round it happens.</p>';
     html += '<div class="tourney-name-grid">' + rangeArray(count).map(function (i) {
       var name = (t.players[i] && t.players[i].name) || "";
@@ -3650,6 +3660,13 @@
       t.setupCount = clamp(parseInt(countInput.value, 10) || 2, 2, 64);
       persistTournaments();
       renderTournamentView();
+    });
+    el.querySelectorAll("[data-format]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        t.format = b.getAttribute("data-format");
+        persistTournaments();
+        renderTournamentView();
+      });
     });
     el.querySelectorAll("[data-player-idx]").forEach(function (inp) {
       inp.addEventListener("change", function () {
@@ -3684,11 +3701,9 @@
     var p2 = tourneyPlayerById(t, m.p2Id);
     var locked = t.status === "complete";
     return '<div class="tourney-match-row" data-match="' + m.id + '">' +
-      '<span class="tm-name">' + escapeHtml(p1.name) + "</span>" +
-      '<input type="number" min="0" max="2" class="tm-score" data-score="p1" value="' + (m.p1Games === null || m.p1Games === undefined ? "" : m.p1Games) + '"' + (locked ? " disabled" : "") + ">" +
-      '<span class="tm-vs">–</span>' +
-      '<input type="number" min="0" max="2" class="tm-score" data-score="p2" value="' + (m.p2Games === null || m.p2Games === undefined ? "" : m.p2Games) + '"' + (locked ? " disabled" : "") + ">" +
-      '<span class="tm-name right">' + escapeHtml(p2.name) + "</span>" +
+      '<button type="button" class="tm-pick' + (m.result === "p1" ? " chosen" : "") + '" data-pick="p1"' + (locked ? " disabled" : "") + ">" + escapeHtml(p1.name) + "</button>" +
+      '<button type="button" class="tm-draw' + (m.result === "draw" ? " chosen" : "") + '" data-pick="draw"' + (locked ? " disabled" : "") + '>Draw</button>' +
+      '<button type="button" class="tm-pick right' + (m.result === "p2" ? " chosen" : "") + '" data-pick="p2"' + (locked ? " disabled" : "") + ">" + escapeHtml(p2.name) + "</button>" +
       "</div>";
   }
 
@@ -3717,17 +3732,21 @@
     var html = "<div>";
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
       '<input type="text" id="tourney-name-input" value="' + escapeHtml(t.name) + '" title="Click to rename" style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;border:none;border-bottom:2px dashed var(--accent);background:var(--surface-raised);border-radius:6px 6px 0 0;padding:4px 10px;max-width:340px;color:inherit;">' +
+      '<span style="display:flex;gap:8px;align-items:center;">' +
+      '<span class="pill neutral">' + (t.format === "bo1" ? "Best of 1" : "Best of 3") + "</span>" +
       '<span class="pill ' + (t.status === "complete" ? "good" : "neutral") + '">' + (t.status === "complete" ? "Complete" : "Round " + round.number + " / " + TOURNEY_ROUNDS) + "</span>" +
+      "</span>" +
       "</div>";
 
     html += '<div class="builder-grid"><div>';
     if (t.status === "complete") {
       html += '<div class="callout" style="margin-bottom:16px;font-size:15px;">🏆 <b>' + escapeHtml(standings[0].player.name) + "</b> wins the tournament!</div>";
     }
-    html += '<h3 style="margin-bottom:10px;">Round ' + round.number + " pairings</h3>";
+    html += '<h3 style="margin-bottom:4px;">Round ' + round.number + " pairings</h3>";
+    if (t.status === "active") html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">Click the winner\'s name to report a match (or Draw).</p>';
     html += '<div class="tourney-match-list">' + round.matches.map(function (m) { return tourneyMatchRowHtml(t, m); }).join("") + "</div>";
     if (t.status === "active") {
-      var allReported = round.matches.every(function (m) { return m.p2Id === null || (m.p1Games !== null && m.p1Games !== undefined && m.p2Games !== null && m.p2Games !== undefined); });
+      var allReported = round.matches.every(function (m) { return m.p2Id === null || !!m.result; });
       html += '<button class="btn primary" style="margin-top:16px;" data-action="advance-round"' + (allReported ? "" : " disabled") + ">" +
         (round.number < TOURNEY_ROUNDS ? "Report results & pair Round " + (round.number + 1) : "Report results & finish tournament") + "</button>";
     }
@@ -3748,12 +3767,11 @@
 
     el.querySelectorAll(".tourney-match-row[data-match]").forEach(function (row) {
       var matchId = row.getAttribute("data-match");
-      row.querySelectorAll(".tm-score").forEach(function (inp) {
-        inp.addEventListener("change", function () {
+      row.querySelectorAll("[data-pick]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
           var match = tourneyFindMatch(t, matchId);
           if (!match) return;
-          var val = inp.value === "" ? null : clamp(parseInt(inp.value, 10) || 0, 0, 2);
-          if (inp.getAttribute("data-score") === "p1") match.p1Games = val; else match.p2Games = val;
+          match.result = btn.getAttribute("data-pick");
           t.updatedAt = Date.now ? Date.now() : 0;
           persistTournaments();
           renderTournamentView();
