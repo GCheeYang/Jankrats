@@ -3455,9 +3455,50 @@
     syncTournamentToCloud(t);
   }
 
-  function startNewTournamentFlow() {
+  // Opens a small modal to collect participant count + format up front,
+  // matching how UVS's own tournament tool works, before the lobby (and
+  // its join code) actually exists.
+  function openNewTournamentModal() {
+    var root = document.getElementById("modal-root");
+    root.innerHTML = '<div class="modal-backdrop" id="new-tourney-modal"><div class="modal">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">New Tournament</h2><button class="modal-close" data-close>&times;</button></div>' +
+      '<div class="field" style="margin-bottom:14px;"><label>Tournament name</label>' +
+      '<input type="text" id="new-tourney-name" value="New Tournament"></div>' +
+      '<div class="field" style="max-width:220px;margin-bottom:14px;"><label>Number of participants</label>' +
+      '<input type="number" min="2" max="64" id="new-tourney-count" value="8"></div>' +
+      '<div class="field" style="margin-bottom:18px;"><label>Match format</label><div style="display:flex;gap:8px;" id="new-tourney-format">' +
+      '<button type="button" class="btn small primary" data-format="bo3">Best of 3</button>' +
+      '<button type="button" class="btn small" data-format="bo1">Best of 1</button>' +
+      "</div></div>" +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+      '<button class="btn ghost" data-close>Cancel</button>' +
+      '<button class="btn primary" data-action="create-tourney">Create Tournament</button>' +
+      "</div></div></div>";
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#new-tourney-modal").addEventListener("click", function (e) { if (e.target.id === "new-tourney-modal") closeModal(); });
+    var formatWrap = root.querySelector("#new-tourney-format");
+    formatWrap.querySelectorAll("[data-format]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        formatWrap.querySelectorAll("[data-format]").forEach(function (bb) { bb.classList.remove("primary"); });
+        b.classList.add("primary");
+      });
+    });
+    root.querySelector('[data-action="create-tourney"]').addEventListener("click", function () {
+      var name = root.querySelector("#new-tourney-name").value;
+      var count = clamp(parseInt(root.querySelector("#new-tourney-count").value, 10) || 2, 2, 64);
+      var format = formatWrap.querySelector(".primary").getAttribute("data-format");
+      closeModal();
+      startNewTournamentFlow(name, count, format);
+    });
+  }
+
+  function startNewTournamentFlow(name, count, format) {
     if (JVBackend.isConfigured() && !state.social.session) { toast("Sign in to create a tournament."); return; }
     var t = newTournamentObject();
+    if (name && name.trim()) t.name = name.trim();
+    t.format = format || t.format;
+    count = count || 8;
+    for (var i = 0; i < count; i++) t.players.push({ id: uid("plyr"), name: "", dropped: false, userId: null });
     if (JVBackend.isConfigured() && JVBackend.currentUserId()) {
       t.id = genTourneyCode();
       t.organizerId = JVBackend.currentUserId();
@@ -3744,7 +3785,7 @@
 
     el.innerHTML = html;
     if (!t) {
-      el.querySelector('[data-action="new-tourney"]').addEventListener("click", startNewTournamentFlow);
+      el.querySelector('[data-action="new-tourney"]').addEventListener("click", openNewTournamentModal);
       var joinBtn = el.querySelector('[data-action="join-tourney"]');
       if (joinBtn) joinBtn.addEventListener("click", function () {
         joinTournamentFlow(el.querySelector("#tourney-join-code").value);
