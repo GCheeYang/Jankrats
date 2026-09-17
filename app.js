@@ -3828,8 +3828,8 @@
         (joined ? "You're on the roster. Waiting for the organizer to start the tournament…" : "Couldn't find you on the roster yet — try rejoining with the code.") +
         "</p>";
       html += tourneyFormatLabelHtml(t);
-      html += '<div class="tourney-name-grid">' + t.players.map(function (p) {
-        return '<div class="field"><label>&nbsp;</label><input type="text" value="' + escapeHtml(p.name) + '" disabled></div>';
+      html += '<div class="tourney-roster-list">' + t.players.map(function (p) {
+        return '<div class="tourney-roster-row"><input type="text" value="' + escapeHtml(p.name) + '" placeholder="Empty seat" disabled></div>';
       }).join("") + "</div>";
       html += "</div>";
       return html;
@@ -3837,11 +3837,12 @@
 
     html += tourneyFormatLabelHtml(t);
     html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">3 rounds of Swiss. An odd number of players means someone sits out with a bye each round it happens.</p>';
-    html += '<div class="tourney-name-grid">' + t.players.map(function (p) {
-      return '<div class="field"><label>Player' + (p.userId ? " (joined)" : "") + '</label><div style="display:flex;gap:6px;">' +
+    html += '<div class="tourney-roster-list">' + t.players.map(function (p) {
+      return '<div class="tourney-roster-row">' +
         '<input type="text" data-player-id="' + p.id + '" value="' + escapeHtml(p.name) + '" placeholder="Name…">' +
-        '<button type="button" class="btn ghost small" data-remove-player="' + p.id + '" title="Remove">✕</button>' +
-        "</div></div>";
+        (p.userId ? '<span class="tr-joined-tag">Joined</span>' : "") +
+        '<button type="button" class="tr-remove" data-remove-player="' + p.id + '" title="Remove">✕</button>' +
+        "</div>";
     }).join("") + "</div>";
     html += '<button type="button" class="btn small ghost" style="margin-top:10px;" data-action="add-player">+ Add player</button>';
     html += '<div><button class="btn primary" style="margin-top:18px;" data-action="start-tourney">Start Tournament</button></div>';

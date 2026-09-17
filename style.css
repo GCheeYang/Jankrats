@@ -850,12 +850,28 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .deck-panel h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 8px; }
 
-/* ---- Tournament: player setup grid + round pairing rows ---- */
-.tourney-name-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 10px 14px;
+/* ---- Tournament: player roster list + round pairing rows ---- */
+.tourney-roster-list { display: flex; flex-direction: column; gap: 10px; }
+.tourney-roster-row {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--surface-raised); border: 1px solid var(--line);
+  border-radius: 14px; padding: 2px 6px 2px 16px;
 }
+.tourney-roster-row input {
+  flex: 1; min-width: 0; background: none; border: none; outline: none;
+  font-weight: 700; font-size: 14.5px; color: inherit; padding: 12px 0;
+}
+.tourney-roster-row input::placeholder { color: var(--ink-faint); font-weight: 500; }
+.tourney-roster-row input:disabled { color: inherit; opacity: 0.85; }
+.tourney-roster-row .tr-joined-tag {
+  flex: none; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--accent-strong); background: var(--warn-soft); border-radius: 999px; padding: 3px 8px;
+}
+.tourney-roster-row .tr-remove {
+  flex: none; background: none; border: none; color: var(--ink-faint);
+  font-size: 15px; line-height: 1; cursor: pointer; padding: 10px; border-radius: 8px;
+}
+.tourney-roster-row .tr-remove:hover { background: var(--surface); color: var(--bad); }
 .tourney-match-list { display: flex; flex-direction: column; gap: 8px; }
 .tourney-match-row {
   display: flex; align-items: center; gap: 10px;
