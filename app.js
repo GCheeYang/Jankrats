@@ -3622,11 +3622,10 @@
           if (window.confirm("Delete this tournament? This can't be undone.")) deleteTournament(r.getAttribute("data-del"));
         });
       });
-    } else if (t.status === "setup") {
-      wireTournamentSetup(el, t);
     } else {
       el.querySelector("[data-back-to-list]").addEventListener("click", backToTournamentList);
-      wireTournamentRounds(el, t);
+      if (t.status === "setup") wireTournamentSetup(el, t);
+      else wireTournamentRounds(el, t);
     }
   }
 
