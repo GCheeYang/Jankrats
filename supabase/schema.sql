@@ -429,6 +429,16 @@ create policy "users can leave, organizers can remove participants"
 -- organizer-only restriction the same way the owner of any table does),
 -- so the join registers immediately and reliably no matter whose
 -- browser is or isn't open at the time.
+-- Fills the first unclaimed blank slot (a player with no name and no
+-- userId -- one of the placeholder rows the "New Tournament" modal
+-- pre-seeds from the requested participant count) rather than always
+-- appending a new row, so a join lands the player in the roster the
+-- organizer already set up instead of tacking on an extra seat. Once
+-- Start Tournament is clicked every blank slot gets a "Player N"
+-- placeholder name (see app.js), so this only matches during setup --
+-- a join with no blank slot left (none pre-seeded, or the tournament
+-- already started) falls back to appending a new row so nobody who
+-- joins is ever silently dropped.
 create or replace function public.tourney_sync_participant()
 returns trigger
 language plpgsql
@@ -437,27 +447,49 @@ set search_path = public
 as $$
 declare
   cur_data jsonb;
-  new_player jsonb;
-  kept_players jsonb;
+  players jsonb;
+  n int;
+  i int;
+  slot jsonb;
+  filled boolean := false;
+  new_players jsonb := '[]'::jsonb;
 begin
   select data into cur_data from public.tournaments where id = new.tournament_id for update;
   if cur_data is null then
     return new;
   end if;
 
-  new_player := jsonb_build_object(
-    'id', 'plyr_' || replace(new.user_id::text, '-', ''),
-    'name', coalesce(new.name, 'Player'),
-    'dropped', false,
-    'userId', new.user_id::text
-  );
+  players := coalesce(cur_data->'players', '[]'::jsonb);
+  n := jsonb_array_length(players);
 
-  select coalesce(jsonb_agg(p), '[]'::jsonb) into kept_players
-  from jsonb_array_elements(coalesce(cur_data->'players', '[]'::jsonb)) p
-  where p->>'userId' is distinct from new.user_id::text;
+  -- Already on the roster (e.g. a duplicate insert slipping past the
+  -- upsert's own conflict handling) -- nothing to do.
+  for i in 0..n - 1 loop
+    if (players->i)->>'userId' = new.user_id::text then
+      return new;
+    end if;
+  end loop;
+
+  for i in 0..n - 1 loop
+    slot := players->i;
+    if not filled and (slot->>'userId') is null and coalesce(btrim(slot->>'name'), '') = '' then
+      slot := slot || jsonb_build_object('name', coalesce(new.name, 'Player'), 'userId', new.user_id::text);
+      filled := true;
+    end if;
+    new_players := new_players || jsonb_build_array(slot);
+  end loop;
+
+  if not filled then
+    new_players := players || jsonb_build_array(jsonb_build_object(
+      'id', 'plyr_' || replace(new.user_id::text, '-', ''),
+      'name', coalesce(new.name, 'Player'),
+      'dropped', false,
+      'userId', new.user_id::text
+    ));
+  end if;
 
   update public.tournaments
-  set data = (cur_data || jsonb_build_object('players', kept_players || jsonb_build_array(new_player)))
+  set data = (cur_data || jsonb_build_object('players', new_players))
              || jsonb_build_object('updatedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint),
       updated_at = now()
   where id = new.tournament_id;
