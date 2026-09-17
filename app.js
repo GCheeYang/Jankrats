@@ -15,6 +15,7 @@
     decks: STORAGE_PREFIX + "decks",
     deletedDeckIds: STORAGE_PREFIX + "deletedDeckIds",
     wanted: STORAGE_PREFIX + "wanted",
+    tournaments: STORAGE_PREFIX + "tournaments",
     profile: STORAGE_PREFIX + "profile",
     lastAuthProvider: STORAGE_PREFIX + "lastAuthProvider"
   };
@@ -201,9 +202,11 @@
     decks: [],
     wanted: [],          // card ids the player is searching for
     wantedQuery: "",     // transient search box text, not persisted
+    tournaments: [],
     profile: { name: "" },
     route: "home",
     builder: { deckId: null, tab: "main", cardFilter: "", legendVariantPickName: null, legendFilter: "", ownedFilter: "all" },
+    tourneyBuilder: { tournamentId: null },
     social: {
       session: null,           // Supabase auth session, or null when signed out
       myProfile: null,         // row from public.profiles for the signed-in user
@@ -255,6 +258,7 @@
     state.decks = loadJSON(KEYS.decks, []);
     if (sanitizeDeckRunes(state.decks)) persistDecks();
     state.wanted = loadJSON(KEYS.wanted, []);
+    state.tournaments = loadJSON(KEYS.tournaments, []);
     state.profile = loadJSON(KEYS.profile, { name: "" });
   }
 
@@ -285,6 +289,7 @@
   }
   function persistCollection() { saveJSON(KEYS.collection, state.collection); }
   function persistWanted() { saveJSON(KEYS.wanted, state.wanted); }
+  function persistTournaments() { saveJSON(KEYS.tournaments, state.tournaments); }
   function persistDecks() {
     saveJSON(KEYS.decks, state.decks);
     syncDecksToCloud();
@@ -377,7 +382,7 @@
 
   /* ---------------- router ---------------- */
 
-  var VIEWS = ["home", "cards", "collection", "wanted", "decks", "friends", "dashboard", "profile"];
+  var VIEWS = ["home", "cards", "collection", "wanted", "decks", "tournament", "friends", "dashboard", "profile"];
 
   // Maps a route name to/from a clean URL path, e.g. "collection" <->
   // "/collection", with "home" living at the bare root "/".
@@ -430,6 +435,7 @@
     if (state.route === "wanted") renderWantedView();
     if (state.route === "friends") renderFriendsView();
     if (state.route === "decks") renderDecksView();
+    if (state.route === "tournament") renderTournamentView();
     if (state.route === "profile") renderProfileView();
   }
 
@@ -3376,6 +3382,394 @@
         dm.expandedId = dm.expandedId === id ? null : id;
         refreshDeckMatchBody(root);
       });
+    });
+  }
+
+  /* ================================================================
+     TOURNAMENT: a 3-round Swiss event tracker, following UVS Games'
+     own published tournament rules (UVS_Games_Tournament_Rules_V2.4.1):
+     3/1/0 match points for win/draw/loss (a bye counts as a 3-point
+     win), and standings tiebreakers in the order Match Points ->
+     Opponent Match Win % -> Game Win %, each win-percentage floored at
+     33% per UVS's rules. UVS's own round table calls for exactly 3
+     Swiss rounds at the small (4-8 player) end, which is also the flat
+     round count asked for here.
+     ================================================================ */
+
+  var TOURNEY_ROUNDS = 3;
+
+  function newTournamentObject() {
+    return {
+      id: uid("tourney"),
+      name: "New Tournament",
+      status: "setup",   // "setup" | "active" | "complete"
+      setupCount: 8,
+      players: [],       // [{id, name, dropped}]
+      rounds: [],        // [{number, matches: [{id, p1Id, p2Id (null = bye), p1Games, p2Games}]}]
+      createdAt: Date.now ? Date.now() : 0,
+      updatedAt: Date.now ? Date.now() : 0
+    };
+  }
+
+  function rangeArray(n) {
+    var a = [];
+    for (var i = 0; i < n; i++) a.push(i);
+    return a;
+  }
+
+  function currentTournament() {
+    if (!state.tourneyBuilder.tournamentId) return null;
+    return state.tournaments.filter(function (t) { return t.id === state.tourneyBuilder.tournamentId; })[0] || null;
+  }
+
+  function startNewTournamentFlow() {
+    var t = newTournamentObject();
+    state.tournaments.push(t);
+    persistTournaments();
+    state.tourneyBuilder.tournamentId = t.id;
+    renderTournamentView();
+  }
+
+  function openTournament(id) {
+    state.tourneyBuilder.tournamentId = id;
+    renderTournamentView();
+  }
+
+  function backToTournamentList() {
+    state.tourneyBuilder.tournamentId = null;
+    renderTournamentView();
+  }
+
+  function deleteTournament(id) {
+    state.tournaments = state.tournaments.filter(function (t) { return t.id !== id; });
+    persistTournaments();
+    if (state.tourneyBuilder.tournamentId === id) state.tourneyBuilder.tournamentId = null;
+    renderTournamentView();
+  }
+
+  function tourneyPlayerById(t, id) {
+    return t.players.filter(function (p) { return p.id === id; })[0] || { name: "?" };
+  }
+
+  function tourneyFindMatch(t, matchId) {
+    for (var i = 0; i < t.rounds.length; i++) {
+      var m = t.rounds[i].matches.filter(function (mm) { return mm.id === matchId; })[0];
+      if (m) return m;
+    }
+    return null;
+  }
+
+  function tourneyPlayedBefore(t, aId, bId) {
+    return t.rounds.some(function (r) {
+      return r.matches.some(function (m) {
+        return (m.p1Id === aId && m.p2Id === bId) || (m.p1Id === bId && m.p2Id === aId);
+      });
+    });
+  }
+
+  function tourneyHadBye(t, playerId) {
+    return t.rounds.some(function (r) {
+      return r.matches.some(function (m) { return m.p2Id === null && m.p1Id === playerId; });
+    });
+  }
+
+  // Per-player raw record across every reported match so far -- wins,
+  // losses, draws, byes, and game counts, plus which opponents were
+  // actually played (byes excluded, since UVS's OMW% only counts real
+  // opponents).
+  function tourneyPlayerStats(t, playerId) {
+    var wins = 0, losses = 0, draws = 0, byes = 0, gamesWon = 0, gamesPlayed = 0, opponents = [];
+    t.rounds.forEach(function (r) {
+      r.matches.forEach(function (m) {
+        if (m.p1Id !== playerId && m.p2Id !== playerId) return;
+        if (m.p2Id === null) { if (m.p1Id === playerId) byes++; return; }
+        if (m.p1Games === null || m.p1Games === undefined || m.p2Games === null || m.p2Games === undefined) return;
+        var isP1 = m.p1Id === playerId;
+        var mine = isP1 ? m.p1Games : m.p2Games;
+        var theirs = isP1 ? m.p2Games : m.p1Games;
+        gamesWon += mine;
+        gamesPlayed += mine + theirs;
+        opponents.push(isP1 ? m.p2Id : m.p1Id);
+        if (mine > theirs) wins++; else if (mine < theirs) losses++; else draws++;
+      });
+    });
+    var matchesCounted = wins + losses + draws + byes;
+    var matchPoints = wins * 3 + draws * 1 + byes * 3;
+    return {
+      wins: wins, losses: losses, draws: draws, byes: byes,
+      gamesWon: gamesWon, gamesPlayed: gamesPlayed, opponents: opponents,
+      matchesCounted: matchesCounted, matchPoints: matchPoints,
+      matchWinPct: matchesCounted ? clamp(matchPoints / (matchesCounted * 3), 0.33, 1) : 0.33,
+      gameWinPct: gamesPlayed ? clamp(gamesWon / gamesPlayed, 0.33, 1) : 0.33
+    };
+  }
+
+  // Standings sorted exactly per UVS's tiebreaker order: Match Points,
+  // then Opponent Match Win %, then Game Win %.
+  function tourneyStandings(t) {
+    var cache = {};
+    t.players.forEach(function (p) { cache[p.id] = tourneyPlayerStats(t, p.id); });
+    var rows = t.players.map(function (p) {
+      var s = cache[p.id];
+      var omw = 0;
+      if (s.opponents.length) {
+        var sum = 0;
+        s.opponents.forEach(function (oppId) { sum += cache[oppId].matchWinPct; });
+        omw = sum / s.opponents.length;
+      }
+      return { player: p, stats: s, omw: omw };
+    });
+    rows.sort(function (a, b) {
+      return b.stats.matchPoints - a.stats.matchPoints
+        || b.omw - a.omw
+        || b.stats.gameWinPct - a.stats.gameWinPct
+        || a.player.name.localeCompare(b.player.name);
+    });
+    return rows;
+  }
+
+  function tourneyPairSequential(list) {
+    var matches = [];
+    for (var i = 0; i < list.length; i += 2) {
+      if (i + 1 < list.length) matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: list[i + 1].id, p1Games: null, p2Games: null });
+      else matches.push({ id: uid("match"), p1Id: list[i].id, p2Id: null, p1Games: 2, p2Games: 0 });
+    }
+    return matches;
+  }
+
+  // Standard Swiss pairing: walk the standings top to bottom, greedily
+  // pairing each player with the highest-ranked remaining player they
+  // haven't already played. A bye (when the field is odd) goes to the
+  // lowest-ranked player who hasn't already had one. If avoiding a
+  // rematch becomes impossible, a repeat pairing is allowed rather than
+  // leaving anyone unpaired -- the same fallback real Swiss software uses.
+  function tourneyPairSwiss(t, orderedPlayers) {
+    var remaining = orderedPlayers.slice();
+    var matches = [];
+    if (remaining.length % 2 === 1) {
+      var byeIdx = -1;
+      for (var i = remaining.length - 1; i >= 0; i--) {
+        if (!tourneyHadBye(t, remaining[i].id)) { byeIdx = i; break; }
+      }
+      if (byeIdx === -1) byeIdx = remaining.length - 1;
+      var byePlayer = remaining.splice(byeIdx, 1)[0];
+      matches.push({ id: uid("match"), p1Id: byePlayer.id, p2Id: null, p1Games: 2, p2Games: 0 });
+    }
+    while (remaining.length) {
+      var p1 = remaining.shift();
+      var idx = remaining.findIndex(function (p) { return !tourneyPlayedBefore(t, p1.id, p.id); });
+      if (idx === -1) idx = 0;
+      var p2 = remaining.splice(idx, 1)[0];
+      matches.push({ id: uid("match"), p1Id: p1.id, p2Id: p2.id, p1Games: null, p2Games: null });
+    }
+    return matches;
+  }
+
+  function generateNextRound(t) {
+    var roundNum = t.rounds.length + 1;
+    var active = t.players.filter(function (p) { return !p.dropped; });
+    var matches;
+    if (roundNum === 1) {
+      var shuffled = active.slice();
+      for (var i = shuffled.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = tmp;
+      }
+      matches = tourneyPairSequential(shuffled);
+    } else {
+      var order = tourneyStandings(t).map(function (r) { return r.player; }).filter(function (p) { return !p.dropped; });
+      matches = tourneyPairSwiss(t, order);
+    }
+    t.rounds.push({ number: roundNum, matches: matches });
+  }
+
+  /* ---------------- render ---------------- */
+
+  function renderTournamentView() {
+    var el = document.getElementById("view-tournament");
+    var t = currentTournament();
+    var html = "";
+    if (!t) {
+      html += '<div class="view-head"><div><h1>Tournaments</h1><p>Run a 3-round Swiss event — enter participants, report each round\'s match scores, and the standings sort out who plays who next.</p></div>' +
+        '<button class="btn primary" data-action="new-tourney">+ New Tournament</button></div>';
+      html += '<div class="deck-row-list">';
+      if (!state.tournaments.length) {
+        html += '<div class="empty-state"><h3>No tournaments yet</h3><p>Start one to track a Swiss event — players, pairings, scores and standings.</p></div>';
+      } else {
+        state.tournaments.slice().sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).forEach(function (tt) {
+          var roundLabel = tt.status === "complete" ? "Complete" : tt.status === "setup" ? "Not started" : "Round " + tt.rounds.length + " / " + TOURNEY_ROUNDS;
+          html += '<div class="deck-row" data-open="' + tt.id + '">' +
+            '<div class="drn">' + escapeHtml(tt.name) + "</div>" +
+            '<div class="drspacer"></div>' +
+            '<div class="drmeta">' + tt.players.length + " players · " + roundLabel + "</div>" +
+            '<button class="btn small danger" data-del="' + tt.id + '">Delete</button>' +
+            "</div>";
+        });
+      }
+      html += "</div>";
+    } else {
+      html += '<button class="btn ghost small" style="margin-bottom:14px;" data-back-to-list>← All tournaments</button>';
+      html += t.status === "setup" ? tournamentSetupHtml(t) : tournamentRoundsHtml(t);
+    }
+
+    el.innerHTML = html;
+    if (!t) {
+      el.querySelector('[data-action="new-tourney"]').addEventListener("click", startNewTournamentFlow);
+      el.querySelectorAll("[data-open]").forEach(function (r) { r.addEventListener("click", function () { openTournament(r.getAttribute("data-open")); }); });
+      el.querySelectorAll("[data-del]").forEach(function (r) {
+        r.addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (window.confirm("Delete this tournament? This can't be undone.")) deleteTournament(r.getAttribute("data-del"));
+        });
+      });
+    } else if (t.status === "setup") {
+      wireTournamentSetup(el, t);
+    } else {
+      el.querySelector("[data-back-to-list]").addEventListener("click", backToTournamentList);
+      wireTournamentRounds(el, t);
+    }
+  }
+
+  function tournamentSetupHtml(t) {
+    var count = t.setupCount || t.players.length || 8;
+    var html = '<div><h3 style="margin-bottom:10px;">Set up players</h3>';
+    html += '<div class="field" style="max-width:220px;margin-bottom:10px;"><label>Number of participants</label>' +
+      '<input type="number" min="2" max="64" id="tourney-count" value="' + count + '"></div>';
+    html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">3 rounds of Swiss. An odd number of players means someone sits out with a bye each round it happens.</p>';
+    html += '<div class="tourney-name-grid">' + rangeArray(count).map(function (i) {
+      var name = (t.players[i] && t.players[i].name) || "";
+      return '<div class="field"><label>Player ' + (i + 1) + '</label><input type="text" data-player-idx="' + i + '" value="' + escapeHtml(name) + '" placeholder="Name…"></div>';
+    }).join("") + "</div>";
+    html += '<button class="btn primary" style="margin-top:18px;" data-action="start-tourney">Start Tournament</button>';
+    html += "</div>";
+    return html;
+  }
+
+  function wireTournamentSetup(el, t) {
+    var countInput = el.querySelector("#tourney-count");
+    if (countInput) countInput.addEventListener("change", function () {
+      t.setupCount = clamp(parseInt(countInput.value, 10) || 2, 2, 64);
+      persistTournaments();
+      renderTournamentView();
+    });
+    el.querySelectorAll("[data-player-idx]").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        var idx = parseInt(inp.getAttribute("data-player-idx"), 10);
+        if (!t.players[idx]) t.players[idx] = { id: uid("plyr"), name: "", dropped: false };
+        t.players[idx].name = inp.value;
+        persistTournaments();
+      });
+    });
+    var startBtn = el.querySelector('[data-action="start-tourney"]');
+    if (startBtn) startBtn.addEventListener("click", function () {
+      var count = t.setupCount || t.players.length || 8;
+      for (var i = 0; i < count; i++) {
+        if (!t.players[i]) t.players[i] = { id: uid("plyr"), name: "", dropped: false };
+        if (!t.players[i].name || !t.players[i].name.trim()) t.players[i].name = "Player " + (i + 1);
+      }
+      t.players = t.players.slice(0, count);
+      if (t.players.length < 2) { toast("Need at least 2 participants."); return; }
+      t.status = "active";
+      generateNextRound(t);
+      t.updatedAt = Date.now ? Date.now() : 0;
+      persistTournaments();
+      renderTournamentView();
+    });
+  }
+
+  function tourneyMatchRowHtml(t, m) {
+    var p1 = tourneyPlayerById(t, m.p1Id);
+    if (m.p2Id === null) {
+      return '<div class="tourney-match-row"><span class="tm-name">' + escapeHtml(p1.name) + '</span><span class="tm-vs">BYE</span><span class="tm-name right"></span></div>';
+    }
+    var p2 = tourneyPlayerById(t, m.p2Id);
+    var locked = t.status === "complete";
+    return '<div class="tourney-match-row" data-match="' + m.id + '">' +
+      '<span class="tm-name">' + escapeHtml(p1.name) + "</span>" +
+      '<input type="number" min="0" max="2" class="tm-score" data-score="p1" value="' + (m.p1Games === null || m.p1Games === undefined ? "" : m.p1Games) + '"' + (locked ? " disabled" : "") + ">" +
+      '<span class="tm-vs">–</span>' +
+      '<input type="number" min="0" max="2" class="tm-score" data-score="p2" value="' + (m.p2Games === null || m.p2Games === undefined ? "" : m.p2Games) + '"' + (locked ? " disabled" : "") + ">" +
+      '<span class="tm-name right">' + escapeHtml(p2.name) + "</span>" +
+      "</div>";
+  }
+
+  function tourneyStandingsTableHtml(rows) {
+    var html = "<h3>Standings</h3>";
+    html += '<div style="overflow-x:auto;"><table class="coll-table"><thead><tr>' +
+      "<th>#</th><th>Player</th><th>Pts</th><th>W-L-D</th><th>OMW%</th><th>GW%</th>" +
+      "</tr></thead><tbody>" +
+      rows.map(function (r, i) {
+        return "<tr>" +
+          "<td>" + (i + 1) + "</td>" +
+          "<td>" + escapeHtml(r.player.name) + "</td>" +
+          "<td>" + r.stats.matchPoints + "</td>" +
+          "<td>" + r.stats.wins + "-" + r.stats.losses + "-" + r.stats.draws + (r.stats.byes ? " (+" + r.stats.byes + " bye)" : "") + "</td>" +
+          "<td>" + Math.round(r.omw * 100) + "%</td>" +
+          "<td>" + Math.round(r.stats.gameWinPct * 100) + "%</td>" +
+          "</tr>";
+      }).join("") +
+      "</tbody></table></div>";
+    return html;
+  }
+
+  function tournamentRoundsHtml(t) {
+    var round = t.rounds[t.rounds.length - 1];
+    var standings = tourneyStandings(t);
+    var html = "<div>";
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
+      '<input type="text" id="tourney-name-input" value="' + escapeHtml(t.name) + '" title="Click to rename" style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;border:none;border-bottom:2px dashed var(--accent);background:var(--surface-raised);border-radius:6px 6px 0 0;padding:4px 10px;max-width:340px;color:inherit;">' +
+      '<span class="pill ' + (t.status === "complete" ? "good" : "neutral") + '">' + (t.status === "complete" ? "Complete" : "Round " + round.number + " / " + TOURNEY_ROUNDS) + "</span>" +
+      "</div>";
+
+    html += '<div class="builder-grid"><div>';
+    if (t.status === "complete") {
+      html += '<div class="callout" style="margin-bottom:16px;font-size:15px;">🏆 <b>' + escapeHtml(standings[0].player.name) + "</b> wins the tournament!</div>";
+    }
+    html += '<h3 style="margin-bottom:10px;">Round ' + round.number + " pairings</h3>";
+    html += '<div class="tourney-match-list">' + round.matches.map(function (m) { return tourneyMatchRowHtml(t, m); }).join("") + "</div>";
+    if (t.status === "active") {
+      var allReported = round.matches.every(function (m) { return m.p2Id === null || (m.p1Games !== null && m.p1Games !== undefined && m.p2Games !== null && m.p2Games !== undefined); });
+      html += '<button class="btn primary" style="margin-top:16px;" data-action="advance-round"' + (allReported ? "" : " disabled") + ">" +
+        (round.number < TOURNEY_ROUNDS ? "Report results & pair Round " + (round.number + 1) : "Report results & finish tournament") + "</button>";
+    }
+    html += "</div>";
+    html += '<div class="deck-panel">' + tourneyStandingsTableHtml(standings) + "</div>";
+    html += "</div></div>";
+    return html;
+  }
+
+  function wireTournamentRounds(el, t) {
+    var nameInput = el.querySelector("#tourney-name-input");
+    if (nameInput) nameInput.addEventListener("change", function () {
+      t.name = nameInput.value || "New Tournament";
+      t.updatedAt = Date.now ? Date.now() : 0;
+      persistTournaments();
+      renderTournamentView();
+    });
+
+    el.querySelectorAll(".tourney-match-row[data-match]").forEach(function (row) {
+      var matchId = row.getAttribute("data-match");
+      row.querySelectorAll(".tm-score").forEach(function (inp) {
+        inp.addEventListener("change", function () {
+          var match = tourneyFindMatch(t, matchId);
+          if (!match) return;
+          var val = inp.value === "" ? null : clamp(parseInt(inp.value, 10) || 0, 0, 2);
+          if (inp.getAttribute("data-score") === "p1") match.p1Games = val; else match.p2Games = val;
+          t.updatedAt = Date.now ? Date.now() : 0;
+          persistTournaments();
+          renderTournamentView();
+        });
+      });
+    });
+
+    var advBtn = el.querySelector('[data-action="advance-round"]');
+    if (advBtn) advBtn.addEventListener("click", function () {
+      var round = t.rounds[t.rounds.length - 1];
+      if (round.number >= TOURNEY_ROUNDS) { t.status = "complete"; toast("Tournament complete!"); }
+      else { generateNextRound(t); toast("Round " + (round.number + 1) + " pairings are up."); }
+      t.updatedAt = Date.now ? Date.now() : 0;
+      persistTournaments();
+      renderTournamentView();
     });
   }
 
