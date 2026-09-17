@@ -4014,36 +4014,52 @@
   // extractVideoFrames uses for an uploaded file, so a longer recording
   // stays represented start to finish instead of losing whichever end
   // gets cut off.
-  function downsampleFrames(frames, maxCount) {
-    if (frames.length <= maxCount) return frames;
-    var picked = [];
-    for (var i = 0; i < maxCount; i++) {
-      picked.push(frames[Math.min(frames.length - 1, Math.floor((i + 0.5) * (frames.length / maxCount)))]);
-    }
-    return picked;
+  // Splits into consecutive, non-overlapping groups of at most maxCount --
+  // unlike downsampling to a fixed total, every captured frame ends up in
+  // some batch. A 20-card session at ~1s/card is ~100 frames; downsampling
+  // that to 20 total left most cards with zero clean frames representing
+  // them at all, which is the accuracy bug this replaces.
+  function chunkFrames(frames, maxCount) {
+    var chunks = [];
+    for (var i = 0; i < frames.length; i += maxCount) chunks.push(frames.slice(i, i + maxCount));
+    return chunks;
   }
 
-  // Sends a whole recording to identify-cards as one batch and merges
-  // the result in -- called once from finishScanAndStop when the person
-  // taps Stop camera, or, rarely, from bufferFrameTick's
-  // CAMERA_MAX_RECORD_MS safety valve on an unusually long recording.
+  // Sends a whole recording to identify-cards as a series of
+  // CAMERA_MAX_FRAMES-sized batches (still one call per batch, since
+  // that's the Edge Function's own hard cap) and merges each batch's
+  // result in as it comes back -- called once from finishScanAndStop
+  // when the person taps Stop camera, or, rarely, from
+  // bufferFrameTick's CAMERA_MAX_RECORD_MS safety valve on an unusually
+  // long recording. A card's presentation can still land across a chunk
+  // boundary (the same limitation the old periodic-flush design had),
+  // but nothing captured gets silently discarded the way downsampling did.
   function analyzeCameraFrames(el, frames) {
-    var picked = downsampleFrames(frames, CAMERA_MAX_FRAMES);
-    scanSetLoadingStatus(el, "Reading " + picked.length + " frame" + (picked.length === 1 ? "" : "s") + "…");
+    var chunks = chunkFrames(frames, CAMERA_MAX_FRAMES);
+    scanSetLoadingStatus(el, "Reading " + frames.length + " frame" + (frames.length === 1 ? "" : "s") +
+      (chunks.length > 1 ? " across " + chunks.length + " batches…" : "…"));
 
-    JVBackend.identifyCards(picked).then(function (res) {
-      var cards = (res && res.cards) || [];
-      if (!cards.length) {
-        scanSetStatus(el, "Couldn't identify any cards in that recording — try slower, closer, or better lit.");
-        return;
-      }
-      scanImportState.results = mergeScanResults(scanImportState.results, cards);
-      var names = cards.map(function (c) { return c && c.name; }).filter(Boolean).join(", ");
-      scanSetStatus(el, names ? "Added: " + names : "");
-      rerenderScanResults();
-    }).catch(function (err) {
-      console.error(err);
-      scanSetStatus(el, "Something went wrong: " + (err && err.message ? err.message : "couldn't read that recording."));
+    var remaining = chunks.length;
+    var anyFound = false;
+    var anyError = false;
+    chunks.forEach(function (chunk) {
+      JVBackend.identifyCards(chunk).then(function (res) {
+        var cards = (res && res.cards) || [];
+        if (cards.length) {
+          anyFound = true;
+          scanImportState.results = mergeScanResults(scanImportState.results, cards);
+          rerenderScanResults();
+        }
+      }).catch(function (err) {
+        console.error(err);
+        anyError = true;
+      }).then(function () {
+        remaining--;
+        if (remaining > 0) return;
+        if (anyError) scanSetStatus(el, "Some frames couldn't be read — you may be missing a card or two." + (anyFound ? " Check the results below." : ""));
+        else if (!anyFound) scanSetStatus(el, "Couldn't identify any cards in that recording — try slower, closer, or better lit.");
+        else scanSetStatus(el, "");
+      });
     });
   }
 
