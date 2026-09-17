@@ -3703,7 +3703,11 @@
     return null;
   }
 
-  function tourneyMatchRowHtml(t, m) {
+  function tourneyTableLabelHtml(tableNum) {
+    return '<div class="tourney-table-label">Table ' + tableNum + "</div>";
+  }
+
+  function tourneyMatchRowHtml(t, m, tableNum) {
     var p1 = tourneyPlayerById(t, m.p1Id);
     if (m.p2Id === null) {
       return '<div class="tourney-match-row"><span class="tm-name">' + escapeHtml(p1.name) + '</span><span class="tm-vs">BYE</span><span class="tm-name right"></span></div>';
@@ -3713,6 +3717,7 @@
 
     if (t.format !== "bo3") {
       return '<div class="tourney-match-row" data-match="' + m.id + '">' +
+        tourneyTableLabelHtml(tableNum) +
         '<button type="button" class="tm-pick' + (m.result === "p1" ? " chosen" : "") + '" data-pick="p1"' + (locked ? " disabled" : "") + ">" + escapeHtml(p1.name) + "</button>" +
         '<button type="button" class="tm-draw' + (m.result === "draw" ? " chosen" : "") + '" data-pick="draw"' + (locked ? " disabled" : "") + '>Draw</button>' +
         '<button type="button" class="tm-pick right' + (m.result === "p2" ? " chosen" : "") + '" data-pick="p2"' + (locked ? " disabled" : "") + ">" + escapeHtml(p2.name) + "</button>" +
@@ -3726,7 +3731,9 @@
     var p2Wins = games.filter(function (g) { return g === "p2"; }).length;
     var decided = p1Wins >= 2 || p2Wins >= 2;
     var showGame2 = games[0] !== null;
-    var showGame3 = games[0] !== null && games[1] !== null && !decided;
+    // Stays visible once it has a result (even after the match is decided)
+    // so a mis-click on game 3 can still be corrected instead of vanishing.
+    var showGame3 = games[2] !== null || (games[0] !== null && games[1] !== null && !decided);
 
     function gameRow(idx) {
       var g = games[idx];
@@ -3738,6 +3745,7 @@
     }
 
     var html = '<div class="tourney-match-row bo3" data-match="' + m.id + '">' +
+      tourneyTableLabelHtml(tableNum) +
       '<div class="tourney-match-header"><span>' + escapeHtml(p1.name) + "</span><span>" + escapeHtml(p2.name) + "</span></div>" +
       gameRow(0) +
       (showGame2 ? gameRow(1) : "") +
@@ -3792,7 +3800,10 @@
         (t.format === "bo3" ? "Click the winner of each game as you play it." : "Click the winner’s name to report a match (or Draw).") +
         "</p>";
     }
-    html += '<div class="tourney-match-list">' + round.matches.map(function (m) { return tourneyMatchRowHtml(t, m); }).join("") + "</div>";
+    var tableNum = 0;
+    html += '<div class="tourney-match-list">' + round.matches.map(function (m) {
+      return tourneyMatchRowHtml(t, m, m.p2Id === null ? null : ++tableNum);
+    }).join("") + "</div>";
     if (t.status === "active") {
       var allReported = round.matches.every(function (m) { return m.p2Id === null || !!m.result; });
       html += '<button class="btn primary" style="margin-top:16px;" data-action="advance-round"' + (allReported ? "" : " disabled") + ">" +
