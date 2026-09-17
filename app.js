@@ -3795,7 +3795,7 @@
       html += '<div class="view-head"><div><h1>Tournaments</h1><p>Run a 3-round Swiss event — enter participants, report each round\'s match scores, and the standings sort out who plays who next.</p></div>' +
         '<button class="btn primary" data-action="new-tourney">+ New Tournament</button></div>';
       if (JVBackend.isConfigured()) {
-        html += '<div class="field" style="max-width:420px;margin-bottom:16px;display:flex;flex-wrap:nowrap;gap:8px;align-items:flex-end;">' +
+        html += '<div class="field" style="max-width:420px;margin-bottom:16px;display:flex;flex-direction:row;flex-wrap:nowrap;gap:8px;align-items:flex-end;">' +
           '<div style="flex:1;min-width:0;"><label>Join a tournament</label><input type="text" id="tourney-join-code" placeholder="Enter code…" style="text-transform:uppercase;"></div>' +
           '<button class="btn" style="flex:none;" data-action="join-tourney">Join</button></div>';
       }
