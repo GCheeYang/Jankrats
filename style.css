@@ -639,6 +639,25 @@ textarea { resize: vertical; min-height: 90px; }
 .coll-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: middle; }
 .coll-table tr:hover td { background: var(--surface); }
 
+/* Tournament standings: narrower and denser than a normal .coll-table
+   (it lives in a fixed-width sidebar), with every cell kept to one line
+   -- a wrapped "W-L-D" or "2-0-0" reads as broken, not compact. */
+.tourney-standings-table { table-layout: fixed; font-size: 12px; }
+.tourney-standings-table th, .tourney-standings-table td {
+  padding: 7px 5px; white-space: nowrap;
+}
+.tourney-standings-table th:first-child, .tourney-standings-table td:first-child { width: 20px; padding-left: 2px; }
+.tourney-standings-table th:nth-child(2), .tourney-standings-table td:nth-child(2) {
+  width: 30%; overflow: hidden; text-overflow: ellipsis;
+}
+.tourney-standings-table th:nth-child(3), .tourney-standings-table td:nth-child(3) { width: 13%; }
+.tourney-standings-table th:nth-child(4), .tourney-standings-table td:nth-child(4) { width: 24%; }
+.tourney-standings-table th:nth-child(5), .tourney-standings-table td:nth-child(5),
+.tourney-standings-table th:nth-child(6), .tourney-standings-table td:nth-child(6) { width: 16%; }
+.tourney-standings-table td:nth-child(3) { font-weight: 700; color: var(--accent-strong); }
+.tourney-standings-table .ts-bye { color: var(--ink-faint); font-size: 10.5px; }
+.tourney-standings-table tbody tr:first-child td { background: var(--warn-soft); }
+
 .stepper { display: inline-flex; align-items: center; gap: 6px; }
 .stepper button {
   width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line-strong);

@@ -206,7 +206,12 @@
     profile: { name: "" },
     route: "home",
     builder: { deckId: null, tab: "main", cardFilter: "", legendVariantPickName: null, legendFilter: "", ownedFilter: "all" },
-    tourneyBuilder: { tournamentId: null },
+    // pendingRosterUpdate holds a live update that arrived while the
+    // organizer had the editable setup screen open -- applying it
+    // straight away would blow away an in-progress rename mid-keystroke,
+    // so it waits for them to click "Refresh" instead (see
+    // applyRemoteTournamentData).
+    tourneyBuilder: { tournamentId: null, pendingRosterUpdate: null },
     social: {
       session: null,           // Supabase auth session, or null when signed out
       myProfile: null,         // row from public.profiles for the signed-in user
@@ -3594,14 +3599,41 @@
   // Applies a tournament row's data (freshly fetched, or pushed live via
   // realtime) into local state -- skips a stale echo of a write this same
   // client just made by comparing the embedded updatedAt timestamp.
+  //
+  // While the organizer has the editable setup screen open, a live
+  // update (typically someone joining) is held back instead of applied
+  // straight away -- a full re-render at that moment would wipe out
+  // whatever name they're mid-typing. A banner prompts them to refresh
+  // when they're ready instead (see tournamentSetupHtml / wireTournamentSetup).
   function applyRemoteTournamentData(id, data) {
     if (!data) return;
     var idx = state.tournaments.findIndex(function (t) { return t.id === id; });
     if (idx !== -1 && data.updatedAt && state.tournaments[idx].updatedAt && data.updatedAt <= state.tournaments[idx].updatedAt) return;
     var merged = Object.assign({}, data, { id: id });
+    var viewingThis = state.tourneyBuilder.tournamentId === id && state.route === "tournament";
+    if (viewingThis && merged.status === "setup" && tourneyIsOrganizer(merged)) {
+      state.tourneyBuilder.pendingRosterUpdate = merged;
+      var banner = document.getElementById("tourney-refresh-banner");
+      if (banner) banner.style.display = "flex";
+      return;
+    }
     if (idx === -1) state.tournaments.push(merged); else state.tournaments[idx] = merged;
     saveJSON(KEYS.tournaments, state.tournaments);
-    if (state.tourneyBuilder.tournamentId === id && state.route === "tournament") renderTournamentView();
+    if (viewingThis) renderTournamentView();
+  }
+
+  // Folds a held-back live update into state without itself forcing a
+  // render -- callers apply it right before a render they're already
+  // about to do (either the "Refresh" banner's own click, or any other
+  // re-render that was going to happen anyway, e.g. adding a player).
+  function consumePendingRosterUpdate(id) {
+    var pending = state.tourneyBuilder.pendingRosterUpdate;
+    if (!pending || pending.id !== id) return false;
+    state.tourneyBuilder.pendingRosterUpdate = null;
+    var idx = state.tournaments.findIndex(function (t) { return t.id === id; });
+    if (idx === -1) state.tournaments.push(pending); else state.tournaments[idx] = pending;
+    saveJSON(KEYS.tournaments, state.tournaments);
+    return true;
   }
 
   function tourneyPlayerById(t, id) {
@@ -3752,6 +3784,7 @@
       return;
     }
     var t = currentTournament();
+    if (t && consumePendingRosterUpdate(t.id)) t = currentTournament();
     tourneyEnsureLiveSync(t);
     var html = "";
     if (!t) {
@@ -3821,6 +3854,13 @@
         "</div>";
     }
 
+    if (isOrganizer && t.organizerId) {
+      html += '<div id="tourney-refresh-banner" class="callout" style="margin-bottom:14px;display:none;align-items:center;justify-content:space-between;gap:10px;">' +
+        "<span>A new player joined.</span>" +
+        '<button type="button" class="btn small primary" data-action="refresh-roster">Refresh</button>' +
+        "</div>";
+    }
+
     if (!isOrganizer) {
       var myId = JVBackend.currentUserId();
       var joined = t.players.some(function (p) { return p.userId === myId; });
@@ -3855,6 +3895,12 @@
 
     var copyBtn = el.querySelector('[data-action="copy-code"]');
     if (copyBtn) copyBtn.addEventListener("click", function () { copyToClipboard(t.id); toast("Code copied."); });
+
+    var refreshBtn = el.querySelector('[data-action="refresh-roster"]');
+    if (refreshBtn) refreshBtn.addEventListener("click", function () {
+      consumePendingRosterUpdate(t.id);
+      renderTournamentView();
+    });
 
     el.querySelectorAll("[data-player-id]").forEach(function (inp) {
       inp.addEventListener("change", function () {
@@ -3973,15 +4019,16 @@
 
   function tourneyStandingsTableHtml(rows) {
     var html = "<h3>Standings</h3>";
-    html += '<div style="overflow-x:auto;"><table class="coll-table"><thead><tr>' +
+    html += '<div style="overflow-x:auto;"><table class="coll-table tourney-standings-table"><thead><tr>' +
       "<th>#</th><th>Player</th><th>Pts</th><th>W-L-D</th><th>OMW%</th><th>GW%</th>" +
       "</tr></thead><tbody>" +
       rows.map(function (r, i) {
-        return "<tr>" +
+        return '<tr title="' + escapeHtml(r.player.name) + '">' +
           "<td>" + (i + 1) + "</td>" +
           "<td>" + escapeHtml(r.player.name) + "</td>" +
           "<td>" + r.stats.matchPoints + "</td>" +
-          "<td>" + r.stats.wins + "-" + r.stats.losses + "-" + r.stats.draws + (r.stats.byes ? " (+" + r.stats.byes + " bye)" : "") + "</td>" +
+          "<td>" + r.stats.wins + "-" + r.stats.losses + "-" + r.stats.draws +
+            (r.stats.byes ? ' <span class="ts-bye">+' + r.stats.byes + "b</span>" : "") + "</td>" +
           "<td>" + Math.round(r.omw * 100) + "%</td>" +
           "<td>" + Math.round(r.stats.gameWinPct * 100) + "%</td>" +
           "</tr>";
