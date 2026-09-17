@@ -3405,11 +3405,29 @@
       status: "setup",   // "setup" | "active" | "complete"
       format: "bo3",     // "bo1" | "bo3" -- how many games each match is played in real life; reporting only records the match winner either way
       setupCount: 8,
-      players: [],       // [{id, name, dropped}]
+      organizerId: null, // set when this tournament is synced to Supabase -- null means local-only (this device)
+      players: [],       // [{id, name, dropped, userId}] -- userId is set only for players who joined remotely
       rounds: [],        // [{number, matches: [{id, p1Id, p2Id (null = bye), result: null | "p1" | "p2" | "draw"}]}]
       createdAt: Date.now ? Date.now() : 0,
       updatedAt: Date.now ? Date.now() : 0
     };
+  }
+
+  // Short, easy-to-read-aloud join code -- excludes 0/O/1/I so nobody
+  // has to guess which is which when a friend reads it out.
+  function genTourneyCode() {
+    var chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    var s = "";
+    for (var i = 0; i < 5; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+    return s;
+  }
+
+  // A tournament with no organizerId is local-only (created before this
+  // feature, or the backend isn't configured) -- always full control.
+  // Otherwise only the account that created it can edit it; everyone
+  // else sees the same data read-only via realtime sync.
+  function tourneyIsOrganizer(t) {
+    return !t.organizerId || t.organizerId === JVBackend.currentUserId();
   }
 
   function rangeArray(n) {
@@ -3423,11 +3441,38 @@
     return state.tournaments.filter(function (t) { return t.id === state.tourneyBuilder.tournamentId; })[0] || null;
   }
 
+  // Pushes an organizer's local change up to Supabase so every other
+  // device/participant watching this tournament picks it up live. A
+  // no-op for local-only tournaments or non-organizers (who never get
+  // an organizerId assigned to their local copy in the first place).
+  function syncTournamentToCloud(t) {
+    if (!t.organizerId || !JVBackend.isConfigured()) return;
+    JVBackend.updateTournamentRemote(t.id, t).catch(function () {});
+  }
+
+  function persistCurrentTournament(t) {
+    persistTournaments();
+    syncTournamentToCloud(t);
+  }
+
   function startNewTournamentFlow() {
+    if (JVBackend.isConfigured() && !state.social.session) { toast("Sign in to create a tournament."); return; }
     var t = newTournamentObject();
+    if (JVBackend.isConfigured() && JVBackend.currentUserId()) {
+      t.id = genTourneyCode();
+      t.organizerId = JVBackend.currentUserId();
+    }
     state.tournaments.push(t);
     persistTournaments();
     state.tourneyBuilder.tournamentId = t.id;
+    if (t.organizerId) {
+      JVBackend.createTournamentRemote(t.id, t).catch(function () {
+        toast("Couldn't create this tournament online -- it'll stay on this device only.");
+        t.organizerId = null;
+        persistTournaments();
+        renderTournamentView();
+      });
+    }
     renderTournamentView();
   }
 
@@ -3438,14 +3483,98 @@
 
   function backToTournamentList() {
     state.tourneyBuilder.tournamentId = null;
+    tourneyStopLiveSync();
     renderTournamentView();
   }
 
   function deleteTournament(id) {
-    state.tournaments = state.tournaments.filter(function (t) { return t.id !== id; });
+    var t = state.tournaments.filter(function (tt) { return tt.id === id; })[0];
+    state.tournaments = state.tournaments.filter(function (tt) { return tt.id !== id; });
     persistTournaments();
-    if (state.tourneyBuilder.tournamentId === id) state.tourneyBuilder.tournamentId = null;
+    if (t && t.organizerId && tourneyIsOrganizer(t)) JVBackend.deleteTournamentRemote(id).catch(function () {});
+    if (state.tourneyBuilder.tournamentId === id) { state.tourneyBuilder.tournamentId = null; tourneyStopLiveSync(); }
     renderTournamentView();
+  }
+
+  // Joining self-inserts a tournament_participants row (RLS lets anyone
+  // signed in do this for themselves), then pulls the tournament down so
+  // it opens immediately -- the organizer's client merges the new
+  // participant into the roster next time it sees this join (realtime if
+  // its setup screen is open, otherwise the next time it loads).
+  function joinTournamentFlow(rawCode) {
+    var code = (rawCode || "").trim().toUpperCase();
+    if (!code) return;
+    if (!JVBackend.isConfigured() || !JVBackend.currentUserId()) { toast("Sign in to join a tournament."); return; }
+    var myName = (state.social.myProfile && state.social.myProfile.display_name) ||
+      (state.social.session && state.social.session.user && state.social.session.user.email) || "Player";
+    JVBackend.getTournamentRemote(code).then(function (row) {
+      if (!row) { toast("No tournament found with that code."); return null; }
+      return JVBackend.joinTournamentRemote(code, myName).then(function () {
+        applyRemoteTournamentData(code, row.data);
+        state.tourneyBuilder.tournamentId = code;
+        toast("Joined — the organizer will add you to the roster shortly.");
+        renderTournamentView();
+      });
+    }).catch(function () { toast("Couldn't join that tournament."); });
+  }
+
+  // Merges a new player joining into the roster (skips anyone already
+  // merged, so this is safe to call from both the initial fetch and the
+  // realtime callback without creating duplicates).
+  function tourneyMergeParticipantRow(t, row) {
+    var already = t.players.some(function (p) { return p.userId === row.user_id; });
+    if (already) return false;
+    t.players.push({ id: uid("plyr"), name: row.name || "Player", dropped: false, userId: row.user_id });
+    return true;
+  }
+
+  /* ---------------- live sync (organizer's other tabs + every participant) ---------------- */
+
+  var tourneyLiveUnsub = null;
+  var tourneyParticipantsUnsub = null;
+  var tourneyLiveTournamentId = null;
+
+  function tourneyStopLiveSync() {
+    if (tourneyLiveUnsub) { tourneyLiveUnsub(); tourneyLiveUnsub = null; }
+    if (tourneyParticipantsUnsub) { tourneyParticipantsUnsub(); tourneyParticipantsUnsub = null; }
+    tourneyLiveTournamentId = null;
+  }
+
+  function tourneyEnsureLiveSync(t) {
+    if (!JVBackend.isConfigured() || !t || !t.organizerId) { tourneyStopLiveSync(); return; }
+    if (tourneyLiveTournamentId === t.id) return;
+    tourneyStopLiveSync();
+    tourneyLiveTournamentId = t.id;
+    tourneyLiveUnsub = JVBackend.subscribeTournament(t.id, function (payload) {
+      var incoming = payload && payload.new && payload.new.data;
+      if (!incoming) return;
+      applyRemoteTournamentData(t.id, incoming);
+    });
+    if (tourneyIsOrganizer(t)) {
+      tourneyParticipantsUnsub = JVBackend.subscribeTournamentParticipants(t.id, function (payload) {
+        var row = payload && payload.new;
+        var live = currentTournament();
+        if (!row || !live || live.id !== t.id) return;
+        if (tourneyMergeParticipantRow(live, row)) {
+          live.updatedAt = Date.now ? Date.now() : 0;
+          persistCurrentTournament(live);
+          if (state.tourneyBuilder.tournamentId === live.id) renderTournamentView();
+        }
+      });
+    }
+  }
+
+  // Applies a tournament row's data (freshly fetched, or pushed live via
+  // realtime) into local state -- skips a stale echo of a write this same
+  // client just made by comparing the embedded updatedAt timestamp.
+  function applyRemoteTournamentData(id, data) {
+    if (!data) return;
+    var idx = state.tournaments.findIndex(function (t) { return t.id === id; });
+    if (idx !== -1 && data.updatedAt && state.tournaments[idx].updatedAt && data.updatedAt <= state.tournaments[idx].updatedAt) return;
+    var merged = Object.assign({}, data, { id: id });
+    if (idx === -1) state.tournaments.push(merged); else state.tournaments[idx] = merged;
+    saveJSON(KEYS.tournaments, state.tournaments);
+    if (state.tourneyBuilder.tournamentId === id && state.route === "tournament") renderTournamentView();
   }
 
   function tourneyPlayerById(t, id) {
@@ -3590,22 +3719,34 @@
 
   function renderTournamentView() {
     var el = document.getElementById("view-tournament");
+    if (JVBackend.isConfigured() && !state.social.session) {
+      el.innerHTML = socialSignInPromptHtml("Sign in to organize or join a tournament — you'll get a shareable code and everyone's pairings update live from any device.");
+      wireSignInPrompt(el);
+      return;
+    }
     var t = currentTournament();
+    tourneyEnsureLiveSync(t);
     var html = "";
     if (!t) {
       html += '<div class="view-head"><div><h1>Tournaments</h1><p>Run a 3-round Swiss event — enter participants, report each round\'s match scores, and the standings sort out who plays who next.</p></div>' +
         '<button class="btn primary" data-action="new-tourney">+ New Tournament</button></div>';
+      if (JVBackend.isConfigured()) {
+        html += '<div class="field" style="max-width:320px;margin-bottom:16px;display:flex;gap:8px;align-items:flex-end;">' +
+          '<div style="flex:1;"><label>Join a tournament</label><input type="text" id="tourney-join-code" placeholder="Enter code…" style="text-transform:uppercase;"></div>' +
+          '<button class="btn" data-action="join-tourney">Join</button></div>';
+      }
       html += '<div class="deck-row-list">';
       if (!state.tournaments.length) {
         html += '<div class="empty-state"><h3>No tournaments yet</h3><p>Start one to track a Swiss event — players, pairings, scores and standings.</p></div>';
       } else {
         state.tournaments.slice().sort(function (a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); }).forEach(function (tt) {
           var roundLabel = tt.status === "complete" ? "Complete" : tt.status === "setup" ? "Not started" : "Round " + tt.rounds.length + " / " + TOURNEY_ROUNDS;
+          var role = tt.organizerId ? (tourneyIsOrganizer(tt) ? " · organizer" : " · participant") : "";
           html += '<div class="deck-row" data-open="' + tt.id + '">' +
             '<div class="drn">' + escapeHtml(tt.name) + "</div>" +
             '<div class="drspacer"></div>' +
-            '<div class="drmeta">' + tt.players.length + " players · " + roundLabel + "</div>" +
-            '<button class="btn small danger" data-del="' + tt.id + '">Delete</button>' +
+            '<div class="drmeta">' + tt.players.length + " players · " + roundLabel + role + "</div>" +
+            (tourneyIsOrganizer(tt) ? '<button class="btn small danger" data-del="' + tt.id + '">Delete</button>' : "") +
             "</div>";
         });
       }
@@ -3618,6 +3759,10 @@
     el.innerHTML = html;
     if (!t) {
       el.querySelector('[data-action="new-tourney"]').addEventListener("click", startNewTournamentFlow);
+      var joinBtn = el.querySelector('[data-action="join-tourney"]');
+      if (joinBtn) joinBtn.addEventListener("click", function () {
+        joinTournamentFlow(el.querySelector("#tourney-join-code").value);
+      });
       el.querySelectorAll("[data-open]").forEach(function (r) { r.addEventListener("click", function () { openTournament(r.getAttribute("data-open")); }); });
       el.querySelectorAll("[data-del]").forEach(function (r) {
         r.addEventListener("click", function (e) {
@@ -3632,63 +3777,104 @@
     }
   }
 
-  function tourneyFormatBtnHtml(t, key, label) {
-    return '<button type="button" class="btn small' + (t.format === key ? " primary" : "") + '" data-format="' + key + '">' + escapeHtml(label) + "</button>";
+  function tourneyFormatBtnHtml(t, key, label, disabled) {
+    return '<button type="button" class="btn small' + (t.format === key ? " primary" : "") + '" data-format="' + key + '"' + (disabled ? " disabled" : "") + '>' + escapeHtml(label) + "</button>";
   }
 
   function tournamentSetupHtml(t) {
-    var count = t.setupCount || t.players.length || 8;
+    var isOrganizer = tourneyIsOrganizer(t);
     var html = '<div><h3 style="margin-bottom:10px;">Set up players</h3>';
-    html += '<div class="field" style="max-width:220px;margin-bottom:10px;"><label>Number of participants</label>' +
-      '<input type="number" min="2" max="64" id="tourney-count" value="' + count + '"></div>';
+
+    if (t.organizerId) {
+      html += '<div class="callout" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+        '<span>' + (isOrganizer ? "Share this code so players can join:" : "Joined as a participant. Tournament code:") + "</span>" +
+        '<span style="font-family:\'IBM Plex Mono\',monospace;font-weight:700;font-size:16px;letter-spacing:0.08em;">' + escapeHtml(t.id) + "</span>" +
+        (isOrganizer ? '<button type="button" class="btn small" data-action="copy-code">Copy</button>' : "") +
+        "</div>";
+    }
+
+    if (!isOrganizer) {
+      var myId = JVBackend.currentUserId();
+      var joined = t.players.some(function (p) { return p.userId === myId; });
+      html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' +
+        (joined ? "You're on the roster. Waiting for the organizer to start the tournament…" : "You've joined — waiting for the organizer to add you to the roster.") +
+        "</p>";
+      html += '<div class="field" style="margin-bottom:10px;"><label>Match format</label><div style="display:flex;gap:8px;">' +
+        tourneyFormatBtnHtml(t, "bo1", "Best of 1", true) + tourneyFormatBtnHtml(t, "bo3", "Best of 3", true) +
+        "</div></div>";
+      html += '<div class="tourney-name-grid">' + t.players.map(function (p) {
+        return '<div class="field"><label>&nbsp;</label><input type="text" value="' + escapeHtml(p.name) + '" disabled></div>';
+      }).join("") + "</div>";
+      html += "</div>";
+      return html;
+    }
+
     html += '<div class="field" style="margin-bottom:10px;"><label>Match format</label><div style="display:flex;gap:8px;">' +
       tourneyFormatBtnHtml(t, "bo1", "Best of 1") + tourneyFormatBtnHtml(t, "bo3", "Best of 3") +
       "</div></div>";
     html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">3 rounds of Swiss. An odd number of players means someone sits out with a bye each round it happens.</p>';
-    html += '<div class="tourney-name-grid">' + rangeArray(count).map(function (i) {
-      var name = (t.players[i] && t.players[i].name) || "";
-      return '<div class="field"><label>Player ' + (i + 1) + '</label><input type="text" data-player-idx="' + i + '" value="' + escapeHtml(name) + '" placeholder="Name…"></div>';
+    html += '<div class="tourney-name-grid">' + t.players.map(function (p) {
+      return '<div class="field"><label>Player' + (p.userId ? " (joined)" : "") + '</label><div style="display:flex;gap:6px;">' +
+        '<input type="text" data-player-id="' + p.id + '" value="' + escapeHtml(p.name) + '" placeholder="Name…">' +
+        '<button type="button" class="btn ghost small" data-remove-player="' + p.id + '" title="Remove">✕</button>' +
+        "</div></div>";
     }).join("") + "</div>";
-    html += '<button class="btn primary" style="margin-top:18px;" data-action="start-tourney">Start Tournament</button>';
+    html += '<button type="button" class="btn small ghost" style="margin-top:10px;" data-action="add-player">+ Add player</button>';
+    html += '<div><button class="btn primary" style="margin-top:18px;" data-action="start-tourney">Start Tournament</button></div>';
     html += "</div>";
     return html;
   }
 
   function wireTournamentSetup(el, t) {
-    var countInput = el.querySelector("#tourney-count");
-    if (countInput) countInput.addEventListener("change", function () {
-      t.setupCount = clamp(parseInt(countInput.value, 10) || 2, 2, 64);
-      persistTournaments();
-      renderTournamentView();
-    });
+    if (!tourneyIsOrganizer(t)) return;
+
+    var copyBtn = el.querySelector('[data-action="copy-code"]');
+    if (copyBtn) copyBtn.addEventListener("click", function () { copyToClipboard(t.id); toast("Code copied."); });
+
     el.querySelectorAll("[data-format]").forEach(function (b) {
       b.addEventListener("click", function () {
         t.format = b.getAttribute("data-format");
-        persistTournaments();
+        t.updatedAt = Date.now ? Date.now() : 0;
+        persistCurrentTournament(t);
         renderTournamentView();
       });
     });
-    el.querySelectorAll("[data-player-idx]").forEach(function (inp) {
+    el.querySelectorAll("[data-player-id]").forEach(function (inp) {
       inp.addEventListener("change", function () {
-        var idx = parseInt(inp.getAttribute("data-player-idx"), 10);
-        if (!t.players[idx]) t.players[idx] = { id: uid("plyr"), name: "", dropped: false };
-        t.players[idx].name = inp.value;
-        persistTournaments();
+        var id = inp.getAttribute("data-player-id");
+        var p = t.players.filter(function (pp) { return pp.id === id; })[0];
+        if (!p) return;
+        p.name = inp.value;
+        t.updatedAt = Date.now ? Date.now() : 0;
+        persistCurrentTournament(t);
       });
+    });
+    el.querySelectorAll("[data-remove-player]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-remove-player");
+        t.players = t.players.filter(function (pp) { return pp.id !== id; });
+        t.updatedAt = Date.now ? Date.now() : 0;
+        persistCurrentTournament(t);
+        renderTournamentView();
+      });
+    });
+    var addBtn = el.querySelector('[data-action="add-player"]');
+    if (addBtn) addBtn.addEventListener("click", function () {
+      t.players.push({ id: uid("plyr"), name: "", dropped: false, userId: null });
+      t.updatedAt = Date.now ? Date.now() : 0;
+      persistCurrentTournament(t);
+      renderTournamentView();
     });
     var startBtn = el.querySelector('[data-action="start-tourney"]');
     if (startBtn) startBtn.addEventListener("click", function () {
-      var count = t.setupCount || t.players.length || 8;
-      for (var i = 0; i < count; i++) {
-        if (!t.players[i]) t.players[i] = { id: uid("plyr"), name: "", dropped: false };
-        if (!t.players[i].name || !t.players[i].name.trim()) t.players[i].name = "Player " + (i + 1);
-      }
-      t.players = t.players.slice(0, count);
+      t.players.forEach(function (p, i) {
+        if (!p.name || !p.name.trim()) p.name = "Player " + (i + 1);
+      });
       if (t.players.length < 2) { toast("Need at least 2 participants."); return; }
       t.status = "active";
       generateNextRound(t);
       t.updatedAt = Date.now ? Date.now() : 0;
-      persistTournaments();
+      persistCurrentTournament(t);
       renderTournamentView();
     });
   }
@@ -3707,13 +3893,22 @@
     return '<div class="tourney-table-label">Table ' + tableNum + "</div>";
   }
 
+  // Table numbers run 1..N over a round's non-bye matches, in pairing
+  // order -- shared between the pairing list (per-row labels) and the
+  // "your match" callout so both always agree on the same number.
+  function tourneyTableNumbers(round) {
+    var map = {}, n = 0;
+    round.matches.forEach(function (m) { if (m.p2Id !== null) map[m.id] = ++n; });
+    return map;
+  }
+
   function tourneyMatchRowHtml(t, m, tableNum) {
     var p1 = tourneyPlayerById(t, m.p1Id);
     if (m.p2Id === null) {
       return '<div class="tourney-match-row"><span class="tm-name">' + escapeHtml(p1.name) + '</span><span class="tm-vs">BYE</span><span class="tm-name right"></span></div>';
     }
     var p2 = tourneyPlayerById(t, m.p2Id);
-    var locked = t.status === "complete";
+    var locked = t.status === "complete" || !tourneyIsOrganizer(t);
 
     if (t.format !== "bo3") {
       return '<div class="tourney-match-row" data-match="' + m.id + '">' +
@@ -3781,9 +3976,12 @@
   function tournamentRoundsHtml(t) {
     var round = t.rounds[t.rounds.length - 1];
     var standings = tourneyStandings(t);
+    var isOrganizer = tourneyIsOrganizer(t);
     var html = "<div>";
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
-      '<input type="text" id="tourney-name-input" value="' + escapeHtml(t.name) + '" title="Click to rename" style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;border:none;border-bottom:2px dashed var(--accent);background:var(--surface-raised);border-radius:6px 6px 0 0;padding:4px 10px;max-width:340px;color:inherit;">' +
+      (isOrganizer
+        ? '<input type="text" id="tourney-name-input" value="' + escapeHtml(t.name) + '" title="Click to rename" style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;border:none;border-bottom:2px dashed var(--accent);background:var(--surface-raised);border-radius:6px 6px 0 0;padding:4px 10px;max-width:340px;color:inherit;">'
+        : '<h2 style="font-family:\'Fraunces\',serif;font-weight:680;font-size:19px;">' + escapeHtml(t.name) + "</h2>") +
       '<span style="display:flex;gap:8px;align-items:center;">' +
       '<span class="pill neutral">' + (t.format === "bo1" ? "Best of 1" : "Best of 3") + "</span>" +
       '<span class="pill ' + (t.status === "complete" ? "good" : "neutral") + '">' + (t.status === "complete" ? "Complete" : "Round " + round.number + " / " + TOURNEY_ROUNDS) + "</span>" +
@@ -3794,17 +3992,34 @@
     if (t.status === "complete") {
       html += '<div class="callout" style="margin-bottom:16px;font-size:15px;">🏆 <b>' + escapeHtml(standings[0].player.name) + "</b> wins the tournament!</div>";
     }
+
+    if (!isOrganizer) {
+      var myId = JVBackend.currentUserId();
+      var mePlayer = myId ? t.players.filter(function (p) { return p.userId === myId; })[0] : null;
+      if (mePlayer && t.status === "active") {
+        var myMatch = round.matches.filter(function (m) { return m.p1Id === mePlayer.id || m.p2Id === mePlayer.id; })[0];
+        if (myMatch && myMatch.p2Id === null) {
+          html += '<div class="callout" style="margin-bottom:16px;">You have a <b>bye</b> this round.</div>';
+        } else if (myMatch) {
+          var oppId = myMatch.p1Id === mePlayer.id ? myMatch.p2Id : myMatch.p1Id;
+          var opp = tourneyPlayerById(t, oppId);
+          var myTable = tourneyTableNumbers(round)[myMatch.id];
+          html += '<div class="callout" style="margin-bottom:16px;">You\'re at <b>Table ' + myTable + "</b> vs <b>" + escapeHtml(opp.name) + "</b></div>";
+        }
+      }
+    }
+
     html += '<h3 style="margin-bottom:4px;">Round ' + round.number + " pairings</h3>";
     if (t.status === "active") {
       html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">' +
-        (t.format === "bo3" ? "Click the winner of each game as you play it." : "Click the winner’s name to report a match (or Draw).") +
+        (!isOrganizer ? "Live view — updates as the organizer reports scores." : t.format === "bo3" ? "Click the winner of each game as you play it." : "Click the winner’s name to report a match (or Draw).") +
         "</p>";
     }
-    var tableNum = 0;
+    var tableNums = tourneyTableNumbers(round);
     html += '<div class="tourney-match-list">' + round.matches.map(function (m) {
-      return tourneyMatchRowHtml(t, m, m.p2Id === null ? null : ++tableNum);
+      return tourneyMatchRowHtml(t, m, tableNums[m.id]);
     }).join("") + "</div>";
-    if (t.status === "active") {
+    if (t.status === "active" && isOrganizer) {
       var allReported = round.matches.every(function (m) { return m.p2Id === null || !!m.result; });
       html += '<button class="btn primary" style="margin-top:16px;" data-action="advance-round"' + (allReported ? "" : " disabled") + ">" +
         (round.number < TOURNEY_ROUNDS ? "Report results & pair Round " + (round.number + 1) : "Report results & finish tournament") + "</button>";
@@ -3816,11 +4031,16 @@
   }
 
   function wireTournamentRounds(el, t) {
+    // Participants get a read-only render (no rename input, no pick
+    // buttons, no advance button), so there's nothing here for them to
+    // wire up -- they just watch it update live via realtime.
+    if (!tourneyIsOrganizer(t)) return;
+
     var nameInput = el.querySelector("#tourney-name-input");
     if (nameInput) nameInput.addEventListener("change", function () {
       t.name = nameInput.value || "New Tournament";
       t.updatedAt = Date.now ? Date.now() : 0;
-      persistTournaments();
+      persistCurrentTournament(t);
       renderTournamentView();
     });
 
@@ -3843,7 +4063,7 @@
             match.result = btn.getAttribute("data-pick");
           }
           t.updatedAt = Date.now ? Date.now() : 0;
-          persistTournaments();
+          persistCurrentTournament(t);
           renderTournamentView();
         });
       });
@@ -3855,7 +4075,7 @@
       if (round.number >= TOURNEY_ROUNDS) { t.status = "complete"; toast("Tournament complete!"); }
       else { generateNextRound(t); toast("Round " + (round.number + 1) + " pairings are up."); }
       t.updatedAt = Date.now ? Date.now() : 0;
-      persistTournaments();
+      persistCurrentTournament(t);
       renderTournamentView();
     });
   }

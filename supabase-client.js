@@ -428,6 +428,93 @@
       .then(function (r) { return r.data || []; });
   }
 
+  /* ---------------- tournaments (organizer/participant sync) ---------------- */
+
+  // id is the short join code the organizer's client generated locally --
+  // data is the entire tournament object (players/rounds/matches) as
+  // app.js already keeps it in localStorage, stored as-is in jsonb so no
+  // reshaping is needed on either side of the wire.
+  function createTournamentRemote(id, data) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return c.from("tournaments").insert({
+      id: id, organizer_id: uid, data: data, updated_at: new Date().toISOString()
+    }).select().single().then(function (r) {
+      if (r.error) throw r.error;
+      return r.data;
+    });
+  }
+
+  // Called by the organizer's own client after every local change
+  // (a pairing generated, a score entered) to push the new state up.
+  // RLS restricts this to rows the caller organizes.
+  function updateTournamentRemote(id, data) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return Promise.resolve(c.from("tournaments").update({
+      data: data, updated_at: new Date().toISOString()
+    }).eq("id", id));
+  }
+
+  function getTournamentRemote(id) {
+    var c = client_();
+    if (!c) return Promise.resolve(null);
+    return c.from("tournaments").select("*").eq("id", id).maybeSingle()
+      .then(function (r) { return r.data || null; });
+  }
+
+  function deleteTournamentRemote(id) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return Promise.resolve(c.from("tournaments").delete().eq("id", id));
+  }
+
+  // A participant joining self-inserts their own row (RLS: with check
+  // auth.uid() = user_id) -- the organizer's client picks these up via
+  // subscribeTournamentParticipants and merges them into the roster.
+  function joinTournamentRemote(id, name) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return c.from("tournament_participants").upsert(
+      { tournament_id: id, user_id: uid, name: name || "Player" },
+      { onConflict: "tournament_id,user_id" }
+    ).select().single().then(function (r) {
+      if (r.error) throw r.error;
+      return r.data;
+    });
+  }
+
+  function listTournamentParticipants(id) {
+    var c = client_();
+    if (!c) return Promise.resolve([]);
+    return c.from("tournament_participants").select("*").eq("tournament_id", id)
+      .order("joined_at", { ascending: true })
+      .then(function (r) { return r.data || []; });
+  }
+
+  // Fires on every UPDATE to this one tournament row -- both the
+  // organizer's other tabs/devices and every participant's read-only
+  // view use this same subscription to stay live.
+  function subscribeTournament(id, cb) {
+    var c = client_();
+    if (!c) return function () {};
+    var channel = c.channel("tournament:" + id)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tournaments", filter: "id=eq." + id }, cb)
+      .subscribe();
+    return function unsubscribe() { c.removeChannel(channel); };
+  }
+
+  // Fires whenever someone joins this tournament -- the organizer's setup
+  // screen uses this to merge new participants into the roster live.
+  function subscribeTournamentParticipants(id, cb) {
+    var c = client_();
+    if (!c) return function () {};
+    var channel = c.channel("tournament-participants:" + id)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "tournament_participants", filter: "tournament_id=eq." + id }, cb)
+      .subscribe();
+    return function unsubscribe() { c.removeChannel(channel); };
+  }
+
   /* ---------------- realtime ---------------- */
 
   // Calls cb() whenever a new post lands, so the feed can show a
@@ -538,6 +625,14 @@
     toggleFollow: toggleFollow,
     getTopCards: getTopCards,
     subscribeFeed: subscribeFeed,
+    createTournamentRemote: createTournamentRemote,
+    updateTournamentRemote: updateTournamentRemote,
+    getTournamentRemote: getTournamentRemote,
+    deleteTournamentRemote: deleteTournamentRemote,
+    joinTournamentRemote: joinTournamentRemote,
+    listTournamentParticipants: listTournamentParticipants,
+    subscribeTournament: subscribeTournament,
+    subscribeTournamentParticipants: subscribeTournamentParticipants,
     pushSupported: pushSupported,
     enablePush: enablePush,
     disablePush: disablePush,

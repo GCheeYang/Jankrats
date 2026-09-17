@@ -346,6 +346,82 @@ group by card_id
 order by post_count desc;
 
 -- ---------------------------------------------------------------------------
+-- tournaments: a Swiss event, organizer-owned. id is the short join code
+-- participants use to find and join it. The entire player/round/match
+-- state (the same shape app.js already keeps in localStorage) lives in
+-- `data`, written only by the organizer's client -- participants only
+-- ever read it and self-join via tournament_participants below, never
+-- write to this table directly, so they can't tamper with pairings or
+-- scores.
+-- ---------------------------------------------------------------------------
+create table if not exists public.tournaments (
+  id text primary key,
+  organizer_id uuid not null references public.profiles(id) on delete cascade,
+  data jsonb not null default '{}',
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists tournaments_organizer_idx on public.tournaments (organizer_id);
+
+alter table public.tournaments enable row level security;
+
+-- Anyone signed in can read a tournament row *if they already know its
+-- id* (the join code is the access control here, same trust model as a
+-- link/invite code -- there's no way to browse the list of every
+-- tournament through the app itself).
+drop policy if exists "tournaments are readable by signed-in users" on public.tournaments;
+create policy "tournaments are readable by signed-in users"
+  on public.tournaments for select
+  to authenticated
+  using (true);
+
+drop policy if exists "organizers manage their own tournaments" on public.tournaments;
+create policy "organizers manage their own tournaments"
+  on public.tournaments for all
+  to authenticated
+  using (auth.uid() = organizer_id)
+  with check (auth.uid() = organizer_id);
+
+-- ---------------------------------------------------------------------------
+-- tournament_participants: self-service join requests. A participant signs
+-- in and inserts their own row against a tournament's join code + their
+-- display name; the organizer's client picks these up via realtime and
+-- merges them into tournaments.data.players before starting the event.
+-- ---------------------------------------------------------------------------
+create table if not exists public.tournament_participants (
+  tournament_id text not null references public.tournaments(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  name text not null default 'Player',
+  joined_at timestamptz not null default now(),
+  primary key (tournament_id, user_id)
+);
+
+create index if not exists tournament_participants_tournament_idx on public.tournament_participants (tournament_id);
+
+alter table public.tournament_participants enable row level security;
+
+drop policy if exists "tournament participants are readable by signed-in users" on public.tournament_participants;
+create policy "tournament participants are readable by signed-in users"
+  on public.tournament_participants for select
+  to authenticated
+  using (true);
+
+drop policy if exists "users can join a tournament as themselves" on public.tournament_participants;
+create policy "users can join a tournament as themselves"
+  on public.tournament_participants for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "users can leave, organizers can remove participants" on public.tournament_participants;
+create policy "users can leave, organizers can remove participants"
+  on public.tournament_participants for delete
+  to authenticated
+  using (
+    auth.uid() = user_id
+    or auth.uid() = (select organizer_id from public.tournaments where id = tournament_id)
+  );
+
+-- ---------------------------------------------------------------------------
 -- storage: a public-read "media" bucket for pull-post photos/videos.
 -- Each object is stored under "<user_id>/<uuid>.<ext>" so ownership is checkable by path.
 -- ---------------------------------------------------------------------------
