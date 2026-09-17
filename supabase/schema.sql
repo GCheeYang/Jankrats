@@ -346,6 +346,164 @@ group by card_id
 order by post_count desc;
 
 -- ---------------------------------------------------------------------------
+-- tournaments: a Swiss event, organizer-owned. id is the short join code
+-- participants use to find and join it. The entire player/round/match
+-- state (the same shape app.js already keeps in localStorage) lives in
+-- `data`, written only by the organizer's client -- participants only
+-- ever read it and self-join via tournament_participants below, never
+-- write to this table directly, so they can't tamper with pairings or
+-- scores.
+-- ---------------------------------------------------------------------------
+create table if not exists public.tournaments (
+  id text primary key,
+  organizer_id uuid not null references public.profiles(id) on delete cascade,
+  data jsonb not null default '{}',
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists tournaments_organizer_idx on public.tournaments (organizer_id);
+
+alter table public.tournaments enable row level security;
+
+-- Anyone signed in can read a tournament row *if they already know its
+-- id* (the join code is the access control here, same trust model as a
+-- link/invite code -- there's no way to browse the list of every
+-- tournament through the app itself).
+drop policy if exists "tournaments are readable by signed-in users" on public.tournaments;
+create policy "tournaments are readable by signed-in users"
+  on public.tournaments for select
+  to authenticated
+  using (true);
+
+drop policy if exists "organizers manage their own tournaments" on public.tournaments;
+create policy "organizers manage their own tournaments"
+  on public.tournaments for all
+  to authenticated
+  using (auth.uid() = organizer_id)
+  with check (auth.uid() = organizer_id);
+
+-- ---------------------------------------------------------------------------
+-- tournament_participants: self-service join requests. A participant signs
+-- in and inserts their own row against a tournament's join code + their
+-- display name; the tourney_sync_participant trigger below immediately
+-- merges that into tournaments.data.players server-side, so registration
+-- doesn't depend on the organizer's browser being open to catch it.
+-- ---------------------------------------------------------------------------
+create table if not exists public.tournament_participants (
+  tournament_id text not null references public.tournaments(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  name text not null default 'Player',
+  joined_at timestamptz not null default now(),
+  primary key (tournament_id, user_id)
+);
+
+create index if not exists tournament_participants_tournament_idx on public.tournament_participants (tournament_id);
+
+alter table public.tournament_participants enable row level security;
+
+drop policy if exists "tournament participants are readable by signed-in users" on public.tournament_participants;
+create policy "tournament participants are readable by signed-in users"
+  on public.tournament_participants for select
+  to authenticated
+  using (true);
+
+drop policy if exists "users can join a tournament as themselves" on public.tournament_participants;
+create policy "users can join a tournament as themselves"
+  on public.tournament_participants for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "users can leave, organizers can remove participants" on public.tournament_participants;
+create policy "users can leave, organizers can remove participants"
+  on public.tournament_participants for delete
+  to authenticated
+  using (
+    auth.uid() = user_id
+    or auth.uid() = (select organizer_id from public.tournaments where id = tournament_id)
+  );
+
+-- A joiner can only insert their own tournament_participants row (RLS
+-- above), never write to tournaments.data directly (that table's RLS
+-- restricts writes to the organizer). This trigger is what actually
+-- grants them a seat: it runs as the function owner (bypassing that
+-- organizer-only restriction the same way the owner of any table does),
+-- so the join registers immediately and reliably no matter whose
+-- browser is or isn't open at the time.
+-- Fills the first unclaimed blank slot (a player with no name and no
+-- userId -- one of the placeholder rows the "New Tournament" modal
+-- pre-seeds from the requested participant count) rather than always
+-- appending a new row, so a join lands the player in the roster the
+-- organizer already set up instead of tacking on an extra seat. Once
+-- Start Tournament is clicked every blank slot gets a "Player N"
+-- placeholder name (see app.js), so this only matches during setup --
+-- a join with no blank slot left (none pre-seeded, or the tournament
+-- already started) falls back to appending a new row so nobody who
+-- joins is ever silently dropped.
+create or replace function public.tourney_sync_participant()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cur_data jsonb;
+  players jsonb;
+  n int;
+  i int;
+  slot jsonb;
+  filled boolean := false;
+  new_players jsonb := '[]'::jsonb;
+begin
+  select data into cur_data from public.tournaments where id = new.tournament_id for update;
+  if cur_data is null then
+    return new;
+  end if;
+
+  players := coalesce(cur_data->'players', '[]'::jsonb);
+  n := jsonb_array_length(players);
+
+  -- Already on the roster (e.g. a duplicate insert slipping past the
+  -- upsert's own conflict handling) -- nothing to do.
+  for i in 0..n - 1 loop
+    if (players->i)->>'userId' = new.user_id::text then
+      return new;
+    end if;
+  end loop;
+
+  for i in 0..n - 1 loop
+    slot := players->i;
+    if not filled and (slot->>'userId') is null and coalesce(btrim(slot->>'name'), '') = '' then
+      slot := slot || jsonb_build_object('name', coalesce(new.name, 'Player'), 'userId', new.user_id::text);
+      filled := true;
+    end if;
+    new_players := new_players || jsonb_build_array(slot);
+  end loop;
+
+  if not filled then
+    new_players := players || jsonb_build_array(jsonb_build_object(
+      'id', 'plyr_' || replace(new.user_id::text, '-', ''),
+      'name', coalesce(new.name, 'Player'),
+      'dropped', false,
+      'userId', new.user_id::text
+    ));
+  end if;
+
+  update public.tournaments
+  set data = (cur_data || jsonb_build_object('players', new_players))
+             || jsonb_build_object('updatedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint),
+      updated_at = now()
+  where id = new.tournament_id;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists tournament_participants_sync on public.tournament_participants;
+create trigger tournament_participants_sync
+  after insert on public.tournament_participants
+  for each row execute function public.tourney_sync_participant();
+
+-- ---------------------------------------------------------------------------
 -- storage: a public-read "media" bucket for pull-post photos/videos.
 -- Each object is stored under "<user_id>/<uuid>.<ext>" so ownership is checkable by path.
 -- ---------------------------------------------------------------------------

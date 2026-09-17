@@ -1,0 +1,10 @@
+{
+  "name": "apply-schema",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Applies supabase/schema.sql directly to the project's Postgres database.",
+  "main": "apply-schema.js",
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
+}

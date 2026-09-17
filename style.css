@@ -639,6 +639,25 @@ textarea { resize: vertical; min-height: 90px; }
 .coll-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13.5px; vertical-align: middle; }
 .coll-table tr:hover td { background: var(--surface); }
 
+/* Tournament standings: narrower and denser than a normal .coll-table
+   (it lives in a fixed-width sidebar), with every cell kept to one line
+   -- a wrapped "W-L-D" or "2-0-0" reads as broken, not compact. */
+.tourney-standings-table { table-layout: fixed; font-size: 12px; }
+.tourney-standings-table th, .tourney-standings-table td {
+  padding: 7px 5px; white-space: nowrap;
+}
+.tourney-standings-table th:first-child, .tourney-standings-table td:first-child { width: 20px; padding-left: 2px; }
+.tourney-standings-table th:nth-child(2), .tourney-standings-table td:nth-child(2) {
+  width: 30%; overflow: hidden; text-overflow: ellipsis;
+}
+.tourney-standings-table th:nth-child(3), .tourney-standings-table td:nth-child(3) { width: 13%; }
+.tourney-standings-table th:nth-child(4), .tourney-standings-table td:nth-child(4) { width: 24%; }
+.tourney-standings-table th:nth-child(5), .tourney-standings-table td:nth-child(5),
+.tourney-standings-table th:nth-child(6), .tourney-standings-table td:nth-child(6) { width: 16%; }
+.tourney-standings-table td:nth-child(3) { font-weight: 700; color: var(--accent-strong); }
+.tourney-standings-table .ts-bye { color: var(--ink-faint); font-size: 10.5px; }
+.tourney-standings-table tbody tr:first-child td { background: var(--warn-soft); }
+
 .stepper { display: inline-flex; align-items: center; gap: 6px; }
 .stepper button {
   width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--line-strong);
@@ -849,6 +868,78 @@ textarea { resize: vertical; min-height: 90px; }
   min-width: 0; box-sizing: border-box;
 }
 .deck-panel h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); margin-bottom: 8px; }
+
+/* ---- Tournament: player roster list + round pairing rows ---- */
+.tourney-roster-list { display: flex; flex-direction: column; gap: 10px; }
+.tourney-roster-row {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--surface-raised); border: 1px solid var(--line);
+  border-radius: 14px; padding: 2px 6px 2px 16px;
+}
+.tourney-roster-row input {
+  flex: 1; min-width: 0; background: none; border: none; outline: none;
+  font-weight: 700; font-size: 14.5px; color: inherit; padding: 12px 0;
+}
+.tourney-roster-row input::placeholder { color: var(--ink-faint); font-weight: 500; }
+.tourney-roster-row input:disabled { color: inherit; opacity: 0.85; }
+.tourney-roster-row .tr-joined-tag {
+  flex: none; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--accent-strong); background: var(--warn-soft); border-radius: 999px; padding: 3px 8px;
+}
+.tourney-roster-row .tr-remove {
+  flex: none; background: none; border: none; color: var(--ink-faint);
+  font-size: 15px; line-height: 1; cursor: pointer; padding: 10px; border-radius: 8px;
+}
+.tourney-roster-row .tr-remove:hover { background: var(--surface); color: var(--bad); }
+.tourney-match-list { display: flex; flex-direction: column; gap: 8px; }
+.tourney-match-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 14px;
+}
+.tourney-match-row .tm-name { flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tourney-match-row .tm-name.right { text-align: right; }
+.tourney-match-row .tm-vs { flex: none; color: var(--ink-faint); font-size: 12px; }
+.tourney-table-label {
+  flex: none;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent-strong);
+  background: var(--warn-soft); border-radius: 999px; padding: 3px 9px;
+}
+.tourney-match-row .tm-pick {
+  flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--surface-raised); border: 1px solid var(--line-strong); border-radius: 6px;
+  padding: 6px 10px; font-weight: 600; font-size: 13.5px; color: inherit; cursor: pointer;
+}
+.tourney-match-row .tm-pick.right { text-align: right; }
+.tourney-match-row .tm-pick.chosen { background: var(--good-soft); border-color: var(--good); color: var(--good); }
+.tourney-match-row .tm-pick:disabled { opacity: 0.6; cursor: not-allowed; }
+.tourney-match-row .tm-draw {
+  flex: none; background: none; border: 1px solid var(--line-strong); border-radius: 6px;
+  padding: 6px 10px; font-size: 11.5px; color: var(--ink-faint); cursor: pointer;
+}
+.tourney-match-row .tm-draw.chosen { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+.tourney-match-row .tm-draw:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Bo3: a header naming both players, then one pick-row per game (game 2/3
+   only appear once they're actually relevant) instead of the single-row
+   Bo1 layout above. */
+.tourney-match-row.bo3 { flex-direction: column; align-items: stretch; gap: 8px; }
+.tourney-match-row.bo3 .tourney-table-label { align-self: flex-start; }
+.tourney-match-header {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-weight: 600; font-size: 13.5px; color: var(--ink-soft);
+}
+.tourney-game-row { display: flex; align-items: center; gap: 8px; }
+.tourney-game-row .tg-label { flex: none; width: 52px; font-size: 11px; color: var(--ink-faint); }
+.tourney-match-row .tm-pick.small { padding: 4px 8px; font-size: 12.5px; }
+.tourney-match-result { font-size: 12.5px; color: var(--good); font-weight: 600; margin: 2px 0 0; }
+.tm-intentional-draw {
+  align-self: flex-start; background: none; border: none; color: var(--ink-faint);
+  font-size: 11px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; padding: 2px 0;
+}
+.tm-intentional-draw.chosen { color: var(--warn); }
+.tm-intentional-draw:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* Two columns instead of one long vertical list -- with a card image on
    every row now, a 40-card main deck was scrolling forever. */
