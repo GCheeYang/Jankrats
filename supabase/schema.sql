@@ -385,8 +385,9 @@ create policy "organizers manage their own tournaments"
 -- ---------------------------------------------------------------------------
 -- tournament_participants: self-service join requests. A participant signs
 -- in and inserts their own row against a tournament's join code + their
--- display name; the organizer's client picks these up via realtime and
--- merges them into tournaments.data.players before starting the event.
+-- display name; the tourney_sync_participant trigger below immediately
+-- merges that into tournaments.data.players server-side, so registration
+-- doesn't depend on the organizer's browser being open to catch it.
 -- ---------------------------------------------------------------------------
 create table if not exists public.tournament_participants (
   tournament_id text not null references public.tournaments(id) on delete cascade,
@@ -420,6 +421,55 @@ create policy "users can leave, organizers can remove participants"
     auth.uid() = user_id
     or auth.uid() = (select organizer_id from public.tournaments where id = tournament_id)
   );
+
+-- A joiner can only insert their own tournament_participants row (RLS
+-- above), never write to tournaments.data directly (that table's RLS
+-- restricts writes to the organizer). This trigger is what actually
+-- grants them a seat: it runs as the function owner (bypassing that
+-- organizer-only restriction the same way the owner of any table does),
+-- so the join registers immediately and reliably no matter whose
+-- browser is or isn't open at the time.
+create or replace function public.tourney_sync_participant()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cur_data jsonb;
+  new_player jsonb;
+  kept_players jsonb;
+begin
+  select data into cur_data from public.tournaments where id = new.tournament_id for update;
+  if cur_data is null then
+    return new;
+  end if;
+
+  new_player := jsonb_build_object(
+    'id', 'plyr_' || replace(new.user_id::text, '-', ''),
+    'name', coalesce(new.name, 'Player'),
+    'dropped', false,
+    'userId', new.user_id::text
+  );
+
+  select coalesce(jsonb_agg(p), '[]'::jsonb) into kept_players
+  from jsonb_array_elements(coalesce(cur_data->'players', '[]'::jsonb)) p
+  where p->>'userId' is distinct from new.user_id::text;
+
+  update public.tournaments
+  set data = (cur_data || jsonb_build_object('players', kept_players || jsonb_build_array(new_player)))
+             || jsonb_build_object('updatedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint),
+      updated_at = now()
+  where id = new.tournament_id;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists tournament_participants_sync on public.tournament_participants;
+create trigger tournament_participants_sync
+  after insert on public.tournament_participants
+  for each row execute function public.tourney_sync_participant();
 
 -- ---------------------------------------------------------------------------
 -- storage: a public-read "media" bucket for pull-post photos/videos.

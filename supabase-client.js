@@ -484,14 +484,6 @@
     });
   }
 
-  function listTournamentParticipants(id) {
-    var c = client_();
-    if (!c) return Promise.resolve([]);
-    return c.from("tournament_participants").select("*").eq("tournament_id", id)
-      .order("joined_at", { ascending: true })
-      .then(function (r) { return r.data || []; });
-  }
-
   // Fires on every UPDATE to this one tournament row -- both the
   // organizer's other tabs/devices and every participant's read-only
   // view use this same subscription to stay live.
@@ -500,17 +492,6 @@
     if (!c) return function () {};
     var channel = c.channel("tournament:" + id)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tournaments", filter: "id=eq." + id }, cb)
-      .subscribe();
-    return function unsubscribe() { c.removeChannel(channel); };
-  }
-
-  // Fires whenever someone joins this tournament -- the organizer's setup
-  // screen uses this to merge new participants into the roster live.
-  function subscribeTournamentParticipants(id, cb) {
-    var c = client_();
-    if (!c) return function () {};
-    var channel = c.channel("tournament-participants:" + id)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "tournament_participants", filter: "tournament_id=eq." + id }, cb)
       .subscribe();
     return function unsubscribe() { c.removeChannel(channel); };
   }
@@ -630,9 +611,7 @@
     getTournamentRemote: getTournamentRemote,
     deleteTournamentRemote: deleteTournamentRemote,
     joinTournamentRemote: joinTournamentRemote,
-    listTournamentParticipants: listTournamentParticipants,
     subscribeTournament: subscribeTournament,
-    subscribeTournamentParticipants: subscribeTournamentParticipants,
     pushSupported: pushSupported,
     enablePush: enablePush,
     disablePush: disablePush,

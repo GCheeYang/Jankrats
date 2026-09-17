@@ -3479,6 +3479,15 @@
   function openTournament(id) {
     state.tourneyBuilder.tournamentId = id;
     renderTournamentView();
+    // The local copy is only as fresh as the last time this device had it
+    // open -- pull the latest (e.g. participants who joined while nobody's
+    // browser was watching) whenever a cloud-synced tournament is opened.
+    var t = currentTournament();
+    if (t && t.organizerId && JVBackend.isConfigured()) {
+      JVBackend.getTournamentRemote(id).then(function (row) {
+        if (row) applyRemoteTournamentData(id, row.data);
+      }).catch(function () {});
+    }
   }
 
   function backToTournamentList() {
@@ -3497,46 +3506,35 @@
   }
 
   // Joining self-inserts a tournament_participants row (RLS lets anyone
-  // signed in do this for themselves), then pulls the tournament down so
-  // it opens immediately -- the organizer's client merges the new
-  // participant into the roster next time it sees this join (realtime if
-  // its setup screen is open, otherwise the next time it loads).
+  // signed in do this for themselves); a database trigger immediately
+  // merges that into the tournament's roster server-side (see
+  // tourney_sync_participant in supabase/schema.sql), so registration
+  // doesn't depend on the organizer's browser being open at the time.
+  // Re-fetching the tournament right after joining picks up that merge.
   function joinTournamentFlow(rawCode) {
     var code = (rawCode || "").trim().toUpperCase();
     if (!code) return;
     if (!JVBackend.isConfigured() || !JVBackend.currentUserId()) { toast("Sign in to join a tournament."); return; }
     var myName = (state.social.myProfile && state.social.myProfile.display_name) ||
       (state.social.session && state.social.session.user && state.social.session.user.email) || "Player";
-    JVBackend.getTournamentRemote(code).then(function (row) {
-      if (!row) { toast("No tournament found with that code."); return null; }
-      return JVBackend.joinTournamentRemote(code, myName).then(function () {
-        applyRemoteTournamentData(code, row.data);
-        state.tourneyBuilder.tournamentId = code;
-        toast("Joined — the organizer will add you to the roster shortly.");
-        renderTournamentView();
-      });
-    }).catch(function () { toast("Couldn't join that tournament."); });
-  }
-
-  // Merges a new player joining into the roster (skips anyone already
-  // merged, so this is safe to call from both the initial fetch and the
-  // realtime callback without creating duplicates).
-  function tourneyMergeParticipantRow(t, row) {
-    var already = t.players.some(function (p) { return p.userId === row.user_id; });
-    if (already) return false;
-    t.players.push({ id: uid("plyr"), name: row.name || "Player", dropped: false, userId: row.user_id });
-    return true;
+    JVBackend.joinTournamentRemote(code, myName).then(function () {
+      return JVBackend.getTournamentRemote(code);
+    }).then(function (row) {
+      if (!row) { toast("No tournament found with that code."); return; }
+      applyRemoteTournamentData(code, row.data);
+      state.tourneyBuilder.tournamentId = code;
+      toast("Joined! You're on the roster.");
+      renderTournamentView();
+    }).catch(function () { toast("Couldn't join that tournament. Check the code and try again."); });
   }
 
   /* ---------------- live sync (organizer's other tabs + every participant) ---------------- */
 
   var tourneyLiveUnsub = null;
-  var tourneyParticipantsUnsub = null;
   var tourneyLiveTournamentId = null;
 
   function tourneyStopLiveSync() {
     if (tourneyLiveUnsub) { tourneyLiveUnsub(); tourneyLiveUnsub = null; }
-    if (tourneyParticipantsUnsub) { tourneyParticipantsUnsub(); tourneyParticipantsUnsub = null; }
     tourneyLiveTournamentId = null;
   }
 
@@ -3550,18 +3548,6 @@
       if (!incoming) return;
       applyRemoteTournamentData(t.id, incoming);
     });
-    if (tourneyIsOrganizer(t)) {
-      tourneyParticipantsUnsub = JVBackend.subscribeTournamentParticipants(t.id, function (payload) {
-        var row = payload && payload.new;
-        var live = currentTournament();
-        if (!row || !live || live.id !== t.id) return;
-        if (tourneyMergeParticipantRow(live, row)) {
-          live.updatedAt = Date.now ? Date.now() : 0;
-          persistCurrentTournament(live);
-          if (state.tourneyBuilder.tournamentId === live.id) renderTournamentView();
-        }
-      });
-    }
   }
 
   // Applies a tournament row's data (freshly fetched, or pushed live via
@@ -3797,7 +3783,7 @@
       var myId = JVBackend.currentUserId();
       var joined = t.players.some(function (p) { return p.userId === myId; });
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' +
-        (joined ? "You're on the roster. Waiting for the organizer to start the tournament…" : "You've joined — waiting for the organizer to add you to the roster.") +
+        (joined ? "You're on the roster. Waiting for the organizer to start the tournament…" : "Couldn't find you on the roster yet — try rejoining with the code.") +
         "</p>";
       html += '<div class="field" style="margin-bottom:10px;"><label>Match format</label><div style="display:flex;gap:8px;">' +
         tourneyFormatBtnHtml(t, "bo1", "Best of 1", true) + tourneyFormatBtnHtml(t, "bo3", "Best of 3", true) +
