@@ -3804,8 +3804,9 @@
     }
   }
 
-  function tourneyFormatBtnHtml(t, key, label, disabled) {
-    return '<button type="button" class="btn small' + (t.format === key ? " primary" : "") + '" data-format="' + key + '"' + (disabled ? " disabled" : "") + '>' + escapeHtml(label) + "</button>";
+  function tourneyFormatLabelHtml(t) {
+    return '<div class="field" style="margin-bottom:10px;"><label>Match format</label>' +
+      '<span class="pill neutral" style="display:inline-block;">' + (t.format === "bo1" ? "Best of 1" : "Best of 3") + "</span></div>";
   }
 
   function tournamentSetupHtml(t) {
@@ -3826,9 +3827,7 @@
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' +
         (joined ? "You're on the roster. Waiting for the organizer to start the tournament…" : "Couldn't find you on the roster yet — try rejoining with the code.") +
         "</p>";
-      html += '<div class="field" style="margin-bottom:10px;"><label>Match format</label><div style="display:flex;gap:8px;">' +
-        tourneyFormatBtnHtml(t, "bo1", "Best of 1", true) + tourneyFormatBtnHtml(t, "bo3", "Best of 3", true) +
-        "</div></div>";
+      html += tourneyFormatLabelHtml(t);
       html += '<div class="tourney-name-grid">' + t.players.map(function (p) {
         return '<div class="field"><label>&nbsp;</label><input type="text" value="' + escapeHtml(p.name) + '" disabled></div>';
       }).join("") + "</div>";
@@ -3836,9 +3835,7 @@
       return html;
     }
 
-    html += '<div class="field" style="margin-bottom:10px;"><label>Match format</label><div style="display:flex;gap:8px;">' +
-      tourneyFormatBtnHtml(t, "bo1", "Best of 1") + tourneyFormatBtnHtml(t, "bo3", "Best of 3") +
-      "</div></div>";
+    html += tourneyFormatLabelHtml(t);
     html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">3 rounds of Swiss. An odd number of players means someone sits out with a bye each round it happens.</p>';
     html += '<div class="tourney-name-grid">' + t.players.map(function (p) {
       return '<div class="field"><label>Player' + (p.userId ? " (joined)" : "") + '</label><div style="display:flex;gap:6px;">' +
@@ -3858,14 +3855,6 @@
     var copyBtn = el.querySelector('[data-action="copy-code"]');
     if (copyBtn) copyBtn.addEventListener("click", function () { copyToClipboard(t.id); toast("Code copied."); });
 
-    el.querySelectorAll("[data-format]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        t.format = b.getAttribute("data-format");
-        t.updatedAt = Date.now ? Date.now() : 0;
-        persistCurrentTournament(t);
-        renderTournamentView();
-      });
-    });
     el.querySelectorAll("[data-player-id]").forEach(function (inp) {
       inp.addEventListener("change", function () {
         var id = inp.getAttribute("data-player-id");
