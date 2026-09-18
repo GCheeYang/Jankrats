@@ -4343,18 +4343,27 @@
   }
 
   // Used by the AI photo/video scan below: produces rows shaped
-  // {phrase, qty, cardId} and lets the user fix a mismatch in a dropdown
-  // before anything touches the collection.
+  // {phrase, qty, cardId} and lets the user fix a mismatch by typing into
+  // a search-style combo box before anything touches the collection --
+  // one merged "Card" column instead of a separate read-only "Detected"
+  // phrase next to a giant 1300+ option <select>.
+  function cardOptionLabel(c) {
+    return c.name + variantLabel(c) + " — " + c.set + " " + (c.collectorNumber || "");
+  }
+
   function matchResultsTableHtml(results, addLabel) {
     if (!results.length) return "";
-    var sorted = state.cards.slice().sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
     var html = '<div style="overflow-x:auto;"><table class="coll-table"><thead><tr>' +
-      "<th>Detected</th><th>Matched card</th><th>Qty</th><th>Add</th>" +
+      "<th>Card</th><th>Qty</th><th>Add</th>" +
       "</tr></thead><tbody>" +
       results.map(function (r, i) {
+        var card = r.cardId ? state.cardsById[r.cardId] : null;
+        var value = card ? cardOptionLabel(card) : (r.phrase || "");
         return "<tr>" +
-          "<td>" + escapeHtml(r.phrase) + (r.cardId ? "" : ' <span class="pill warn">no match</span>') + "</td>" +
-          '<td><select data-row="' + i + '" data-field="card">' + cardSelectOptions(r.cardId, sorted) + "</select></td>" +
+          '<td><div class="combo" data-row="' + i + '">' +
+          '<input type="text" class="combo-input' + (card ? "" : " unmatched") + '" autocomplete="off" placeholder="Search card name…" data-row="' + i + '" value="' + escapeHtml(value) + '">' +
+          '<div class="combo-menu" data-row="' + i + '" hidden></div>' +
+          "</div></td>" +
           '<td><input type="number" min="0" max="999" style="width:64px;" data-row="' + i + '" data-field="qty" value="' + r.qty + '"></td>' +
           '<td style="text-align:center;"><input type="checkbox" data-row="' + i + '" data-field="include"' + (r.cardId ? " checked" : "") + "></td>" +
           "</tr>";
@@ -4366,11 +4375,61 @@
 
   function wireMatchResultsTable(host, results, onAdded) {
     if (!host) return;
-    host.querySelectorAll('select[data-field="card"]').forEach(function (sel) {
-      sel.addEventListener("change", function () {
-        results[parseInt(sel.getAttribute("data-row"), 10)].cardId = sel.value || null;
+
+    function includeCheckbox(row) { return host.querySelector('input[data-field="include"][data-row="' + row + '"]'); }
+
+    host.querySelectorAll(".combo-input").forEach(function (inp) {
+      var row = parseInt(inp.getAttribute("data-row"), 10);
+      var menu = host.querySelector('.combo-menu[data-row="' + row + '"]');
+
+      function renderSuggestions() {
+        var q = normalizeForMatch(inp.value);
+        if (!q) { menu.hidden = true; menu.innerHTML = ""; return; }
+        var starts = [], contains = [];
+        state.cards.forEach(function (c) {
+          var n = normalizeForMatch(c.name);
+          if (n.indexOf(q) === 0) starts.push(c);
+          else if (n.indexOf(q) !== -1) contains.push(c);
+        });
+        var top = starts.concat(contains).slice(0, 8);
+        if (!top.length) { menu.hidden = true; menu.innerHTML = ""; return; }
+        menu.innerHTML = top.map(function (c) {
+          return '<button type="button" class="combo-item" data-card-id="' + escapeHtml(c.id) + '">' + escapeHtml(cardOptionLabel(c)) + "</button>";
+        }).join("");
+        menu.hidden = false;
+      }
+
+      // Typing invalidates whatever was matched before -- only picking a
+      // suggestion (or leaving the text exactly as a matched label) counts
+      // as a real match again, so "Add" can't silently include a card the
+      // text no longer actually names.
+      inp.addEventListener("input", function () {
+        results[row].cardId = null;
+        inp.classList.add("unmatched");
+        var chk = includeCheckbox(row);
+        if (chk) chk.checked = false;
+        renderSuggestions();
+      });
+      inp.addEventListener("focus", renderSuggestions);
+      // mousedown (not click) fires before the input's blur, so the
+      // selection registers before blur's own listener hides the menu.
+      menu.addEventListener("mousedown", function (e) {
+        var btn = e.target.closest(".combo-item");
+        if (!btn) return;
+        var cardId = btn.getAttribute("data-card-id");
+        var card = state.cardsById[cardId];
+        results[row].cardId = cardId;
+        inp.value = cardOptionLabel(card);
+        inp.classList.remove("unmatched");
+        var chk = includeCheckbox(row);
+        if (chk) chk.checked = true;
+        menu.hidden = true;
+      });
+      inp.addEventListener("blur", function () {
+        setTimeout(function () { menu.hidden = true; }, 120);
       });
     });
+
     host.querySelectorAll('input[data-field="qty"]').forEach(function (inp) {
       inp.addEventListener("change", function () {
         results[parseInt(inp.getAttribute("data-row"), 10)].qty = clamp(parseInt(inp.value, 10) || 0, 0, 999);
@@ -4408,15 +4467,6 @@
   function variantLabel(card) {
     var suf = variantSuffixOf(card);
     return suf === "*" ? " ★" : suf === "a" ? " (alt)" : "";
-  }
-
-  function cardSelectOptions(selectedId, sortedCards) {
-    var html = '<option value=""' + (!selectedId ? " selected" : "") + ">— No match —</option>";
-    sortedCards.forEach(function (c) {
-      var label = escapeHtml(c.name) + variantLabel(c) + " — " + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "");
-      html += '<option value="' + escapeHtml(c.id) + '"' + (c.id === selectedId ? " selected" : "") + ">" + label + "</option>";
-    });
-    return html;
   }
 
   function normalizeForMatch(s) {
