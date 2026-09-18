@@ -451,9 +451,11 @@
   function updateTournamentRemote(id, data) {
     var c = client_(); var uid = currentUserId();
     if (!c || !uid) return Promise.reject(new Error("Not signed in"));
-    return Promise.resolve(c.from("tournaments").update({
+    return c.from("tournaments").update({
       data: data, updated_at: new Date().toISOString()
-    }).eq("id", id));
+    }).eq("id", id).then(function (r) {
+      if (r.error) throw r.error;
+    });
   }
 
   function getTournamentRemote(id) {
@@ -466,7 +468,9 @@
   function deleteTournamentRemote(id) {
     var c = client_(); var uid = currentUserId();
     if (!c || !uid) return Promise.reject(new Error("Not signed in"));
-    return Promise.resolve(c.from("tournaments").delete().eq("id", id));
+    return c.from("tournaments").delete().eq("id", id).then(function (r) {
+      if (r.error) throw r.error;
+    });
   }
 
   // A participant joining self-inserts their own row (RLS: with check

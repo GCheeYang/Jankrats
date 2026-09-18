@@ -3550,7 +3550,12 @@
     var t = state.tournaments.filter(function (tt) { return tt.id === id; })[0];
     state.tournaments = state.tournaments.filter(function (tt) { return tt.id !== id; });
     persistTournaments();
-    if (t && t.organizerId && tourneyIsOrganizer(t)) JVBackend.deleteTournamentRemote(id).catch(function () {});
+    if (t && t.organizerId && tourneyIsOrganizer(t)) {
+      JVBackend.deleteTournamentRemote(id).catch(function (err) {
+        console.error("deleteTournamentRemote failed", err);
+        toast("Couldn't remove that tournament from your account" + (err && err.message ? ": " + err.message : "."));
+      });
+    }
     if (state.tourneyBuilder.tournamentId === id) { state.tourneyBuilder.tournamentId = null; tourneyStopLiveSync(); }
     renderTournamentView();
   }
@@ -5033,7 +5038,15 @@
         JVBackend.myProfile().then(function (p) {
           state.social.myProfile = p;
           renderRail();
-          if (state.route === "feed" || state.route === "profile" || state.route === "dashboard") render();
+          // "tournament" is in this list because tourneyIsOrganizer() reads
+          // JVBackend.currentUserId(), which isn't populated yet on a fresh
+          // load/deep-link -- landing directly on /tournament renders once
+          // before the session resolves, so every cloud tournament's
+          // organizer looks like a non-organizer (Delete and every other
+          // organizer-only control just doesn't render) until something
+          // re-renders after the session is actually known. Without this,
+          // that only happened to self-correct by navigating away and back.
+          if (state.route === "feed" || state.route === "profile" || state.route === "dashboard" || state.route === "tournament") render();
         });
         JVBackend.listFollowingIds().then(function (ids) { state.social.followingIds = ids; });
         // event === "SIGNED_IN" is Supabase's own signal for a genuine,
