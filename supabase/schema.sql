@@ -387,9 +387,10 @@ order by post_count desc;
 -- participants use to find and join it. The entire player/round/match
 -- state (the same shape app.js already keeps in localStorage) lives in
 -- `data`, written only by the organizer's client -- participants only
--- ever read it and self-join via tournament_participants below, never
+-- ever read it, self-join via tournament_participants, and report their
+-- own match's score via tournament_match_reports (both below), never
 -- write to this table directly, so they can't tamper with pairings or
--- scores.
+-- someone else's score.
 -- ---------------------------------------------------------------------------
 create table if not exists public.tournaments (
   id text primary key,
@@ -539,6 +540,135 @@ drop trigger if exists tournament_participants_sync on public.tournament_partici
 create trigger tournament_participants_sync
   after insert on public.tournament_participants
   for each row execute function public.tourney_sync_participant();
+
+-- ---------------------------------------------------------------------------
+-- tournament_match_reports: self-service score reporting. A signed-in
+-- participant upserts their own report for a match they're playing in;
+-- RLS only lets them write rows under their own user_id (same trust model
+-- as tournament_participants above). That alone doesn't prove they're
+-- actually in that match, so the tourney_sync_match_report trigger below
+-- re-checks that by cross-referencing tournaments.data.players before
+-- merging the result -- a report for a match the reporter isn't part of
+-- is silently ignored.
+-- ---------------------------------------------------------------------------
+create table if not exists public.tournament_match_reports (
+  tournament_id text not null references public.tournaments(id) on delete cascade,
+  round_number int not null,
+  match_id text not null,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  result text,
+  games jsonb,
+  reported_at timestamptz not null default now(),
+  primary key (tournament_id, match_id, user_id)
+);
+
+create index if not exists tournament_match_reports_tournament_idx on public.tournament_match_reports (tournament_id);
+
+alter table public.tournament_match_reports enable row level security;
+
+drop policy if exists "match reports are readable by signed-in users" on public.tournament_match_reports;
+create policy "match reports are readable by signed-in users"
+  on public.tournament_match_reports for select
+  to authenticated
+  using (true);
+
+drop policy if exists "users can report their own match result" on public.tournament_match_reports;
+create policy "users can report their own match result"
+  on public.tournament_match_reports for insert
+  to authenticated
+  with check (auth.uid() = user_id);
+
+drop policy if exists "users can update their own match report" on public.tournament_match_reports;
+create policy "users can update their own match report"
+  on public.tournament_match_reports for update
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- Merges a participant's own-match report into tournaments.data, the same
+-- way tourney_sync_participant merges a join -- runs as the function
+-- owner so it can write tournaments.data despite that table's RLS
+-- restricting direct writes to the organizer. Only takes effect when the
+-- reporting user is genuinely one of the match's two players (by their
+-- roster player id, not just their account) and the tournament is still
+-- active; otherwise it's a silent no-op rather than an error, since a
+-- stale/late report (e.g. after the organizer already completed the
+-- tournament) shouldn't surface as a failure to the player.
+create or replace function public.tourney_sync_match_report()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  cur_data jsonb;
+  players jsonb;
+  rounds jsonb;
+  n_players int;
+  n_rounds int;
+  i int;
+  j int;
+  reporter_player_id text;
+  round_obj jsonb;
+  match_obj jsonb;
+  new_matches jsonb;
+  new_rounds jsonb := '[]'::jsonb;
+  found boolean := false;
+begin
+  select data into cur_data from public.tournaments where id = new.tournament_id for update;
+  if cur_data is null or coalesce(cur_data->>'status', '') <> 'active' then
+    return new;
+  end if;
+
+  players := coalesce(cur_data->'players', '[]'::jsonb);
+  n_players := jsonb_array_length(players);
+  for i in 0..n_players - 1 loop
+    if (players->i)->>'userId' = new.user_id::text then
+      reporter_player_id := (players->i)->>'id';
+    end if;
+  end loop;
+  if reporter_player_id is null then
+    return new;
+  end if;
+
+  rounds := coalesce(cur_data->'rounds', '[]'::jsonb);
+  n_rounds := jsonb_array_length(rounds);
+  for i in 0..n_rounds - 1 loop
+    round_obj := rounds->i;
+    if (round_obj->>'number')::int = new.round_number then
+      new_matches := '[]'::jsonb;
+      for j in 0..jsonb_array_length(round_obj->'matches') - 1 loop
+        match_obj := (round_obj->'matches')->j;
+        if match_obj->>'id' = new.match_id
+           and (match_obj->>'p1Id' = reporter_player_id or match_obj->>'p2Id' = reporter_player_id) then
+          match_obj := match_obj || jsonb_build_object('result', new.result, 'games', new.games);
+          found := true;
+        end if;
+        new_matches := new_matches || jsonb_build_array(match_obj);
+      end loop;
+      round_obj := round_obj || jsonb_build_object('matches', new_matches);
+    end if;
+    new_rounds := new_rounds || jsonb_build_array(round_obj);
+  end loop;
+
+  if not found then
+    return new;
+  end if;
+
+  update public.tournaments
+  set data = (cur_data || jsonb_build_object('rounds', new_rounds))
+             || jsonb_build_object('updatedAt', (extract(epoch from clock_timestamp()) * 1000)::bigint),
+      updated_at = now()
+  where id = new.tournament_id;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists tournament_match_reports_sync on public.tournament_match_reports;
+create trigger tournament_match_reports_sync
+  after insert or update on public.tournament_match_reports
+  for each row execute function public.tourney_sync_match_report();
 
 -- ---------------------------------------------------------------------------
 -- storage: a public-read "media" bucket for pull-post photos/videos.

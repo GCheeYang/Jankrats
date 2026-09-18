@@ -519,6 +519,24 @@
     });
   }
 
+  // A participant reporting their own match's result upserts here (RLS:
+  // with check auth.uid() = user_id) rather than writing the tournament
+  // row directly -- they have no access to that (see updateTournamentRemote
+  // above). The tourney_sync_match_report trigger merges it into the
+  // shared tournament row server-side, the same self-service pattern
+  // joinTournamentRemote uses for the roster.
+  function reportMatchResultRemote(tournamentId, roundNumber, matchId, result, games) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return c.from("tournament_match_reports").upsert(
+      { tournament_id: tournamentId, round_number: roundNumber, match_id: matchId, user_id: uid, result: result, games: games },
+      { onConflict: "tournament_id,match_id,user_id" }
+    ).select().single().then(function (r) {
+      if (r.error) throw r.error;
+      return r.data;
+    });
+  }
+
   // Fires on every UPDATE to this one tournament row -- both the
   // organizer's other tabs/devices and every participant's read-only
   // view use this same subscription to stay live.
@@ -648,6 +666,7 @@
     getTournamentRemote: getTournamentRemote,
     deleteTournamentRemote: deleteTournamentRemote,
     joinTournamentRemote: joinTournamentRemote,
+    reportMatchResultRemote: reportMatchResultRemote,
     subscribeTournament: subscribeTournament,
     pushSupported: pushSupported,
     enablePush: enablePush,
