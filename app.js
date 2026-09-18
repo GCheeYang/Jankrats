@@ -3969,6 +3969,33 @@
     return null;
   }
 
+  // Whether a match's outcome is settled -- a Bo1 result is final the
+  // moment it's set, a Bo3 match once either player has 2 game wins or an
+  // intentional draw was called. Drives locking a participant's own row
+  // after they report it (see tourneyMatchRowHtml/wireOwnMatchReporting) --
+  // the organizer isn't affected, they can always keep editing.
+  function tourneyMatchDecided(t, m) {
+    if (t.format !== "bo3") return !!m.result;
+    var games = m.games || [null, null, null];
+    var p1Wins = games.filter(function (g) { return g === "p1"; }).length;
+    var p2Wins = games.filter(function (g) { return g === "p2"; }).length;
+    return p1Wins >= 2 || p2Wins >= 2 || m.result === "draw";
+  }
+
+  // Whether applying this pick would settle the match -- true for every
+  // Bo1 pick and a Bo3 intentional draw (gameAttr null, always decisive),
+  // and for a Bo3 game pick only when it's the one that reaches 2 wins.
+  // Used to decide whether a participant's own pick needs the "you can't
+  // change this after" confirmation.
+  function tourneyWouldDecide(match, gameAttr, pick) {
+    if (gameAttr === null) return true;
+    var games = (match.games || [null, null, null]).slice();
+    games[parseInt(gameAttr, 10)] = pick;
+    var p1Wins = games.filter(function (g) { return g === "p1"; }).length;
+    var p2Wins = games.filter(function (g) { return g === "p2"; }).length;
+    return p1Wins >= 2 || p2Wins >= 2;
+  }
+
   function tourneyTableLabelHtml(tableNum, highlighted) {
     return '<div class="tourney-table-label' + (highlighted ? " mine" : "") + '">Table ' + tableNum + "</div>";
   }
@@ -3993,7 +4020,10 @@
     // report only the one match they're actually playing in -- everything
     // else in the round list stays locked/disabled for them.
     var isMine = !isOrganizer && !!myPlayerId && (m.p1Id === myPlayerId || m.p2Id === myPlayerId);
-    var locked = t.status === "complete" || !(isOrganizer || isMine);
+    // A participant gets exactly one shot at reporting their match -- once
+    // it's decided, their own row locks too (same as everyone else's
+    // always is), and only the organizer can change it from here.
+    var locked = t.status === "complete" || !(isOrganizer || isMine) || (isMine && tourneyMatchDecided(t, m));
 
     if (t.format !== "bo3") {
       return '<div class="tourney-match-row' + (isMine ? " mine" : "") + '" data-match="' + m.id + '">' +
@@ -4110,7 +4140,7 @@
       html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">' +
         (isOrganizer
           ? (t.format === "bo3" ? "Click the winner of each game as you play it. Past rounds stay editable too." : "Click the winner’s name to report a match (or Draw). Past rounds stay editable too.")
-          : (mePlayer ? "Your table is highlighted below — report your own score there. Everything else updates live as it's reported." : "Live view — updates as scores are reported.")) +
+          : (mePlayer ? "Your table is highlighted below — report your own score there. You'll be asked to confirm, and can't change it yourself afterward (ask the organizer if you need to fix it)." : "Live view — updates as scores are reported.")) +
         "</p>";
     }
     var tableNums = tourneyTableNumbers(round);
@@ -4201,6 +4231,13 @@
   // uses for the roster. We optimistically apply the pick locally so it
   // feels instant, then re-fetch to reconcile with whatever the trigger
   // actually applied (and to recover cleanly if the report was rejected).
+  //
+  // A pick that settles the match (any Bo1 pick, a Bo3 intentional draw,
+  // or the Bo3 game that reaches 2 wins) asks for confirmation first --
+  // once it's in, tourneyMatchRowHtml locks their row (tourneyMatchDecided),
+  // and only the organizer can change it from there. An intermediate Bo3
+  // game pick that doesn't yet settle the match applies immediately, same
+  // as before, since the row stays theirs to keep editing either way.
   function wireOwnMatchReporting(el, t) {
     var myId = JVBackend.currentUserId();
     var mePlayer = myId ? t.players.filter(function (p) { return p.userId === myId; })[0] : null;
@@ -4213,7 +4250,16 @@
           var match = tourneyFindMatch(t, matchId);
           var roundNumber = tourneyFindMatchRoundNumber(t, matchId);
           if (!match || !roundNumber) return;
-          tourneyApplyPick(match, btn.getAttribute("data-game"), btn.getAttribute("data-pick"));
+          var gameAttr = btn.getAttribute("data-game");
+          var pick = btn.getAttribute("data-pick");
+          if (tourneyWouldDecide(match, gameAttr, pick)) {
+            var p1 = tourneyPlayerById(t, match.p1Id), p2 = tourneyPlayerById(t, match.p2Id);
+            var winnerName = pick === "draw" ? null : (pick === "p1" ? p1.name : p2.name);
+            var msg = (winnerName ? "Report " + winnerName + " as the winner" : "Report this match as a draw") +
+              "? You won't be able to change it yourself afterward -- you'd need to ask the organizer.";
+            if (!window.confirm(msg)) return;
+          }
+          tourneyApplyPick(match, gameAttr, pick);
           t.updatedAt = Date.now ? Date.now() : 0;
           saveJSON(KEYS.tournaments, state.tournaments);
           renderTournamentView();
