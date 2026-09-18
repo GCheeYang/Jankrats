@@ -4852,19 +4852,84 @@
     return canvas.toDataURL("image/jpeg", 0.85);
   }
 
-  // Spreads frames evenly across the whole recording rather than just
-  // keeping the first/last CAMERA_MAX_FRAMES -- same approach
-  // extractVideoFrames uses for an uploaded file, so a longer recording
-  // stays represented start to finish instead of losing whichever end
-  // gets cut off.
   // Splits into consecutive, non-overlapping groups of at most maxCount --
   // unlike downsampling to a fixed total, every captured frame ends up in
   // some batch. A 20-card session at ~1s/card is ~100 frames; downsampling
   // that to 20 total left most cards with zero clean frames representing
-  // them at all, which is the accuracy bug this replaces.
+  // them at all, which is the accuracy bug this replaces. Plain fallback
+  // when motion scores aren't available -- see chunkFramesByMotion below
+  // for the version that actually picks where to cut.
   function chunkFrames(frames, maxCount) {
     var chunks = [];
     for (var i = 0; i < frames.length; i += maxCount) chunks.push(frames.slice(i, i + maxCount));
+    return chunks;
+  }
+
+  // Decodes each frame at a tiny size and diffs consecutive pairs -- a
+  // cheap stand-in for "how much changed between these two moments,"
+  // reused from the live-preview motion detector this scan flow used
+  // before switching to record-then-analyze. scores[i] is the motion
+  // between frames[i] and frames[i+1], so it has length frames.length-1.
+  // Runs once, after recording stops, on however many frames were
+  // captured -- not on a per-tick budget -- so it can afford one fresh
+  // canvas per frame and decode the whole set in parallel.
+  function computeMotionScores(frames) {
+    function frameMotionSample(dataUrl) {
+      return new Promise(function (resolve) {
+        var img = new Image();
+        img.onload = function () {
+          var c = document.createElement("canvas");
+          c.width = 32; c.height = 32;
+          var ctx = c.getContext("2d");
+          ctx.drawImage(img, 0, 0, 32, 32);
+          resolve(ctx.getImageData(0, 0, 32, 32).data);
+        };
+        img.onerror = function () { resolve(null); };
+        img.src = dataUrl;
+      });
+    }
+    return Promise.all(frames.map(frameMotionSample)).then(function (samples) {
+      var scores = [];
+      for (var i = 1; i < samples.length; i++) {
+        var a = samples[i - 1], b = samples[i];
+        if (!a || !b) { scores.push(0); continue; }
+        var sum = 0;
+        for (var p = 0; p < a.length; p += 4) sum += Math.abs(a[p] - b[p]) + Math.abs(a[p + 1] - b[p + 1]) + Math.abs(a[p + 2] - b[p + 2]);
+        scores.push(sum / ((a.length / 4) * 3));
+      }
+      return scores;
+    });
+  }
+
+  // Same job as chunkFrames, but nudges each cut toward the highest-motion
+  // frame in a small window around it instead of a flat multiple of
+  // maxCount. The identify-cards prompt already knows not to recount a
+  // card held steady through several frames of ONE batch -- but that
+  // guarantee stops at a batch boundary, since each batch is analyzed with
+  // no memory of any other. Landing a cut mid-hold (the same card as the
+  // last frame of batch N and the first frame of batch N+1) makes both
+  // batches independently, correctly count it once each -- a duplicate
+  // neither call could have known about. High motion means a card's
+  // actively being swapped, i.e. NOT held steady, so biasing cuts there
+  // makes them land between cards far more often than through one.
+  function chunkFramesByMotion(frames, maxCount, scores) {
+    if (!scores || !scores.length) return chunkFrames(frames, maxCount);
+    var chunks = [];
+    var start = 0;
+    var searchRadius = Math.max(3, Math.floor(maxCount / 4));
+    while (start < frames.length) {
+      var naiveEnd = start + maxCount;
+      if (naiveEnd >= frames.length) { chunks.push(frames.slice(start)); break; }
+      var lo = Math.max(start + 1, naiveEnd - searchRadius);
+      var hi = Math.min(frames.length - 1, naiveEnd + searchRadius);
+      var bestIdx = naiveEnd, bestScore = -1;
+      for (var i = lo; i <= hi; i++) {
+        var s = scores[i - 1] || 0; // motion between frame i-1 and frame i
+        if (s > bestScore) { bestScore = s; bestIdx = i; }
+      }
+      chunks.push(frames.slice(start, bestIdx));
+      start = bestIdx;
+    }
     return chunks;
   }
 
@@ -4874,13 +4939,20 @@
   // result in as it comes back -- called once from finishScanAndStop
   // when the person taps Stop camera, or, rarely, from
   // bufferFrameTick's CAMERA_MAX_RECORD_MS safety valve on an unusually
-  // long recording. A card's presentation can still land across a chunk
-  // boundary (the same limitation the old periodic-flush design had),
-  // but nothing captured gets silently discarded the way downsampling did.
+  // long recording.
   function analyzeCameraFrames(el, frames) {
-    var chunks = chunkFrames(frames, CAMERA_MAX_FRAMES);
-    scanSetLoadingStatus(el, "Reading " + frames.length + " frame" + (frames.length === 1 ? "" : "s") +
-      (chunks.length > 1 ? " across " + chunks.length + " batches…" : "…"));
+    scanSetLoadingStatus(el, "Reading " + frames.length + " frame" + (frames.length === 1 ? "" : "s") + "…");
+    computeMotionScores(frames).then(function (scores) {
+      return chunkFramesByMotion(frames, CAMERA_MAX_FRAMES, scores);
+    }).catch(function () {
+      return chunkFrames(frames, CAMERA_MAX_FRAMES);
+    }).then(function (chunks) {
+      analyzeCameraChunks(el, chunks);
+    });
+  }
+
+  function analyzeCameraChunks(el, chunks) {
+    scanSetLoadingStatus(el, chunks.length > 1 ? "Reading across " + chunks.length + " batches…" : "Reading…");
 
     var remaining = chunks.length;
     var anyFound = false;
