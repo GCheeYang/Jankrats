@@ -203,6 +203,7 @@
     wanted: [],          // card ids the player is searching for
     wantedQuery: "",     // transient search box text, not persisted
     tournaments: [],
+    scanCorrections: {}, // normalized AI-detected phrase -> cardId, see loadScanCorrections
     profile: { name: "" },
     route: "home",
     builder: { deckId: null, tab: "main", cardFilter: "", legendVariantPickName: null, legendFilter: "", ownedFilter: "all" },
@@ -4439,14 +4440,17 @@
     if (addBtn) {
       addBtn.addEventListener("click", function () {
         var added = 0;
+        var addedRows = [];
         host.querySelectorAll('input[data-field="include"]').forEach(function (chk) {
           var row = parseInt(chk.getAttribute("data-row"), 10);
           var r = results[row];
           if (!chk.checked || !r || !r.cardId) return;
           setOwned(r.cardId, getOwned(r.cardId) + r.qty, getOwnedFoil(r.cardId));
+          addedRows.push(r);
           added++;
         });
         if (!added) { toast("Nothing checked to add."); return; }
+        teachScanCorrections(addedRows);
         toast("Added " + added + " card" + (added === 1 ? "" : "s") + " to your collection.");
         renderRail();
         if (state.route === "collection") renderCollectionView();
@@ -4625,20 +4629,34 @@
     });
   }
 
+  // Checked before fuzzy name matching -- state.scanCorrections is a
+  // normalizeForMatch(phrase) -> cardId dictionary built from other
+  // players' past fixes (see loadScanCorrections/teachScanCorrections
+  // below), so a misread the AI keeps making gets auto-corrected instead
+  // of repeating the same wrong guess forever.
+  function resolveScannedCard(name) {
+    var key = normalizeForMatch(name);
+    var correctedId = key && state.scanCorrections[key];
+    if (correctedId && state.cardsById[correctedId]) return state.cardsById[correctedId];
+    var match = name ? bestCardMatch(name, null) : null;
+    return match ? match.card : null;
+  }
+
   // Turns the Edge Function's loose {name, qty, collectorNumber} guesses
-  // into the {phrase, qty, cardId} row shape matchResultsTableHtml expects,
-  // fuzzy-matching by name via the existing bestCardMatch(). The collector
-  // number (when the AI could read it) is shown alongside the name for the
-  // user to cross-check, not used to match — its printed format varies too
-  // much to parse reliably, and the review step exists precisely to catch
-  // a wrong guess.
+  // into the {phrase, qty, cardId} row shape matchResultsTableHtml expects.
+  // The collector number (when the AI could read it) is shown alongside
+  // the name for the user to cross-check, not used to match — its printed
+  // format varies too much to parse reliably, and the review step exists
+  // precisely to catch a wrong guess. rawName/originalCardId are kept
+  // alongside the editable phrase/cardId so teachScanCorrections (called
+  // when "Add" runs) can tell whether the person actually changed anything.
   function scanResultsFromCards(cards) {
     return (cards || []).map(function (c) {
       var name = String((c && c.name) || "").trim();
       var qty = clamp(parseInt(c && c.qty, 10) || 1, 1, 999);
-      var match = name ? bestCardMatch(name, null) : null;
+      var card = resolveScannedCard(name);
       var label = (name || "(unnamed)") + (c && c.collectorNumber ? " (" + c.collectorNumber + ")" : "");
-      return { phrase: label, qty: qty, cardId: match ? match.card.id : null };
+      return { phrase: label, qty: qty, cardId: card ? card.id : null, rawName: name, originalCardId: card ? card.id : null };
     });
   }
 
@@ -4651,14 +4669,32 @@
     (cards || []).forEach(function (c) {
       var name = String((c && c.name) || "").trim();
       var qty = clamp(parseInt(c && c.qty, 10) || 1, 1, 999);
-      var match = name ? bestCardMatch(name, null) : null;
-      var cardId = match ? match.card.id : null;
+      var card = resolveScannedCard(name);
+      var cardId = card ? card.id : null;
       var label = (name || "(unnamed)") + (c && c.collectorNumber ? " (" + c.collectorNumber + ")" : "");
       var existing = cardId && results.filter(function (r) { return r.cardId === cardId; })[0];
       if (existing) existing.qty = clamp(existing.qty + qty, 1, 999);
-      else results.push({ phrase: label, qty: qty, cardId: cardId });
+      else results.push({ phrase: label, qty: qty, cardId: cardId, rawName: name, originalCardId: cardId });
     });
     return results;
+  }
+
+  // Fire-and-forget, called only for rows that actually got added to the
+  // collection: for each one whose final cardId ends up different from
+  // what the AI/fuzzy-match originally guessed (including "no match" -> a
+  // real card), teach the shared dictionary so the next scan of something
+  // that reads the same way gets it right immediately, without anyone
+  // touching the identify-cards prompt. A no-op while signed out
+  // (teachScanCorrection itself checks).
+  function teachScanCorrections(results) {
+    if (!JVBackend.isConfigured()) return;
+    results.forEach(function (r) {
+      if (!r.rawName || !r.cardId || r.cardId === r.originalCardId) return;
+      var key = normalizeForMatch(r.rawName);
+      if (!key) return;
+      state.scanCorrections[key] = r.cardId;
+      JVBackend.teachScanCorrection(key, r.cardId).catch(function () {});
+    });
   }
 
   function wireScanImport(el) {
@@ -5796,12 +5832,21 @@
     });
   }
 
+  // Same one-time-fetch-and-cache pattern as loadCardPrices -- see
+  // resolveScannedCard, which checks this dictionary before falling back
+  // to fuzzy name matching.
+  function loadScanCorrections() {
+    if (!JVBackend.isConfigured()) return;
+    JVBackend.listScanCorrections().then(function (map) { state.scanCorrections = map; });
+  }
+
   function init() {
     loadAll();
     wireShell();
     wireAuth();
     wireCardArtFallback();
     loadCardPrices();
+    loadScanCorrections();
     // A bare "/" always resolves to home via pathToView, which would
     // otherwise shadow an old-style "/#view" bookmark/link before its hash
     // ever gets consulted -- so check that legacy hash case first.

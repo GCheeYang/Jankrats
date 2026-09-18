@@ -209,6 +209,37 @@
       });
   }
 
+  /* ---------------- scan corrections (shared, crowd-sourced) ---------------- */
+
+  // Fetched once at startup (see loadScanCorrections in app.js) and cached
+  // client-side -- checked before fuzzy name matching so a phrase someone
+  // already corrected gets fixed automatically instead of repeating the
+  // same wrong match. Public read, same as card_prices.
+  function listScanCorrections() {
+    var c = client_();
+    if (!c) return Promise.resolve({});
+    return c.from("scan_corrections").select("phrase, card_id").then(function (r) {
+      var map = {};
+      (r.data || []).forEach(function (row) { map[row.phrase] = row.card_id; });
+      return map;
+    });
+  }
+
+  // Called whenever a signed-in player's edit in the scan review table
+  // ends up different from what the AI/fuzzy-match originally guessed --
+  // teaches the shared dictionary so the next person who scans something
+  // that reads the same way gets it right immediately.
+  function teachScanCorrection(phrase, cardId) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid || !phrase || !cardId) return Promise.resolve();
+    return c.from("scan_corrections").upsert(
+      { phrase: phrase, card_id: cardId, updated_at: new Date().toISOString() },
+      { onConflict: "phrase" }
+    ).then(function (r) {
+      if (r.error) throw r.error;
+    });
+  }
+
   /* ---------------- decks (shared with friends) ---------------- */
 
   function deckRowToLocal(row) {
@@ -594,6 +625,8 @@
     upsertCollectionEntry: upsertCollectionEntry,
     bulkUpsertCollection: bulkUpsertCollection,
     listCardPrices: listCardPrices,
+    listScanCorrections: listScanCorrections,
+    teachScanCorrection: teachScanCorrection,
     listDecksFor: listDecksFor,
     bulkUpsertDecks: bulkUpsertDecks,
     deleteDeckRemote: deleteDeckRemote,

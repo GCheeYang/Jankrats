@@ -331,6 +331,43 @@ create policy "card prices are publicly readable"
   using (true);
 
 -- ---------------------------------------------------------------------------
+-- scan_corrections: a shared "the AI misread this as X, a person confirmed
+-- it's actually card Y" dictionary for the camera/photo scan-import flow.
+-- Keyed by the normalized AI-detected phrase text (see normalizeForMatch()
+-- in app.js) so a repeat misread gets auto-fixed before it's even shown,
+-- instead of every signed-in player hitting the same wrong match forever.
+-- Not user-owned -- it's a crowd-sourced lookup table everyone reads and
+-- writes to, same shared-trust model the rest of this app already uses for
+-- decks/posts visible to any signed-in player.
+-- ---------------------------------------------------------------------------
+create table if not exists public.scan_corrections (
+  phrase text primary key,
+  card_id text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.scan_corrections enable row level security;
+
+drop policy if exists "scan corrections are publicly readable" on public.scan_corrections;
+create policy "scan corrections are publicly readable"
+  on public.scan_corrections for select
+  to anon, authenticated
+  using (true);
+
+drop policy if exists "signed-in users can teach scan corrections" on public.scan_corrections;
+create policy "signed-in users can teach scan corrections"
+  on public.scan_corrections for insert
+  to authenticated
+  with check (true);
+
+drop policy if exists "signed-in users can update scan corrections" on public.scan_corrections;
+create policy "signed-in users can update scan corrections"
+  on public.scan_corrections for update
+  to authenticated
+  using (true)
+  with check (true);
+
+-- ---------------------------------------------------------------------------
 -- top_cards: usage-derived leaderboard, computed from every post's card_ids.
 -- ---------------------------------------------------------------------------
 create or replace view public.top_cards as
