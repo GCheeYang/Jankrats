@@ -389,6 +389,17 @@
     toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2600);
   }
 
+  // PostHog is loaded (and configured) via config.js/index.html -- see
+  // POSTHOG_KEY there. Guarded so a checkout without a PostHog project
+  // set up (or ad-blocked, which silently drops the library) just no-ops
+  // instead of throwing; every call site below stays a plain one-liner
+  // rather than repeating this check itself.
+  function trackEvent(name, props) {
+    if (window.posthog && typeof window.posthog.capture === "function") {
+      try { window.posthog.capture(name, props || {}); } catch (e) { /* analytics failures shouldn't break the app */ }
+    }
+  }
+
   /* ---------------- router ---------------- */
 
   var VIEWS = ["home", "cards", "collection", "wanted", "decks", "tournament", "friends", "dashboard", "profile"];
@@ -1822,6 +1833,7 @@
     state.builder.legendVariantPickName = null;
     pushDeckBuilderHistoryEntry(d.id);
     renderDecksView();
+    trackEvent("deck_created", { deck_id: d.id });
   }
 
   function openDeck(id) {
@@ -1860,6 +1872,7 @@
     markDeckDeletedLocally(id);
     if (state.builder.deckId === id) state.builder.deckId = null;
     renderDecksView();
+    trackEvent("deck_deleted", { deck_id: id });
     if (JVBackend.isConfigured() && JVBackend.currentUserId()) {
       JVBackend.deleteDeckRemote(id).then(function () { clearDeckTombstone(id); }).catch(function (err) {
         console.error("deleteDeckRemote failed", err);
@@ -3149,15 +3162,18 @@
     root.querySelector("#deck-import-run").addEventListener("click", function () {
       var text = document.getElementById("deck-import-text").value;
       var name = document.getElementById("deck-import-name").value.trim();
-      var result = looksLikeRiftAtlasDeckCode(text)
+      var isRiftAtlas = looksLikeRiftAtlasDeckCode(text);
+      var result = isRiftAtlas
         ? importDeckFromRiftAtlasCode(text.trim(), name || null)
         : importDeckFromListText(text, name || null);
       var resultEl = document.getElementById("deck-import-result");
       if (!result.deck) {
+        trackEvent("deck_import_failed", { method: isRiftAtlas ? "riftatlas_code" : "text" });
         resultEl.innerHTML = '<p style="color:var(--bad);font-size:13px;">' + escapeHtml(result.error || "Couldn't parse that list.") + "</p>";
         return;
       }
       toast('Imported "' + result.deck.name + '".');
+      trackEvent("deck_imported", { method: isRiftAtlas ? "riftatlas_code" : "text", unresolved_count: result.unresolved.length });
       if (result.unresolved.length) {
         resultEl.innerHTML = '<p style="font-size:13px;color:var(--warn);">Imported, but couldn\'t match: ' + result.unresolved.map(escapeHtml).join(", ") + "</p>";
       }
@@ -3524,6 +3540,7 @@
       });
     }
     renderTournamentView();
+    trackEvent("tournament_created", { format: t.format, player_count: count, online: !!t.organizerId });
   }
 
   function openTournament(id) {
@@ -3581,6 +3598,7 @@
       state.tourneyBuilder.tournamentId = code;
       toast("Joined! You're on the roster.");
       renderTournamentView();
+      trackEvent("tournament_joined", { tournament_id: code });
     }).catch(function () { toast("Couldn't join that tournament. Check the code and try again."); });
   }
 
@@ -4555,6 +4573,12 @@
         teachScanCorrections(addedRows);
         teachScanQuantityCorrections(addedRows);
         logScanAddEvents(addedRows);
+        trackEvent("scan_import_completed", {
+          rows_added: added,
+          total_qty: addedRows.reduce(function (sum, r) { return sum + r.qty; }, 0),
+          rows_with_identity_correction: addedRows.filter(function (r) { return r.cardId !== r.originalCardId; }).length,
+          rows_with_qty_correction: addedRows.filter(function (r) { return r.qty !== r.originalQty; }).length
+        });
         toast("Added " + added + " card" + (added === 1 ? "" : "s") + " to your collection.");
         renderRail();
         if (state.route === "collection") renderCollectionView();
