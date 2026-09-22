@@ -3658,6 +3658,13 @@
     return null;
   }
 
+  function tourneyFindMatchRoundNumber(t, matchId) {
+    for (var i = 0; i < t.rounds.length; i++) {
+      if (t.rounds[i].matches.some(function (mm) { return mm.id === matchId; })) return t.rounds[i].number;
+    }
+    return null;
+  }
+
   function tourneyPlayedBefore(t, aId, bId) {
     return t.rounds.some(function (r) {
       return r.matches.some(function (m) {
@@ -3962,8 +3969,35 @@
     return null;
   }
 
-  function tourneyTableLabelHtml(tableNum) {
-    return '<div class="tourney-table-label">Table ' + tableNum + "</div>";
+  // Whether a match's outcome is settled -- a Bo1 result is final the
+  // moment it's set, a Bo3 match once either player has 2 game wins or an
+  // intentional draw was called. Drives locking a participant's own row
+  // after they report it (see tourneyMatchRowHtml/wireOwnMatchReporting) --
+  // the organizer isn't affected, they can always keep editing.
+  function tourneyMatchDecided(t, m) {
+    if (t.format !== "bo3") return !!m.result;
+    var games = m.games || [null, null, null];
+    var p1Wins = games.filter(function (g) { return g === "p1"; }).length;
+    var p2Wins = games.filter(function (g) { return g === "p2"; }).length;
+    return p1Wins >= 2 || p2Wins >= 2 || m.result === "draw";
+  }
+
+  // Whether applying this pick would settle the match -- true for every
+  // Bo1 pick and a Bo3 intentional draw (gameAttr null, always decisive),
+  // and for a Bo3 game pick only when it's the one that reaches 2 wins.
+  // Used to decide whether a participant's own pick needs the "you can't
+  // change this after" confirmation.
+  function tourneyWouldDecide(match, gameAttr, pick) {
+    if (gameAttr === null) return true;
+    var games = (match.games || [null, null, null]).slice();
+    games[parseInt(gameAttr, 10)] = pick;
+    var p1Wins = games.filter(function (g) { return g === "p1"; }).length;
+    var p2Wins = games.filter(function (g) { return g === "p2"; }).length;
+    return p1Wins >= 2 || p2Wins >= 2;
+  }
+
+  function tourneyTableLabelHtml(tableNum, highlighted) {
+    return '<div class="tourney-table-label' + (highlighted ? " mine" : "") + '">Table ' + tableNum + "</div>";
   }
 
   // Table numbers run 1..N over a round's non-bye matches, in pairing
@@ -3975,17 +4009,25 @@
     return map;
   }
 
-  function tourneyMatchRowHtml(t, m, tableNum) {
+  function tourneyMatchRowHtml(t, m, tableNum, myPlayerId) {
     var p1 = tourneyPlayerById(t, m.p1Id);
     if (m.p2Id === null) {
       return '<div class="tourney-match-row"><span class="tm-name">' + escapeHtml(p1.name) + '</span><span class="tm-vs">BYE</span><span class="tm-name right"></span></div>';
     }
     var p2 = tourneyPlayerById(t, m.p2Id);
-    var locked = t.status === "complete" || !tourneyIsOrganizer(t);
+    var isOrganizer = tourneyIsOrganizer(t);
+    // A participant (never the organizer, who already has full access) can
+    // report only the one match they're actually playing in -- everything
+    // else in the round list stays locked/disabled for them.
+    var isMine = !isOrganizer && !!myPlayerId && (m.p1Id === myPlayerId || m.p2Id === myPlayerId);
+    // A participant gets exactly one shot at reporting their match -- once
+    // it's decided, their own row locks too (same as everyone else's
+    // always is), and only the organizer can change it from here.
+    var locked = t.status === "complete" || !(isOrganizer || isMine) || (isMine && tourneyMatchDecided(t, m));
 
     if (t.format !== "bo3") {
-      return '<div class="tourney-match-row" data-match="' + m.id + '">' +
-        tourneyTableLabelHtml(tableNum) +
+      return '<div class="tourney-match-row' + (isMine ? " mine" : "") + '" data-match="' + m.id + '">' +
+        tourneyTableLabelHtml(tableNum, isMine) +
         '<button type="button" class="tm-pick' + (m.result === "p1" ? " chosen" : "") + '" data-pick="p1"' + (locked ? " disabled" : "") + ">" + escapeHtml(p1.name) + "</button>" +
         '<button type="button" class="tm-draw' + (m.result === "draw" ? " chosen" : "") + '" data-pick="draw"' + (locked ? " disabled" : "") + '>Draw</button>' +
         '<button type="button" class="tm-pick right' + (m.result === "p2" ? " chosen" : "") + '" data-pick="p2"' + (locked ? " disabled" : "") + ">" + escapeHtml(p2.name) + "</button>" +
@@ -4012,8 +4054,8 @@
         "</div>";
     }
 
-    var html = '<div class="tourney-match-row bo3" data-match="' + m.id + '">' +
-      tourneyTableLabelHtml(tableNum) +
+    var html = '<div class="tourney-match-row bo3' + (isMine ? " mine" : "") + '" data-match="' + m.id + '">' +
+      tourneyTableLabelHtml(tableNum, isMine) +
       '<div class="tourney-match-header"><span>' + escapeHtml(p1.name) + "</span><span>" + escapeHtml(p2.name) + "</span></div>" +
       gameRow(0) +
       (showGame2 ? gameRow(1) : "") +
@@ -4055,6 +4097,8 @@
     var viewingLatest = viewingNum === latestRound.number;
     var standings = tourneyStandings(t);
     var isOrganizer = tourneyIsOrganizer(t);
+    var myId = !isOrganizer ? JVBackend.currentUserId() : null;
+    var mePlayer = myId ? t.players.filter(function (p) { return p.userId === myId; })[0] : null;
     var html = "<div>";
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
       (isOrganizer
@@ -4072,8 +4116,6 @@
     }
 
     if (!isOrganizer) {
-      var myId = JVBackend.currentUserId();
-      var mePlayer = myId ? t.players.filter(function (p) { return p.userId === myId; })[0] : null;
       if (mePlayer && t.status === "active") {
         var myMatch = latestRound.matches.filter(function (m) { return m.p1Id === mePlayer.id || m.p2Id === mePlayer.id; })[0];
         if (myMatch && myMatch.p2Id === null) {
@@ -4096,12 +4138,15 @@
     html += '<h3 style="margin-bottom:4px;">Round ' + round.number + " pairings" + (viewingLatest ? "" : " (past round)") + "</h3>";
     if (t.status === "active") {
       html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">' +
-        (!isOrganizer ? "Live view — updates as the organizer reports scores." : t.format === "bo3" ? "Click the winner of each game as you play it. Past rounds stay editable too." : "Click the winner’s name to report a match (or Draw). Past rounds stay editable too.") +
+        (isOrganizer
+          ? (t.format === "bo3" ? "Click the winner of each game as you play it. Past rounds stay editable too." : "Click the winner’s name to report a match (or Draw). Past rounds stay editable too.")
+          : (mePlayer ? "Your table is highlighted below — report your own score there. You'll be asked to confirm, and can't change it yourself afterward (ask the organizer if you need to fix it)." : "Live view — updates as scores are reported.")) +
         "</p>";
     }
     var tableNums = tourneyTableNumbers(round);
+    var myPlayerId = mePlayer ? mePlayer.id : null;
     html += '<div class="tourney-match-list">' + round.matches.map(function (m) {
-      return tourneyMatchRowHtml(t, m, tableNums[m.id]);
+      return tourneyMatchRowHtml(t, m, tableNums[m.id], myPlayerId);
     }).join("") + "</div>";
     if (t.status === "active" && isOrganizer && viewingLatest) {
       var allReported = round.matches.every(function (m) { return m.p2Id === null || !!m.result; });
@@ -4125,9 +4170,9 @@
     });
 
     // Participants get a read-only render otherwise (no rename input, no
-    // pick buttons, no advance button), so there's nothing else here for
-    // them to wire up -- they just watch it update live via realtime.
-    if (!tourneyIsOrganizer(t)) return;
+    // advance button), except for the one row that's their own match --
+    // see wireOwnMatchReporting.
+    if (!tourneyIsOrganizer(t)) { wireOwnMatchReporting(el, t); return; }
 
     var nameInput = el.querySelector("#tourney-name-input");
     if (nameInput) nameInput.addEventListener("change", function () {
@@ -4143,18 +4188,7 @@
         btn.addEventListener("click", function () {
           var match = tourneyFindMatch(t, matchId);
           if (!match) return;
-          var gameAttr = btn.getAttribute("data-game");
-          if (gameAttr !== null) {
-            // Bo3 per-game pick -- the match result is always derived from
-            // the games recorded so far, never set directly.
-            if (!match.games) match.games = [null, null, null];
-            match.games[parseInt(gameAttr, 10)] = btn.getAttribute("data-pick");
-            match.result = tourneyDeriveMatchResult(match.games);
-          } else {
-            // Bo1 winner/draw pick, or a Bo3 intentional draw called before
-            // any games were played.
-            match.result = btn.getAttribute("data-pick");
-          }
+          tourneyApplyPick(match, btn.getAttribute("data-game"), btn.getAttribute("data-pick"));
           t.updatedAt = Date.now ? Date.now() : 0;
           persistCurrentTournament(t);
           renderTournamentView();
@@ -4170,6 +4204,74 @@
       t.updatedAt = Date.now ? Date.now() : 0;
       persistCurrentTournament(t);
       renderTournamentView();
+    });
+  }
+
+  // Bo3 per-game pick -- the match result is always derived from the games
+  // recorded so far, never set directly. Bo1 winner/draw pick, or a Bo3
+  // intentional draw called before any games were played, sets it directly.
+  function tourneyApplyPick(match, gameAttr, pick) {
+    if (gameAttr !== null) {
+      if (!match.games) match.games = [null, null, null];
+      match.games[parseInt(gameAttr, 10)] = pick;
+      match.result = tourneyDeriveMatchResult(match.games);
+    } else {
+      match.result = pick;
+    }
+  }
+
+  // A participant has no write access to the tournament row itself (RLS
+  // restricts that to the organizer -- see schema.sql) -- only their own
+  // match's row is ever unlocked for them (tourneyMatchRowHtml's "mine"
+  // check), and picking a winner there upserts a
+  // tournament_match_reports row instead of writing the tournament
+  // directly. A server-side trigger re-validates that the reporting user
+  // is genuinely one of that match's two players and merges it into the
+  // shared tournament row, the same self-service pattern joining already
+  // uses for the roster. We optimistically apply the pick locally so it
+  // feels instant, then re-fetch to reconcile with whatever the trigger
+  // actually applied (and to recover cleanly if the report was rejected).
+  //
+  // A pick that settles the match (any Bo1 pick, a Bo3 intentional draw,
+  // or the Bo3 game that reaches 2 wins) asks for confirmation first --
+  // once it's in, tourneyMatchRowHtml locks their row (tourneyMatchDecided),
+  // and only the organizer can change it from there. An intermediate Bo3
+  // game pick that doesn't yet settle the match applies immediately, same
+  // as before, since the row stays theirs to keep editing either way.
+  function wireOwnMatchReporting(el, t) {
+    var myId = JVBackend.currentUserId();
+    var mePlayer = myId ? t.players.filter(function (p) { return p.userId === myId; })[0] : null;
+    if (!mePlayer || t.status !== "active") return;
+
+    el.querySelectorAll(".tourney-match-row.mine[data-match]").forEach(function (row) {
+      var matchId = row.getAttribute("data-match");
+      row.querySelectorAll("[data-pick]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var match = tourneyFindMatch(t, matchId);
+          var roundNumber = tourneyFindMatchRoundNumber(t, matchId);
+          if (!match || !roundNumber) return;
+          var gameAttr = btn.getAttribute("data-game");
+          var pick = btn.getAttribute("data-pick");
+          if (tourneyWouldDecide(match, gameAttr, pick)) {
+            var p1 = tourneyPlayerById(t, match.p1Id), p2 = tourneyPlayerById(t, match.p2Id);
+            var winnerName = pick === "draw" ? null : (pick === "p1" ? p1.name : p2.name);
+            var msg = (winnerName ? "Report " + winnerName + " as the winner" : "Report this match as a draw") +
+              "? You won't be able to change it yourself afterward -- you'd need to ask the organizer.";
+            if (!window.confirm(msg)) return;
+          }
+          tourneyApplyPick(match, gameAttr, pick);
+          t.updatedAt = Date.now ? Date.now() : 0;
+          saveJSON(KEYS.tournaments, state.tournaments);
+          renderTournamentView();
+          JVBackend.reportMatchResultRemote(t.id, roundNumber, match.id, match.result, match.games)
+            .then(function () { return JVBackend.getTournamentRemote(t.id); })
+            .then(function (row) { if (row) applyRemoteTournamentData(t.id, row.data); })
+            .catch(function () {
+              toast("Couldn't sync your score -- try again.");
+              JVBackend.getTournamentRemote(t.id).then(function (row) { if (row) applyRemoteTournamentData(t.id, row.data); });
+            });
+        });
+      });
     });
   }
 
