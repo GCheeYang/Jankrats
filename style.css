@@ -1304,3 +1304,46 @@ textarea { resize: vertical; min-height: 90px; }
 .tcr-img.placeholder { display: inline-block; }
 .tcr-name { flex: 1; font-weight: 600; font-size: 13.5px; }
 .tcr-count { font-size: 12px; color: var(--ink-faint); tabular-nums: normal; }
+
+/* ============================================================
+   Site footer -- carries the Riot Games "Legal Jibber Jabber"
+   disclaimer, which their policy requires be shown conspicuously,
+   so it lives in the persistent app shell rather than being buried
+   on just the Terms page.
+   ============================================================ */
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding: 18px max(40px, calc((100% - 1640px) / 2 + 40px)) 28px;
+  color: var(--ink-faint);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.site-footer a { color: var(--ink-soft); }
+.site-footer a:hover { color: var(--accent-strong); }
+.site-footer-links { margin-top: 6px; }
+.site-footer-links a:not(:last-child)::after { content: " · "; color: var(--line-strong); }
+
+/* ============================================================
+   Standalone legal pages (privacy.html, terms.html) -- plain
+   readable content, no app shell.
+   ============================================================ */
+.legal-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+.legal-back {
+  display: inline-block;
+  margin-bottom: 24px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.legal-back:hover { color: var(--accent-strong); }
+.legal-page h1 { font-size: 30px; }
+.legal-updated { color: var(--ink-faint); font-size: 13px; margin: 6px 0 0; }
+.legal-page h2 { font-size: 18px; margin: 32px 0 10px; }
+.legal-page p { color: var(--ink-soft); line-height: 1.65; margin: 0 0 14px; }
+.legal-page strong { color: var(--ink); }
+.legal-footer-link { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); }
