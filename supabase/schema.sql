@@ -394,6 +394,47 @@ alter table public.scan_qty_reviews enable row level security;
 -- bypasses RLS) can touch this table, which is exactly what we want.
 
 -- ---------------------------------------------------------------------------
+-- scan_add_events: one row per card actually added from a scan's review
+-- table, flagging whether the person had to fix the identity and/or
+-- quantity the AI guessed. Unlike scan_corrections (a lookup table that
+-- gets overwritten) and scan_qty_reviews (corrections only), this logs
+-- EVERY add, correction or not -- the denominator, not just the
+-- numerator -- so the correction rate can actually be tracked over time
+-- instead of just a raw, usage-inflated correction count. Write-only from
+-- the app's side; there's no select policy because the app never reads it
+-- back. Review it directly via the Supabase SQL editor (which runs with
+-- elevated access, not through these policies) -- e.g. to see whether the
+-- correction rate is trending down as scan_corrections/scan_qty_reviews
+-- accumulate, or whether the self-learning approach needs a rethink:
+--
+--   select
+--     date_trunc('week', created_at) as week,
+--     count(*) as total_adds,
+--     count(*) filter (where had_identity_correction or had_qty_correction) as corrected,
+--     round(100.0 * count(*) filter (where had_identity_correction or had_qty_correction) / count(*), 1) as correction_rate_pct
+--   from public.scan_add_events
+--   group by 1
+--   order by 1;
+-- ---------------------------------------------------------------------------
+create table if not exists public.scan_add_events (
+  id uuid primary key default gen_random_uuid(),
+  card_id text,
+  had_identity_correction boolean not null default false,
+  had_qty_correction boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists scan_add_events_created_at_idx on public.scan_add_events (created_at desc);
+
+alter table public.scan_add_events enable row level security;
+
+drop policy if exists "signed-in users can log scan add events" on public.scan_add_events;
+create policy "signed-in users can log scan add events"
+  on public.scan_add_events for insert
+  to authenticated
+  with check (true);
+
+-- ---------------------------------------------------------------------------
 -- top_cards: usage-derived leaderboard, computed from every post's card_ids.
 -- ---------------------------------------------------------------------------
 create or replace view public.top_cards as

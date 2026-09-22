@@ -240,6 +240,20 @@
     });
   }
 
+  // Write-only usage telemetry: one row per card added from a scan,
+  // corrected or not -- see the comment above scan_add_events in
+  // schema.sql for how this is meant to be reviewed (a correction-rate
+  // query in the Supabase SQL editor, not through the app itself).
+  function logScanAddEvent(cardId, hadIdentityCorrection, hadQtyCorrection) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid || !cardId) return Promise.resolve();
+    return c.from("scan_add_events").insert({
+      card_id: cardId, had_identity_correction: !!hadIdentityCorrection, had_qty_correction: !!hadQtyCorrection
+    }).then(function (r) {
+      if (r.error) throw r.error;
+    });
+  }
+
   /* ---------------- decks (shared with friends) ---------------- */
 
   function deckRowToLocal(row) {
@@ -671,6 +685,7 @@
     enablePush: enablePush,
     disablePush: disablePush,
     identifyCards: identifyCards,
-    reviewScanQuantity: reviewScanQuantity
+    reviewScanQuantity: reviewScanQuantity,
+    logScanAddEvent: logScanAddEvent
   };
 })();

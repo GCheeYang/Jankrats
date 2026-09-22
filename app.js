@@ -4452,6 +4452,7 @@
         if (!added) { toast("Nothing checked to add."); return; }
         teachScanCorrections(addedRows);
         teachScanQuantityCorrections(addedRows);
+        logScanAddEvents(addedRows);
         toast("Added " + added + " card" + (added === 1 ? "" : "s") + " to your collection.");
         renderRail();
         if (state.route === "collection") renderCollectionView();
@@ -4727,6 +4728,20 @@
       JVBackend.reviewScanQuantity(frames, card.name, r.originalQty, r.qty).catch(function (err) {
         console.error("reviewScanQuantity failed", err);
       });
+    });
+  }
+
+  // Fire-and-forget usage telemetry, called for every added row --
+  // corrected or not, unlike teachScanCorrections/teachScanQuantityCorrections
+  // above -- so the correction rate can be tracked over time instead of
+  // just a raw, usage-inflated correction count. See the query in
+  // schema.sql's comment above scan_add_events for how to actually check
+  // whether the self-learning is working.
+  function logScanAddEvents(results) {
+    if (!JVBackend.isConfigured()) return;
+    results.forEach(function (r) {
+      if (!r.cardId) return;
+      JVBackend.logScanAddEvent(r.cardId, r.cardId !== r.originalCardId, r.qty !== r.originalQty).catch(function () {});
     });
   }
 
