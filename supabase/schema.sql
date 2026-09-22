@@ -368,6 +368,32 @@ create policy "signed-in users can update scan corrections"
   with check (true);
 
 -- ---------------------------------------------------------------------------
+-- scan_qty_reviews: a growing log of "the AI reported qty X for this card,
+-- the actual count was Y" cases, each paired with Claude's own short
+-- explanation of what it should have looked for. Written and read only by
+-- the identify-cards Edge Function (service role, bypasses RLS) -- never
+-- directly by client code -- so these policies exist for defense-in-depth
+-- and documentation, same reasoning as push_subscriptions' service-role
+-- note above, not because the client needs a path in.
+-- ---------------------------------------------------------------------------
+create table if not exists public.scan_qty_reviews (
+  id uuid primary key default gen_random_uuid(),
+  card_name text not null,
+  ai_qty integer not null,
+  true_qty integer not null,
+  analysis text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists scan_qty_reviews_created_at_idx on public.scan_qty_reviews (created_at desc);
+
+alter table public.scan_qty_reviews enable row level security;
+
+-- No policies -- RLS with zero policies denies every request through the
+-- anon/authenticated roles entirely; only the service-role key (which
+-- bypasses RLS) can touch this table, which is exactly what we want.
+
+-- ---------------------------------------------------------------------------
 -- top_cards: usage-derived leaderboard, computed from every post's card_ids.
 -- ---------------------------------------------------------------------------
 create or replace view public.top_cards as

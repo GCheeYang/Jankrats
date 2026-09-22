@@ -1,26 +1,48 @@
 // Jankrats — identify-cards Edge Function.
 //
 // Takes still frames (extracted client-side from an uploaded pack-opening
-// photo or video) and asks Claude to read off which Riftbound cards are
-// visible. Returns loose {name, qty, collectorNumber} guesses — matching
-// those against the real card database happens client-side, reusing the
-// same fuzzy matcher the voice-import flow already uses (bestCardMatch in
-// app.js), so this function never needs to know the card list itself.
+// photo or video, or a live camera recording) and asks Claude to read off
+// which Riftbound cards are visible. Returns loose {name, qty,
+// collectorNumber} guesses — matching those against the real card database
+// happens client-side, reusing the same fuzzy matcher the voice-import flow
+// already uses (bestCardMatch in app.js), so this function never needs to
+// know the card list itself.
+//
+// Two request shapes, picked by body.mode:
+//   - (default / "identify") { frames } -> { ok, cards }
+//     The normal path. Also folds in a handful of recent
+//     scan_qty_reviews (see below) as extra guidance before calling Claude.
+//   - "review" { frames, cardName, aiQty, trueQty } -> { ok, analysis }
+//     Called once a person corrects a wrong quantity in the review table
+//     (see teachScanQuantityCorrection in app.js). Sends the SAME frames
+//     back to Claude along with what it originally guessed and what the
+//     actual count was, asks for a short generalizable explanation of what
+//     visual evidence indicates the true count, and stores that analysis
+//     in scan_qty_reviews -- which the default path above then folds into
+//     every future identify call, so a real quantity mistake teaches
+//     something durable instead of just getting silently overwritten in
+//     one person's local edit.
 //
 // Deploy with: supabase functions deploy identify-cards
 // Needs the ANTHROPIC_API_KEY secret set first (get a key at
 // console.anthropic.com — this is separate from a claude.ai subscription):
 //   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+// SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided automatically by
+// Supabase, same as every other Edge Function in this project.
 
 import Anthropic from "npm:@anthropic-ai/sdk@latest";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
 const MODEL = Deno.env.get("ANTHROPIC_MODEL") || "claude-opus-5";
 const MAX_FRAMES = 40;
+const MAX_QTY_LESSONS = 8; // recent scan_qty_reviews rows folded into the identify prompt
+const MAX_LESSON_CHARS = 300; // defensive cap per lesson in case a review answer runs long
 
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-const SYSTEM_PROMPT = `You are looking at still frames sampled from a live camera feed, a recorded video, or a single photo, of someone opening a pack of the Riftbound Trading Card Game, sweeping/fanning a handful of cards past the camera, or showing off cards they own.
+const BASE_SYSTEM_PROMPT = `You are looking at still frames sampled from a live camera feed, a recorded video, or a single photo, of someone opening a pack of the Riftbound Trading Card Game, sweeping/fanning a handful of cards past the camera, or showing off cards they own.
 
 The frames are given to you in chronological order (frame 1 is earliest), sampled roughly every 0.2-0.4 seconds. Some frames may show no card at all (a gap between sweeps, an empty table, a hand mid-motion) -- that's expected, just ignore those. Identify every distinct physical card visible across the rest.
 
@@ -42,6 +64,12 @@ For each distinct card, report:
 Respond with ONLY a JSON array, no prose, no markdown code fences. If you can't identify any cards, respond with []. Example:
 [{"name":"Bargain-Bin Baron, Sir Reginald Duct-Taped","qty":1,"collectorNumber":"OGN-066/298"},{"name":"Anchor Dump","qty":3}]`;
 
+const REVIEW_SYSTEM_PROMPT = `You previously looked at a set of frames from a Riftbound TCG card-scanning session and reported a count for one card. The person who scanned these cards has now told you the count you reported was wrong and given you the actual correct count.
+
+Look at the frames again with that correction in mind. In 2-3 short sentences, explain what specific, generalizable visual signal in frames like these actually indicates the correct count rather than what you originally reported -- for example, a card reappearing as the clear front-and-center card after a genuinely different card was shown in between (a real second copy), versus the same physical card just being held steady or re-examined (not a new copy), or a stack sliver behind the front card that was ambiguous. If the frames genuinely don't contain enough evidence to explain the correction either way, say so plainly instead of guessing -- that itself is useful (it likely means the recording didn't get a clean look at every copy, not that anything was misread).
+
+Write your answer so it generalizes to counting DIFFERENT cards in future scans, not just this one card. Do not just restate the numbers you were given. Respond with plain text only, no JSON, no markdown.`;
+
 function extractJson(text: string): unknown {
   const cleaned = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   try {
@@ -51,6 +79,42 @@ function extractJson(text: string): unknown {
     if (match) return JSON.parse(match[0]);
     throw new Error("Model didn't return parseable JSON: " + text.slice(0, 200));
   }
+}
+
+function firstTextBlock(content: any[]): string {
+  for (const block of content) {
+    if (block.type === "text") return block.text;
+  }
+  return "";
+}
+
+function framesToImageBlocks(frames: string[]) {
+  return frames.map((dataUrl) => {
+    const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(dataUrl);
+    if (!match) throw new Error("Frame isn't a base64 image data URL");
+    return {
+      type: "image",
+      source: { type: "base64", media_type: match[1], data: match[2] },
+    };
+  });
+}
+
+// Recent corrections' analyses, folded into the identify prompt as
+// non-binding guidance -- capped in count and length so this can't grow
+// the prompt without bound as more corrections come in over time.
+async function recentQtyLessons(): Promise<string> {
+  const { data, error } = await supabase
+    .from("scan_qty_reviews")
+    .select("analysis")
+    .order("created_at", { ascending: false })
+    .limit(MAX_QTY_LESSONS);
+  if (error || !data || !data.length) return "";
+  const lines = data
+    .map((row: { analysis: string }) => (row.analysis || "").trim().slice(0, MAX_LESSON_CHARS))
+    .filter(Boolean)
+    .map((line: string) => `- ${line}`);
+  if (!lines.length) return "";
+  return `\n\nLESSONS FROM PAST QUANTITY CORRECTIONS (real cases where a person fixed a wrong count -- treat these as generalizable guidance about what to look for, not facts about these specific cards):\n${lines.join("\n")}`;
 }
 
 // The browser calls this function directly (not server-to-server like
@@ -71,46 +135,78 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
+async function handleReview(body: any) {
+  const frames: string[] = Array.isArray(body.frames) ? body.frames.slice(0, MAX_FRAMES) : [];
+  const cardName = String(body.cardName || "").trim();
+  const aiQty = Number(body.aiQty);
+  const trueQty = Number(body.trueQty);
+  if (!frames.length) return jsonResponse({ ok: false, error: "No frames provided" }, 400);
+  if (!cardName || !Number.isFinite(aiQty) || !Number.isFinite(trueQty)) {
+    return jsonResponse({ ok: false, error: "cardName, aiQty, and trueQty are required" }, 400);
+  }
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 400,
+    system: REVIEW_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          ...framesToImageBlocks(frames),
+          {
+            type: "text",
+            text: `Card: "${cardName}". You previously reported qty ${aiQty}. The actual correct qty is ${trueQty}.`,
+          },
+        ],
+      },
+    ],
+  } as any);
+
+  const analysis = firstTextBlock(response.content as any[]).trim();
+  if (analysis) {
+    const { error } = await supabase.from("scan_qty_reviews").insert({
+      card_name: cardName, ai_qty: aiQty, true_qty: trueQty, analysis,
+    });
+    if (error) console.error("scan_qty_reviews insert failed", error);
+  }
+  return jsonResponse({ ok: true, analysis });
+}
+
+async function handleIdentify(body: any) {
+  const frames: string[] = Array.isArray(body.frames) ? body.frames.slice(0, MAX_FRAMES) : [];
+  if (!frames.length) return jsonResponse({ ok: false, error: "No frames provided" }, 400);
+
+  const lessons = await recentQtyLessons();
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 2000,
+    system: BASE_SYSTEM_PROMPT + lessons,
+    messages: [
+      {
+        role: "user",
+        content: [
+          ...framesToImageBlocks(frames),
+          { type: "text", text: `Here are ${frames.length} frame(s) to look at. Identify the cards.` },
+        ],
+      },
+    ],
+  } as any);
+
+  const raw = firstTextBlock(response.content as any[]) || "[]";
+  const cards = extractJson(raw);
+  return jsonResponse({ ok: true, cards });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   if (req.method !== "POST") return jsonResponse({ ok: false, error: "POST only" }, 405);
 
   try {
     const body = await req.json();
-    const frames: string[] = Array.isArray(body.frames) ? body.frames.slice(0, MAX_FRAMES) : [];
-    if (!frames.length) return jsonResponse({ ok: false, error: "No frames provided" }, 400);
-
-    const imageBlocks = frames.map((dataUrl) => {
-      const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(dataUrl);
-      if (!match) throw new Error("Frame isn't a base64 image data URL");
-      return {
-        type: "image",
-        source: { type: "base64", media_type: match[1], data: match[2] },
-      };
-    });
-
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 2000,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            ...imageBlocks,
-            { type: "text", text: `Here are ${frames.length} frame(s) to look at. Identify the cards.` },
-          ],
-        },
-      ],
-    } as any);
-
-    let raw = "[]";
-    for (const block of response.content as any[]) {
-      if (block.type === "text") { raw = block.text; break; }
-    }
-
-    const cards = extractJson(raw);
-    return jsonResponse({ ok: true, cards });
+    if (body.mode === "review") return await handleReview(body);
+    return await handleIdentify(body);
   } catch (err) {
     console.error(err);
     return jsonResponse({ ok: false, error: String(err) }, 500);

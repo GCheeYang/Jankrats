@@ -4451,6 +4451,7 @@
         });
         if (!added) { toast("Nothing checked to add."); return; }
         teachScanCorrections(addedRows);
+        teachScanQuantityCorrections(addedRows);
         toast("Added " + added + " card" + (added === 1 ? "" : "s") + " to your collection.");
         renderRail();
         if (state.route === "collection") renderCollectionView();
@@ -4557,7 +4558,8 @@
   // far and keeps recording, rather than growing memory unboundedly.
   var cameraScanState = {
     stream: null, scanning: false, autoTimer: null,
-    frameBuffer: [], scanStartedAt: 0
+    frameBuffer: [], scanStartedAt: 0,
+    lastFrames: [] // the most recent full recording, kept around so a later quantity correction has something to send back for review -- see teachScanQuantityCorrections
   };
   var CAMERA_POLL_MS = 200;
   var CAMERA_MAX_FRAMES = 40; // matches the Edge Function's own MAX_FRAMES -- the size of each chunk analyzeCameraFrames sends per call
@@ -4647,8 +4649,9 @@
   // The collector number (when the AI could read it) is shown alongside
   // the name for the user to cross-check, not used to match — its printed
   // format varies too much to parse reliably, and the review step exists
-  // precisely to catch a wrong guess. rawName/originalCardId are kept
-  // alongside the editable phrase/cardId so teachScanCorrections (called
+  // precisely to catch a wrong guess. rawName/originalCardId/originalQty
+  // are kept alongside the editable phrase/cardId/qty so
+  // teachScanCorrections and teachScanQuantityCorrections (both called
   // when "Add" runs) can tell whether the person actually changed anything.
   function scanResultsFromCards(cards) {
     return (cards || []).map(function (c) {
@@ -4656,7 +4659,7 @@
       var qty = clamp(parseInt(c && c.qty, 10) || 1, 1, 999);
       var card = resolveScannedCard(name);
       var label = (name || "(unnamed)") + (c && c.collectorNumber ? " (" + c.collectorNumber + ")" : "");
-      return { phrase: label, qty: qty, cardId: card ? card.id : null, rawName: name, originalCardId: card ? card.id : null };
+      return { phrase: label, qty: qty, cardId: card ? card.id : null, rawName: name, originalCardId: card ? card.id : null, originalQty: qty };
     });
   }
 
@@ -4664,6 +4667,9 @@
   // onto an existing results list instead of replacing it -- a live-camera
   // capture identifies one card at a time, so scanning the same physical
   // card again should bump its row's qty rather than add a duplicate row.
+  // originalQty is bumped right alongside qty here (this is the AI's own
+  // running total, not a user edit) -- only a later direct edit of the qty
+  // input, which never touches originalQty, should make the two diverge.
   function mergeScanResults(existingResults, cards) {
     var results = existingResults.slice();
     (cards || []).forEach(function (c) {
@@ -4673,8 +4679,12 @@
       var cardId = card ? card.id : null;
       var label = (name || "(unnamed)") + (c && c.collectorNumber ? " (" + c.collectorNumber + ")" : "");
       var existing = cardId && results.filter(function (r) { return r.cardId === cardId; })[0];
-      if (existing) existing.qty = clamp(existing.qty + qty, 1, 999);
-      else results.push({ phrase: label, qty: qty, cardId: cardId, rawName: name, originalCardId: cardId });
+      if (existing) {
+        existing.qty = clamp(existing.qty + qty, 1, 999);
+        existing.originalQty = clamp(existing.originalQty + qty, 1, 999);
+      } else {
+        results.push({ phrase: label, qty: qty, cardId: cardId, rawName: name, originalCardId: cardId, originalQty: qty });
+      }
     });
     return results;
   }
@@ -4694,6 +4704,29 @@
       if (!key) return;
       state.scanCorrections[key] = r.cardId;
       JVBackend.teachScanCorrection(key, r.cardId).catch(function () {});
+    });
+  }
+
+  // Same idea as teachScanCorrections but for quantity: for each added row
+  // whose final qty differs from what the AI reported, sends the actual
+  // frames from that recording back to identify-cards in "review" mode --
+  // Claude looks at them again knowing the correct answer and writes a
+  // short explanation of what it should have looked for, which every
+  // future identify call then gets folded into its own prompt (see
+  // recentQtyLessons in the Edge Function). Needs cameraScanState.lastFrames
+  // (set once per recording, see analyzeCameraFrames) -- a no-op for the
+  // upload-photo/video path, which doesn't currently retain its frames.
+  function teachScanQuantityCorrections(results) {
+    if (!JVBackend.isConfigured()) return;
+    var frames = cameraScanState.lastFrames;
+    if (!frames || !frames.length) return;
+    results.forEach(function (r) {
+      if (!r.cardId || r.qty === r.originalQty) return;
+      var card = state.cardsById[r.cardId];
+      if (!card) return;
+      JVBackend.reviewScanQuantity(frames, card.name, r.originalQty, r.qty).catch(function (err) {
+        console.error("reviewScanQuantity failed", err);
+      });
     });
   }
 
@@ -4977,6 +5010,15 @@
   // bufferFrameTick's CAMERA_MAX_RECORD_MS safety valve on an unusually
   // long recording.
   function analyzeCameraFrames(el, frames) {
+    // Kept around for a later quantity correction to review against (see
+    // teachScanQuantityCorrections) -- only the most recent recording, so
+    // if results from an earlier recording are still sitting unreviewed
+    // in the table when a new one finishes, a qty fix on one of those
+    // older rows ends up reviewed against the wrong footage. Rare in
+    // practice (Add is usually clicked between recordings) and a
+    // best-effort learning signal either way, not worth the bookkeeping
+    // to track frames per row precisely.
+    cameraScanState.lastFrames = frames;
     scanSetLoadingStatus(el, "Reading " + frames.length + " frame" + (frames.length === 1 ? "" : "s") + "…");
     computeMotionScores(frames).then(function (scores) {
       return chunkFramesByMotion(frames, CAMERA_MAX_FRAMES, scores);

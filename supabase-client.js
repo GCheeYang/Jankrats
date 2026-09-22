@@ -607,6 +607,24 @@
     });
   }
 
+  // Same Edge Function, "review" mode -- sends the frames from a scan back
+  // to Claude along with what it originally reported for one card and what
+  // the actual correct count was. The function stores its own analysis in
+  // scan_qty_reviews and folds recent ones into every future identifyCards
+  // call, so a real quantity mistake teaches something durable instead of
+  // just getting silently overwritten in one person's local edit. Resolves
+  // to { ok, analysis } -- see teachScanQuantityCorrection in app.js.
+  function reviewScanQuantity(frames, cardName, aiQty, trueQty) {
+    var c = client_();
+    if (!c) return Promise.reject(new Error("Backend not configured"));
+    return c.functions.invoke("identify-cards", {
+      body: { mode: "review", frames: frames, cardName: cardName, aiQty: aiQty, trueQty: trueQty }
+    }).then(function (r) {
+      if (r.error) throw r.error;
+      return r.data;
+    });
+  }
+
   window.JVBackend = {
     isConfigured: isConfigured,
     getSession: getSession,
@@ -652,6 +670,7 @@
     pushSupported: pushSupported,
     enablePush: enablePush,
     disablePush: disablePush,
-    identifyCards: identifyCards
+    identifyCards: identifyCards,
+    reviewScanQuantity: reviewScanQuantity
   };
 })();
