@@ -5173,15 +5173,32 @@
   function analyzeCameraChunks(el, chunks) {
     scanSetLoadingStatus(el, chunks.length > 1 ? "Reading across " + chunks.length + " batches…" : "Reading…");
 
+    // Chunks are dispatched in parallel (for speed) but the cards inside
+    // them were seen in a strict left-to-right order during the recording,
+    // so a later chunk's API call can resolve before an earlier chunk's.
+    // Every new row created during this recording gets tagged with the
+    // index of the chunk it first appeared in, then the rows added since
+    // this recording started (everything from startIndex on -- rows from
+    // before it, or from an earlier recording, keep their position so any
+    // edits already made to them survive) get stable-sorted back into
+    // chunk order after each merge, so the final table always reflects
+    // scan order regardless of which chunk's request happened to land first.
+    var startIndex = scanImportState.results.length;
     var remaining = chunks.length;
     var anyFound = false;
     var anyError = false;
-    chunks.forEach(function (chunk) {
+    chunks.forEach(function (chunk, idx) {
       JVBackend.identifyCards(chunk).then(function (res) {
         var cards = (res && res.cards) || [];
         if (cards.length) {
           anyFound = true;
           scanImportState.results = mergeScanResults(scanImportState.results, cards);
+          for (var i = startIndex; i < scanImportState.results.length; i++) {
+            if (scanImportState.results[i]._chunkIndex === undefined) scanImportState.results[i]._chunkIndex = idx;
+          }
+          var head = scanImportState.results.slice(0, startIndex);
+          var tail = scanImportState.results.slice(startIndex).sort(function (a, b) { return a._chunkIndex - b._chunkIndex; });
+          scanImportState.results = head.concat(tail);
           rerenderScanResults();
         }
       }).catch(function (err) {

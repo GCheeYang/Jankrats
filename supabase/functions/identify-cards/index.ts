@@ -61,6 +61,8 @@ For each distinct card, report:
 - "qty": how many separate physical copies you're confident are shown, per the priority order above
 - "collectorNumber": the small set code + number printed on the card (e.g. "OGN-066/298"), if it's legible — omit this field entirely if you can't read it
 
+List the cards in the JSON array in the order each one is FIRST seen across the frames (earliest first) -- the person scanning wants their results back in the same order they showed the cards to the camera.
+
 Respond with ONLY a JSON array, no prose, no markdown code fences. If you can't identify any cards, respond with []. Example:
 [{"name":"Bargain-Bin Baron, Sir Reginald Duct-Taped","qty":1,"collectorNumber":"OGN-066/298"},{"name":"Anchor Dump","qty":3}]`;
 
