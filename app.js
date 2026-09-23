@@ -2397,7 +2397,9 @@
       '<span class="pill ' + (legal ? "good" : "warn") + '">' + (legal ? "Tournament legal" : issues.filter(function(i){return !i.ok;}).length + " issue(s)") + "</span>" +
       (buildability
         ? '<span class="pill ' + (buildability.buildable ? "good" : "warn") + '">' + (buildability.buildable ? "All cards owned" : missingCount + (missingCount === 1 ? " card missing" : " cards missing")) + "</span>" +
-          (buildability.buildable ? "" : '<button class="btn small ghost" data-find-who-has>Find who has these</button>')
+          (buildability.buildable ? "" :
+            '<button class="btn small ghost" data-find-who-has>Find who has these</button>' +
+            '<button class="btn small ghost" data-add-missing-wishlist>Add missing to Wishlist</button>')
         : "") +
       "</span>" +
       "</div>";
@@ -2716,6 +2718,28 @@
 
     host.querySelectorAll("[data-find-who-has]").forEach(function (b) {
       b.addEventListener("click", function () { openDeckMatchModal(deck); });
+    });
+
+    // Same missing-cards list "Find who has these" uses (computeBuildability),
+    // just added to this device's own Wishlist instead of checked against
+    // friends' collections -- picks ids[0] as the representative printing
+    // for a rune requirement satisfiable by any printing in its group.
+    host.querySelectorAll("[data-add-missing-wishlist]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var missing = computeBuildability(deck).missing;
+        var added = 0;
+        missing.forEach(function (m) {
+          var id = m.ids && m.ids[0];
+          if (!id || state.wanted.indexOf(id) !== -1) return;
+          state.wanted.push(id);
+          added++;
+        });
+        if (!added) { toast("Those cards are already on your Wishlist."); return; }
+        persistWanted();
+        trackEvent("wishlist_added_from_deck", { deck_id: deck.id, count: added });
+        toast(added + " card" + (added === 1 ? "" : "s") + " added to your Wishlist.");
+        if (state.route === "wanted") renderWantedView();
+      });
     });
 
     host.querySelectorAll("[data-delete-deck]").forEach(function (b) {
