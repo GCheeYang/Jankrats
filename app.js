@@ -3515,8 +3515,8 @@
       '<div class="field" style="max-width:220px;margin-bottom:14px;"><label>Number of participants</label>' +
       '<input type="number" min="2" max="64" id="new-tourney-count" value="8"></div>' +
       '<div class="field" style="margin-bottom:18px;"><label>Match format</label><div style="display:flex;gap:8px;" id="new-tourney-format">' +
-      '<button type="button" class="btn small primary" data-format="bo3">Best of 3</button>' +
-      '<button type="button" class="btn small" data-format="bo1">Best of 1</button>' +
+      '<button type="button" class="btn small primary" data-format="bo1">Best of 1</button>' +
+      '<button type="button" class="btn small" data-format="bo3">Best of 3</button>' +
       "</div></div>" +
       '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
       '<button class="btn ghost" data-close>Cancel</button>' +
