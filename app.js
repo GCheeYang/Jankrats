@@ -4190,7 +4190,7 @@
     return html;
   }
 
-  function tourneyStandingsTableHtml(rows) {
+  function tourneyStandingsTableHtml(rows, isOrganizer) {
     var html = "<h3>Standings</h3>";
     html += '<div style="overflow-x:auto;"><table class="coll-table tourney-standings-table"><thead><tr>' +
       "<th>#</th><th>Player</th><th>Pts</th><th>W-L-D</th><th>OMW%</th><th>GW%</th>" +
@@ -4198,7 +4198,9 @@
       rows.map(function (r, i) {
         return '<tr title="' + escapeHtml(r.player.name) + '">' +
           "<td>" + (i + 1) + "</td>" +
-          "<td>" + escapeHtml(r.player.name) + "</td>" +
+          "<td>" + (isOrganizer
+            ? '<input type="text" class="ts-name-input" data-rename-player="' + r.player.id + '" value="' + escapeHtml(r.player.name) + '">'
+            : escapeHtml(r.player.name)) + "</td>" +
           "<td>" + r.stats.matchPoints + "</td>" +
           "<td>" + r.stats.wins + "-" + r.stats.losses + "-" + r.stats.draws +
             (r.stats.byes ? ' <span class="ts-bye">+' + r.stats.byes + "b</span>" : "") + "</td>" +
@@ -4275,7 +4277,7 @@
         (round.number < TOURNEY_ROUNDS ? "Report results & pair Round " + (round.number + 1) : "Report results & finish tournament") + "</button>";
     }
     html += "</div>";
-    html += '<div class="deck-panel">' + tourneyStandingsTableHtml(standings) + "</div>";
+    html += '<div class="deck-panel">' + tourneyStandingsTableHtml(standings, isOrganizer) + "</div>";
     html += "</div></div>";
     return html;
   }
@@ -4301,6 +4303,24 @@
       t.updatedAt = Date.now ? Date.now() : 0;
       persistCurrentTournament(t);
       renderTournamentView();
+    });
+
+    // Lets the organizer fix a player's name (typo, placeholder "Player N"
+    // never replaced, a walk-in who wants a different display name, etc.)
+    // once the tournament's already under way -- the setup screen only
+    // covers this before Start Tournament is clicked. Re-renders on commit
+    // so the new name shows up everywhere else it's used (match rows, the
+    // "You're at Table X vs Y" callout) too, not just the standings row
+    // that was edited.
+    el.querySelectorAll("[data-rename-player]").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        var p = t.players.filter(function (pp) { return pp.id === inp.getAttribute("data-rename-player"); })[0];
+        if (!p) return;
+        p.name = inp.value.trim() || p.name;
+        t.updatedAt = Date.now ? Date.now() : 0;
+        persistCurrentTournament(t);
+        renderTournamentView();
+      });
     });
 
     el.querySelectorAll(".tourney-match-row[data-match]").forEach(function (row) {
