@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Every asset/script reference here and in app.js (e.g. assets/domains/*)
+     is a root-relative path with no leading slash, which only works when
+     the page is served from "/" -- a deep link like /tournament/<CODE> is
+     nested one level deeper and would resolve them against /tournament/
+     instead. This pins resolution to the site root regardless of the
+     current URL's path depth. -->
+<base href="/">
 <title>Jankrats</title>
 <link rel="icon" type="image/png" sizes="64x64" href="assets/favicon-64.png">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">

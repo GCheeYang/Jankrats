@@ -415,6 +415,19 @@
     return view === "home" ? "/" : "/" + view;
   }
 
+  // An organizer's invite link -- "/tournament/<CODE>" -- so a shared URL
+  // opens straight to that specific tournament (see openTournamentByLink)
+  // instead of the generic /tournament list. Codes are always uppercase
+  // (see genTourneyCode), normalized here so a link pasted in lowercase by
+  // some chat client's auto-linkifier still resolves.
+  function tournamentCodeFromPath(pathname) {
+    var m = /^\/tournament\/([^\/]+)\/?$/.exec(pathname || "");
+    return m ? decodeURIComponent(m[1]).toUpperCase() : null;
+  }
+  function tournamentInvitePath(code) {
+    return "/tournament/" + encodeURIComponent(code);
+  }
+
   function navigate(view) {
     if (VIEWS.indexOf(view) === -1) view = "home";
     state.route = view;
@@ -3543,6 +3556,35 @@
     trackEvent("tournament_created", { format: t.format, player_count: count, online: !!t.organizerId });
   }
 
+  // Guards fetchTournamentByCode against firing twice for the same code --
+  // renderTournamentView calls it every render while the fetch is in
+  // flight (e.g. once now, once again right after sign-in resolves).
+  var tourneyFetchingCode = null;
+
+  // Loads a tournament this device has no local copy of yet, by its join
+  // code alone -- used for an invite link (see tournamentCodeFromPath).
+  // getTournamentRemote has no membership requirement (any signed-in user
+  // who knows the code can read it, same trust model as the code itself),
+  // so this works whether or not the viewer has joined.
+  function fetchTournamentByCode(code) {
+    if (!JVBackend.isConfigured() || tourneyFetchingCode === code) return;
+    tourneyFetchingCode = code;
+    JVBackend.getTournamentRemote(code).then(function (row) {
+      tourneyFetchingCode = null;
+      if (!row) {
+        toast("No tournament found with that code.");
+        if (state.tourneyBuilder.tournamentId === code) backToTournamentList();
+        return;
+      }
+      applyRemoteTournamentData(code, row.data);
+      if (state.tourneyBuilder.tournamentId === code) renderTournamentView();
+    }).catch(function () {
+      tourneyFetchingCode = null;
+      toast("Couldn't load that tournament.");
+      if (state.tourneyBuilder.tournamentId === code) backToTournamentList();
+    });
+  }
+
   function openTournament(id) {
     state.tourneyBuilder.tournamentId = id;
     state.tourneyBuilder.viewingRound = null;
@@ -3561,6 +3603,10 @@
   function backToTournamentList() {
     state.tourneyBuilder.tournamentId = null;
     tourneyStopLiveSync();
+    // Leaving an invite-link URL (/tournament/<CODE>) for the list --
+    // swap the address bar back to the plain /tournament so a refresh from
+    // here lands on the list instead of re-opening that same tournament.
+    if (tournamentCodeFromPath(window.location.pathname)) window.history.replaceState({ view: "tournament" }, "", "/tournament");
     renderTournamentView();
   }
 
@@ -3819,6 +3865,17 @@
       return;
     }
     var t = currentTournament();
+    // A pending id with nothing cached locally yet means we landed on an
+    // invite link (/tournament/<CODE>, see tournamentCodeFromPath) for a
+    // tournament this device has never opened before -- fetch it by code
+    // before falling back to the "no tournament open" list view, so a
+    // freshly-signed-in guest lands on that tournament's roster/join
+    // screen instead of an empty list.
+    if (!t && state.tourneyBuilder.tournamentId) {
+      fetchTournamentByCode(state.tourneyBuilder.tournamentId);
+      el.innerHTML = '<div class="empty-state"><h3>Loading tournament…</h3></div>';
+      return;
+    }
     if (t && consumePendingRosterUpdate(t.id)) t = currentTournament();
     tourneyEnsureLiveSync(t);
     var html = "";
@@ -3885,7 +3942,8 @@
       html += '<div class="callout" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
         '<span>' + (isOrganizer ? "Share this code so players can join:" : "Joined as a participant. Tournament code:") + "</span>" +
         '<span style="font-family:\'IBM Plex Mono\',monospace;font-weight:700;font-size:16px;letter-spacing:0.08em;">' + escapeHtml(t.id) + "</span>" +
-        (isOrganizer ? '<button type="button" class="btn small" data-action="copy-code">Copy</button>' : "") +
+        (isOrganizer ? '<button type="button" class="btn small" data-action="copy-code">Copy code</button>' : "") +
+        (isOrganizer ? '<button type="button" class="btn small primary" data-action="copy-link">Copy invite link</button>' : "") +
         "</div>";
     }
 
@@ -3899,9 +3957,29 @@
     if (!isOrganizer) {
       var myId = JVBackend.currentUserId();
       var joined = t.players.some(function (p) { return p.userId === myId; });
-      html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' +
-        (joined ? "You're on the roster. Waiting for the organizer to start the tournament…" : "Couldn't find you on the roster yet — try rejoining with the code.") +
-        "</p>";
+      // Not on the roster yet (typically someone who opened an invite link
+      // rather than an existing participant) -- show who's already signed
+      // up and a one-click way to join, instead of just telling them to go
+      // paste the code into a different screen.
+      if (!joined) {
+        var takenSeats = t.players.filter(function (p) { return p.name && p.name.trim(); });
+        var openSeats = t.players.length - takenSeats.length;
+        html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">' +
+          t.players.length + " seats · " + takenSeats.length + " joined" + (openSeats > 0 ? " · " + openSeats + " open" : " · full") +
+          "</p>";
+        html += tourneyFormatLabelHtml(t);
+        html += takenSeats.length
+          ? '<div class="tourney-roster-list">' + takenSeats.map(function (p) {
+              return '<div class="tourney-roster-row"><input type="text" value="' + escapeHtml(p.name) + '" disabled></div>';
+            }).join("") + "</div>"
+          : '<div class="empty-state"><p>No one has joined yet — be the first!</p></div>';
+        html += openSeats > 0
+          ? '<button type="button" class="btn primary" style="margin-top:14px;" data-action="join-this-tourney">Join Tournament</button>'
+          : '<p style="margin-top:14px;color:var(--ink-faint);">This tournament is full.</p>';
+        html += "</div>";
+        return html;
+      }
+      html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;">You\'re on the roster. Waiting for the organizer to start the tournament…</p>';
       html += tourneyFormatLabelHtml(t);
       html += '<div class="tourney-roster-list">' + t.players.map(function (p) {
         return '<div class="tourney-roster-row"><input type="text" value="' + escapeHtml(p.name) + '" placeholder="Empty seat" disabled></div>';
@@ -3926,10 +4004,21 @@
   }
 
   function wireTournamentSetup(el, t) {
+    // Join Tournament (only rendered for a signed-in non-participant, see
+    // tournamentSetupHtml) needs wiring regardless of organizer status --
+    // everything below this is organizer-only setup controls.
+    var joinBtn = el.querySelector('[data-action="join-this-tourney"]');
+    if (joinBtn) joinBtn.addEventListener("click", function () { joinTournamentFlow(t.id); });
+
     if (!tourneyIsOrganizer(t)) return;
 
     var copyBtn = el.querySelector('[data-action="copy-code"]');
     if (copyBtn) copyBtn.addEventListener("click", function () { copyToClipboard(t.id); toast("Code copied."); });
+
+    var copyLinkBtn = el.querySelector('[data-action="copy-link"]');
+    if (copyLinkBtn) copyLinkBtn.addEventListener("click", function () {
+      copyToClipboard(window.location.origin + tournamentInvitePath(t.id));
+    });
 
     var refreshBtn = el.querySelector('[data-action="refresh-roster"]');
     if (refreshBtn) refreshBtn.addEventListener("click", function () {
@@ -5363,6 +5452,13 @@
       rerenderSoft(null, renderCardsView);
     });
     window.addEventListener("popstate", function (e) {
+      var tourneyCode = tournamentCodeFromPath(window.location.pathname);
+      if (tourneyCode) {
+        state.route = "tournament";
+        state.tourneyBuilder.tournamentId = tourneyCode;
+        render();
+        return;
+      }
       var v = pathToView(window.location.pathname);
       if (v) {
         state.route = v;
@@ -5372,6 +5468,7 @@
         // back/forward (including a swipe-back gesture) steps out of the
         // deck builder to the list instead of leaving /decks entirely.
         if (v === "decks") state.builder.deckId = (e.state && e.state.deckId) || null;
+        if (v === "tournament") state.tourneyBuilder.tournamentId = null;
         render();
       }
     });
@@ -6052,13 +6149,17 @@
     // ever gets consulted -- so check that legacy hash case first.
     var legacyHash = (window.location.hash || "").replace("#", "");
     var v;
-    if ((window.location.pathname === "/" || window.location.pathname === "") && VIEWS.indexOf(legacyHash) !== -1) {
+    var tourneyCode = tournamentCodeFromPath(window.location.pathname);
+    if (tourneyCode) {
+      v = "tournament";
+      state.tourneyBuilder.tournamentId = tourneyCode;
+    } else if ((window.location.pathname === "/" || window.location.pathname === "") && VIEWS.indexOf(legacyHash) !== -1) {
       v = legacyHash;
     } else {
       v = pathToView(window.location.pathname) || "home";
     }
     state.route = v;
-    var path = viewToPath(v);
+    var path = tourneyCode ? tournamentInvitePath(tourneyCode) : viewToPath(v);
     if (window.location.pathname !== path || window.location.hash) window.history.replaceState({ view: v }, "", path);
     render();
   }
