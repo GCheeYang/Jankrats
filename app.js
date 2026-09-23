@@ -219,7 +219,9 @@
     social: {
       session: null,           // Supabase auth session, or null when signed out
       myProfile: null,         // row from public.profiles for the signed-in user
-      followingIds: [],        // ids the signed-in user follows
+      friendIds: [],            // ids of mutually-accepted friends
+      incomingRequestIds: [],   // ids of people who requested this user, awaiting accept/decline
+      outgoingRequestIds: [],   // ids this user has requested, awaiting their accept
       feedPosts: null,         // null = not loaded yet, [] = loaded & empty
       feedComposer: "deck",    // "deck" | "pull" — which composer tab is open
       openComments: {},        // postId -> comments array, once expanded/loaded
@@ -1255,7 +1257,7 @@
   function loadWantedCollectionsIfNeeded() {
     var s = state.social;
     var pool = s.wantedProfiles || [];
-    var people = s.wantedScope === "everyone" ? pool : pool.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
+    var people = s.wantedScope === "everyone" ? pool : pool.filter(function (p) { return s.friendIds.indexOf(p.id) !== -1; });
     var missing = people.map(function (p) { return p.id; }).filter(function (id) { return !s.wantedCollections[id]; });
     if (!missing.length) return;
     JVBackend.listCollectionsFor(missing).then(function (byUser) {
@@ -1301,7 +1303,7 @@
     if (s.wantedProfiles === null) return heading + '<p style="color:var(--ink-faint);">Loading…</p>';
 
     var mode = s.wantedScope === "everyone" ? "everyone" : "mine";
-    var people = mode === "everyone" ? s.wantedProfiles : s.wantedProfiles.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
+    var people = mode === "everyone" ? s.wantedProfiles : s.wantedProfiles.filter(function (p) { return s.friendIds.indexOf(p.id) !== -1; });
     var total = state.wanted.length;
     var rows = people.map(function (p) {
       var coll = s.wantedCollections[p.id];
@@ -1431,6 +1433,63 @@
     else renderFriendDetail();
   }
 
+  // Which of the four friend-relationship states exist between the
+  // signed-in user and userId -- drives both the button shown for them
+  // and which "Friends" tab they're listed under.
+  function friendRelationState(userId) {
+    var s = state.social;
+    if (s.friendIds.indexOf(userId) !== -1) return "friends";
+    if (s.outgoingRequestIds.indexOf(userId) !== -1) return "outgoing";
+    if (s.incomingRequestIds.indexOf(userId) !== -1) return "incoming";
+    return "none";
+  }
+
+  function friendTileAvatarHtml(p) {
+    return (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
+      '<span class="friend-name">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span>";
+  }
+
+  // The action button(s) for a given relationship state, wired generically
+  // by wireFriendActionButtons below -- every state's button carries the
+  // other user's id and which action it performs, so one click handler
+  // covers requesting, accepting, declining, cancelling and unfriending.
+  function friendActionButtonHtml(userId, relState) {
+    if (relState === "friends") return '<button type="button" class="btn small" data-friend-action="remove" data-friend-id="' + userId + '">Friends ✓</button>';
+    if (relState === "outgoing") return '<button type="button" class="btn small ghost" data-friend-action="cancel" data-friend-id="' + userId + '" title="Cancel request">Requested</button>';
+    if (relState === "incoming") return '<span style="display:flex;gap:6px;flex:none;">' +
+      '<button type="button" class="btn small primary" data-friend-action="accept" data-friend-id="' + userId + '">Accept</button>' +
+      '<button type="button" class="btn small ghost" data-friend-action="decline" data-friend-id="' + userId + '">Decline</button>' +
+      "</span>";
+    return '<button type="button" class="btn small primary" data-friend-action="request" data-friend-id="' + userId + '">+ Add Friend</button>';
+  }
+
+  // Shared by the Friends list and the Profile page's Friend button --
+  // request/accept/decline/cancel/remove are all just "insert a pending
+  // row" or "delete whatever edge exists" (see sendFriendRequest,
+  // acceptFriendRequest, removeFriendEdge in supabase-client.js), so one
+  // handler covers every action, keyed off data-friend-action.
+  function wireFriendActionButtons(el, onDone) {
+    el.querySelectorAll("[data-friend-action]").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var action = b.getAttribute("data-friend-action");
+        var id = b.getAttribute("data-friend-id");
+        var promise = action === "request" ? JVBackend.sendFriendRequest(id)
+          : action === "accept" ? JVBackend.acceptFriendRequest(id)
+          : JVBackend.removeFriendEdge(id); // cancel, decline, and remove are all "delete the edge"
+        promise.then(function () {
+          var s = state.social;
+          s.friendIds = s.friendIds.filter(function (x) { return x !== id; });
+          s.incomingRequestIds = s.incomingRequestIds.filter(function (x) { return x !== id; });
+          s.outgoingRequestIds = s.outgoingRequestIds.filter(function (x) { return x !== id; });
+          if (action === "request") s.outgoingRequestIds.push(id);
+          else if (action === "accept") s.friendIds.push(id);
+          onDone();
+        }).catch(function () { toast("Couldn't update that -- try again."); });
+      });
+    });
+  }
+
   function renderFriendsList() {
     var el = document.getElementById("view-friends");
     var s = state.social;
@@ -1443,40 +1502,60 @@
       return;
     }
 
-    var mode = s.friendsMode === "add" ? "add" : "mine";
+    var mode = ["mine", "requests", "add"].indexOf(s.friendsMode) !== -1 ? s.friendsMode : "mine";
     var myId = JVBackend.currentUserId();
     var others = s.friendsProfiles.filter(function (p) { return p.id !== myId; });
-    var mine = others.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
-    var list = mode === "add" ? others : mine;
+    var byId = {};
+    others.forEach(function (p) { byId[p.id] = p; });
+
+    var mine = others.filter(function (p) { return s.friendIds.indexOf(p.id) !== -1; });
+    var incoming = s.incomingRequestIds.map(function (id) { return byId[id]; }).filter(Boolean);
+    var outgoing = s.outgoingRequestIds.map(function (id) { return byId[id]; }).filter(Boolean);
+    var pendingCount = incoming.length + outgoing.length;
+    var addable = others.filter(function (p) { return friendRelationState(p.id) === "none"; });
 
     var html = '<div class="view-head"><div><h1>Friends</h1><p>' +
-      (mode === "add" ? "Everyone signed in to this Vault. Add someone to start seeing their collection." : "People you've added. Pick someone to see what they own, side by side with your own collection.") +
+      (mode === "add" ? "Everyone signed in to this Vault who isn't already a friend. Send a request to start seeing their collection once they accept."
+        : mode === "requests" ? "Requests you've sent, and requests waiting on you."
+        : "People you're friends with. Pick someone to see what they own, side by side with your own collection.") +
       "</p></div></div>";
 
     html += '<div class="tabs" style="margin-bottom:16px;">' +
       '<button class="' + (mode === "mine" ? "active" : "") + '" data-friends-mode="mine">My friends</button>' +
+      '<button class="' + (mode === "requests" ? "active" : "") + '" data-friends-mode="requests">Requests' + (pendingCount ? ' <span class="pill neutral">' + pendingCount + "</span>" : "") + "</button>" +
       '<button class="' + (mode === "add" ? "active" : "") + '" data-friends-mode="add">Add friends</button>' +
       "</div>";
 
-    if (!list.length) {
-      html += mode === "add"
-        ? '<div class="empty-state"><h3>No one else has signed in yet</h3><p>Once a friend signs in with Google, they\'ll show up here to add.</p></div>'
-        : '<div class="empty-state"><h3>No friends added yet</h3><p>Switch to <b>Add friends</b> to find people who\'ve signed in.</p></div>';
+    if (mode === "requests") {
+      if (!incoming.length && !outgoing.length) {
+        html += '<div class="empty-state"><h3>No pending requests</h3><p>Send one from <b>Add friends</b>.</p></div>';
+      } else {
+        if (incoming.length) {
+          html += '<h3 style="margin-bottom:8px;">Waiting on you</h3><div class="friends-grid">' + incoming.map(function (p) {
+            return '<div class="friend-tile">' + friendTileAvatarHtml(p) + friendActionButtonHtml(p.id, "incoming") + "</div>";
+          }).join("") + "</div>";
+        }
+        if (outgoing.length) {
+          html += '<h3 style="margin:' + (incoming.length ? "18px" : "0") + ' 0 8px;">Waiting on them</h3><div class="friends-grid">' + outgoing.map(function (p) {
+            return '<div class="friend-tile">' + friendTileAvatarHtml(p) + friendActionButtonHtml(p.id, "outgoing") + "</div>";
+          }).join("") + "</div>";
+        }
+      }
     } else if (mode === "add") {
-      html += '<div class="friends-grid">' + list.map(function (p) {
-        var isFriend = s.followingIds.indexOf(p.id) !== -1;
-        return '<div class="friend-tile">' +
-          (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
-          '<span class="friend-name">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span>" +
-          '<button class="btn small ' + (isFriend ? "" : "primary") + '" data-toggle-friend="' + p.id + '">' + (isFriend ? "Remove" : "+ Add") + "</button>" +
-          "</div>";
-      }).join("") + "</div>";
+      html += !addable.length
+        ? '<div class="empty-state"><h3>No one new to add</h3><p>Everyone else who\'s signed in is already a friend or has a pending request.</p></div>'
+        : '<div class="friends-grid">' + addable.map(function (p) {
+            return '<div class="friend-tile">' + friendTileAvatarHtml(p) + friendActionButtonHtml(p.id, "none") + "</div>";
+          }).join("") + "</div>";
     } else {
-      html += '<div class="friends-grid">' + list.map(function (p) {
-        return '<button class="friend-tile" data-open-friend="' + p.id + '">' +
-          (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
-          '<span class="friend-name">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span></button>";
-      }).join("") + "</div>";
+      html += !mine.length
+        ? '<div class="empty-state"><h3>No friends yet</h3><p>Switch to <b>Add friends</b> to send a request.</p></div>'
+        : '<div class="friends-grid">' + mine.map(function (p) {
+            return '<div class="friend-tile">' +
+              '<button type="button" class="friend-tile-open" data-open-friend="' + p.id + '">' + friendTileAvatarHtml(p) + "</button>" +
+              friendActionButtonHtml(p.id, "friends") +
+              "</div>";
+          }).join("") + "</div>";
     }
 
     el.innerHTML = html;
@@ -1486,17 +1565,7 @@
     el.querySelectorAll("[data-open-friend]").forEach(function (b) {
       b.addEventListener("click", function () { openFriend(b.getAttribute("data-open-friend")); });
     });
-    el.querySelectorAll("[data-toggle-friend]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var id = b.getAttribute("data-toggle-friend");
-        var was = s.followingIds.indexOf(id) !== -1;
-        JVBackend.toggleFollow(id, was).then(function () {
-          if (was) s.followingIds = s.followingIds.filter(function (x) { return x !== id; });
-          else s.followingIds.push(id);
-          renderFriendsList();
-        }).catch(function () { toast("Couldn't update your friends list."); });
-      });
-    });
+    wireFriendActionButtons(el, renderFriendsList);
   }
 
   function renderFriendDetail() {
@@ -3338,7 +3407,7 @@
 
     if (s.wantedProfiles === null) return html + '<p style="color:var(--ink-faint);">Loading…</p>';
 
-    var people = dm.scope === "everyone" ? s.wantedProfiles : s.wantedProfiles.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
+    var people = dm.scope === "everyone" ? s.wantedProfiles : s.wantedProfiles.filter(function (p) { return s.friendIds.indexOf(p.id) !== -1; });
     var rows = people.map(function (p) {
       var coll = s.wantedCollections[p.id];
       var owned = coll ? dm.items.reduce(function (n, item) { return n + (hasAnyOwned(item.ids, coll) ? 1 : 0); }, 0) : null;
@@ -3396,7 +3465,7 @@
     var dm = s.deckMatch;
     if (!dm) return;
     var pool = s.wantedProfiles || [];
-    var people = dm.scope === "everyone" ? pool : pool.filter(function (p) { return s.followingIds.indexOf(p.id) !== -1; });
+    var people = dm.scope === "everyone" ? pool : pool.filter(function (p) { return s.friendIds.indexOf(p.id) !== -1; });
     var missing = people.map(function (p) { return p.id; }).filter(function (id) { return !s.wantedCollections[id]; });
     if (!missing.length) return;
     JVBackend.listCollectionsFor(missing).then(function (byUser) {
@@ -5537,7 +5606,12 @@
           // that only happened to self-correct by navigating away and back.
           if (state.route === "feed" || state.route === "profile" || state.route === "dashboard" || state.route === "tournament") render();
         });
-        JVBackend.listFollowingIds().then(function (ids) { state.social.followingIds = ids; });
+        JVBackend.listFriendEdges().then(function (edges) {
+          state.social.friendIds = edges.friends;
+          state.social.incomingRequestIds = edges.incoming;
+          state.social.outgoingRequestIds = edges.outgoing;
+          if (state.route === "friends") renderFriendsView();
+        });
         // event === "SIGNED_IN" is Supabase's own signal for a genuine,
         // just-happened sign-in — unlike the old `!hadSession` check, this
         // does NOT fire again on an ordinary reload/tab reopen of an
@@ -5549,7 +5623,9 @@
         if (event === "SIGNED_IN") { syncCollectionOnSignIn(); syncDecksOnSignIn(); }
       } else if (hadSession) {
         state.social.myProfile = null;
-        state.social.followingIds = [];
+        state.social.friendIds = [];
+        state.social.incomingRequestIds = [];
+        state.social.outgoingRequestIds = [];
         state.social.feedPosts = null;
         state.social.friendsProfiles = null;
         state.social.friendsTargetId = null;
@@ -6109,11 +6185,10 @@
 
     var profile = state.social.profileData;
     var bannerCard = profile.champion_banner_card_id ? state.cardsById[profile.champion_banner_card_id] : null;
-    var isFollowing = state.social.followingIds.indexOf(targetId) !== -1;
 
     html += '<div class="profile-banner"' + (bannerCard && bannerCard.imageUrl ? " style=\"background-image:url('" + escapeHtml(bannerCard.imageUrl) + "')\"" : "") + '>' +
       '<div class="profile-banner-overlay"><h1>' + escapeHtml(profile.display_name || "Anonymous brewer") + "</h1>" +
-      '<button class="btn small ' + (isFollowing ? "" : "primary") + '" id="follow-btn">' + (isFollowing ? "Following" : "Follow") + "</button>" +
+      friendActionButtonHtml(targetId, friendRelationState(targetId)) +
       "</div></div>";
 
     html += '<div class="section-block"><h2>Activity</h2><div id="profile-posts-host">';
@@ -6129,15 +6204,7 @@
     el.innerHTML = html;
     wirePostCards(el);
 
-    var followBtn = el.querySelector("#follow-btn");
-    if (followBtn) followBtn.addEventListener("click", function () {
-      var was = isFollowing;
-      JVBackend.toggleFollow(targetId, was).then(function () {
-        if (was) state.social.followingIds = state.social.followingIds.filter(function (id) { return id !== targetId; });
-        else state.social.followingIds.push(targetId);
-        renderProfileView();
-      });
-    });
+    wireFriendActionButtons(el, renderProfileView);
 
     if (state.social.profilePosts === null) {
       JVBackend.listPosts({ authorId: targetId, limit: 50 }).then(function (posts) {

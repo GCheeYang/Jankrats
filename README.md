@@ -21,8 +21,8 @@ and I'll wire the app up to them.
 1. In the left sidebar: **SQL Editor → New query**.
 2. Open `supabase/schema.sql` from the project files I gave you, paste the
    whole thing in, and click **Run**.
-3. This creates every table (profiles, posts, follows, kudos, comments,
-   push subscriptions), the security rules that keep people from editing
+3. This creates every table (profiles, posts, friend requests, kudos,
+   comments, push subscriptions), the security rules that keep people from editing
    each other's data, and the `media` storage bucket for photos/videos.
    It's safe to re-run if you ever need to.
 

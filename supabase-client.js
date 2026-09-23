@@ -1,6 +1,6 @@
 /* ============================================================
    JVBackend — thin wrapper around Supabase for Jankrats' social layer
-   (Feed, Profiles, Follows, Kudos, Comments, Top Cards, Push).
+   (Feed, Profiles, Friends, Kudos, Comments, Top Cards, Push).
 
    Every method degrades gracefully when Supabase isn't configured yet
    (config.js still has placeholder values, or offline/local file use):
@@ -446,22 +446,61 @@
       .then(function (r) { if (r.error) throw r.error; return r.data; });
   }
 
-  /* ---------------- follows ---------------- */
+  /* ---------------- friends (mutual -- request, then accept) ---------------- */
 
-  function listFollowingIds() {
+  // Every friend_requests row this user is a party to, reshaped into three
+  // id lists: `friends` (status "accepted", either direction), `incoming`
+  // (pending requests sent TO this user, awaiting their accept/decline),
+  // and `outgoing` (pending requests this user sent, awaiting the other
+  // side's accept). A relationship only becomes mutual once the recipient
+  // accepts (see acceptFriendRequest) -- unlike the old one-directional
+  // follow, nobody shows up as a friend without both sides agreeing.
+  function listFriendEdges() {
     var c = client_(); var uid = currentUserId();
-    if (!c || !uid) return Promise.resolve([]);
-    return c.from("follows").select("following_id").eq("follower_id", uid)
-      .then(function (r) { return (r.data || []).map(function (f) { return f.following_id; }); });
+    if (!c || !uid) return Promise.resolve({ friends: [], incoming: [], outgoing: [] });
+    return c.from("friend_requests").select("requester_id, recipient_id, status")
+      .or("requester_id.eq." + uid + ",recipient_id.eq." + uid)
+      .then(function (r) {
+        if (r.error) throw r.error;
+        var friends = [], incoming = [], outgoing = [];
+        (r.data || []).forEach(function (row) {
+          var otherId = row.requester_id === uid ? row.recipient_id : row.requester_id;
+          if (row.status === "accepted") friends.push(otherId);
+          else if (row.recipient_id === uid) incoming.push(otherId);
+          else outgoing.push(otherId);
+        });
+        return { friends: friends, incoming: incoming, outgoing: outgoing };
+      });
   }
 
-  function toggleFollow(userId, currentlyFollowing) {
+  function sendFriendRequest(userId) {
     var c = client_(); var uid = currentUserId();
     if (!c || !uid) return Promise.reject(new Error("Not signed in"));
-    if (currentlyFollowing) {
-      return Promise.resolve(c.from("follows").delete().eq("follower_id", uid).eq("following_id", userId));
-    }
-    return Promise.resolve(c.from("follows").insert({ follower_id: uid, following_id: userId }));
+    return c.from("friend_requests").insert({ requester_id: uid, recipient_id: userId, status: "pending" })
+      .then(function (r) { if (r.error) throw r.error; });
+  }
+
+  // Only the recipient of a pending request can accept it (see the RLS
+  // update policy on friend_requests) -- requesterId is always the OTHER
+  // person, never the signed-in user.
+  function acceptFriendRequest(requesterId) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return c.from("friend_requests").update({ status: "accepted", responded_at: new Date().toISOString() })
+      .eq("requester_id", requesterId).eq("recipient_id", uid)
+      .then(function (r) { if (r.error) throw r.error; });
+  }
+
+  // Deletes whatever edge exists between this user and otherId, regardless
+  // of direction or status -- the same call covers declining an incoming
+  // request, cancelling one this user sent, and unfriending someone
+  // already accepted.
+  function removeFriendEdge(otherId) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return c.from("friend_requests").delete()
+      .or("and(requester_id.eq." + uid + ",recipient_id.eq." + otherId + "),and(requester_id.eq." + otherId + ",recipient_id.eq." + uid + ")")
+      .then(function (r) { if (r.error) throw r.error; });
   }
 
   /* ---------------- top cards ---------------- */
@@ -689,8 +728,10 @@
     toggleKudos: toggleKudos,
     listComments: listComments,
     addComment: addComment,
-    listFollowingIds: listFollowingIds,
-    toggleFollow: toggleFollow,
+    listFriendEdges: listFriendEdges,
+    sendFriendRequest: sendFriendRequest,
+    acceptFriendRequest: acceptFriendRequest,
+    removeFriendEdge: removeFriendEdge,
     getTopCards: getTopCards,
     subscribeFeed: subscribeFeed,
     createTournamentRemote: createTournamentRemote,

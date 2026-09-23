@@ -195,30 +195,76 @@ create policy "users can delete their own posts"
   using (auth.uid() = author_id);
 
 -- ---------------------------------------------------------------------------
--- follows
+-- friend_requests: a mutual friendship, gated by request + accept. One row
+-- per pair, "pending" until the recipient accepts it (see the update
+-- policy below, which only lets the recipient do that) or either side
+-- deletes it -- decline, cancel, and unfriend are all just deleting the
+-- row, regardless of its status. Only readable by the two people it's
+-- between (unlike the old `follows`, which was publicly readable), since
+-- a pending row is who-requested-whom information that isn't anyone
+-- else's business.
 -- ---------------------------------------------------------------------------
+create table if not exists public.friend_requests (
+  requester_id uuid not null references public.profiles(id) on delete cascade,
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  status text not null default 'pending', -- 'pending' | 'accepted'
+  created_at timestamptz not null default now(),
+  responded_at timestamptz,
+  primary key (requester_id, recipient_id),
+  constraint no_self_friend_request check (requester_id <> recipient_id)
+);
+
+alter table public.friend_requests enable row level security;
+
+drop policy if exists "friend requests are readable by the two people in them" on public.friend_requests;
+create policy "friend requests are readable by the two people in them"
+  on public.friend_requests for select
+  to authenticated
+  using (auth.uid() = requester_id or auth.uid() = recipient_id);
+
+drop policy if exists "users send their own friend requests" on public.friend_requests;
+create policy "users send their own friend requests"
+  on public.friend_requests for insert
+  to authenticated
+  with check (auth.uid() = requester_id and status = 'pending');
+
+drop policy if exists "only the recipient can accept a request" on public.friend_requests;
+create policy "only the recipient can accept a request"
+  on public.friend_requests for update
+  to authenticated
+  using (auth.uid() = recipient_id)
+  with check (auth.uid() = recipient_id);
+
+drop policy if exists "either side can delete a request or friendship" on public.friend_requests;
+create policy "either side can delete a request or friendship"
+  on public.friend_requests for delete
+  to authenticated
+  using (auth.uid() = requester_id or auth.uid() = recipient_id);
+
+-- One-time migration from the old one-directional `follows` (kept around
+-- just long enough to carry its data over): a pair that followed each
+-- other both ways becomes an accepted friendship; a one-directional follow
+-- becomes a pending request in that same direction, so nobody's existing
+-- connections just vanish under the new request/accept model. A no-op,
+-- safe to leave in permanently, once `follows` is gone (including on a
+-- fresh install, which never had a `follows` table to migrate from).
 create table if not exists public.follows (
   follower_id uuid not null references public.profiles(id) on delete cascade,
   following_id uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz not null default now(),
-  primary key (follower_id, following_id),
-  constraint no_self_follow check (follower_id <> following_id)
+  primary key (follower_id, following_id)
 );
-
-alter table public.follows enable row level security;
-
-drop policy if exists "follows are publicly readable" on public.follows;
-create policy "follows are publicly readable"
-  on public.follows for select
-  to authenticated
-  using (true);
-
-drop policy if exists "users manage their own follows" on public.follows;
-create policy "users manage their own follows"
-  on public.follows for all
-  to authenticated
-  using (auth.uid() = follower_id)
-  with check (auth.uid() = follower_id);
+insert into public.friend_requests (requester_id, recipient_id, status, responded_at)
+select f.follower_id, f.following_id,
+  case when exists (
+    select 1 from public.follows f2 where f2.follower_id = f.following_id and f2.following_id = f.follower_id
+  ) then 'accepted' else 'pending' end,
+  case when exists (
+    select 1 from public.follows f2 where f2.follower_id = f.following_id and f2.following_id = f.follower_id
+  ) then now() else null end
+from public.follows f
+on conflict (requester_id, recipient_id) do nothing;
+drop table if exists public.follows;
 
 -- ---------------------------------------------------------------------------
 -- kudos (one per user per post)
