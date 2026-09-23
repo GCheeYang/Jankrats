@@ -428,6 +428,16 @@
     return "/tournament/" + encodeURIComponent(code);
   }
 
+  // Pushes a history entry at this tournament's own URL whenever one gets
+  // opened (from the list, from creating one, or from joining) -- without
+  // this the address bar just sits at the generic "/tournament" no matter
+  // which one is open, so a refresh always bounced back to the list
+  // instead of staying on the tournament someone was looking at.
+  function pushTournamentPath(id) {
+    var path = tournamentInvitePath(id);
+    if (window.location.pathname !== path) window.history.pushState({ view: "tournament", tournamentId: id }, "", path);
+  }
+
   function navigate(view) {
     if (VIEWS.indexOf(view) === -1) view = "home";
     state.route = view;
@@ -3544,6 +3554,7 @@
     state.tournaments.push(t);
     persistTournaments();
     state.tourneyBuilder.tournamentId = t.id;
+    pushTournamentPath(t.id);
     if (t.organizerId) {
       JVBackend.createTournamentRemote(t.id, t).catch(function () {
         toast("Couldn't create this tournament online -- it'll stay on this device only.");
@@ -3588,6 +3599,7 @@
   function openTournament(id) {
     state.tourneyBuilder.tournamentId = id;
     state.tourneyBuilder.viewingRound = null;
+    pushTournamentPath(id);
     renderTournamentView();
     // The local copy is only as fresh as the last time this device had it
     // open -- pull the latest (e.g. participants who joined while nobody's
@@ -3603,10 +3615,11 @@
   function backToTournamentList() {
     state.tourneyBuilder.tournamentId = null;
     tourneyStopLiveSync();
-    // Leaving an invite-link URL (/tournament/<CODE>) for the list --
-    // swap the address bar back to the plain /tournament so a refresh from
-    // here lands on the list instead of re-opening that same tournament.
-    if (tournamentCodeFromPath(window.location.pathname)) window.history.replaceState({ view: "tournament" }, "", "/tournament");
+    // Leaving a specific tournament's own URL (/tournament/<id>, see
+    // pushTournamentPath) for the list -- swap the address bar back to the
+    // plain /tournament so a refresh from here lands on the list instead
+    // of re-opening that tournament.
+    if (tournamentCodeFromPath(window.location.pathname)) window.history.pushState({ view: "tournament" }, "", "/tournament");
     renderTournamentView();
   }
 
@@ -3642,6 +3655,7 @@
       if (!row) { toast("No tournament found with that code."); return; }
       applyRemoteTournamentData(code, row.data);
       state.tourneyBuilder.tournamentId = code;
+      pushTournamentPath(code);
       toast("Joined! You're on the roster.");
       renderTournamentView();
       trackEvent("tournament_joined", { tournament_id: code });
