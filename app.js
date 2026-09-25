@@ -4600,7 +4600,7 @@
       html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">' +
         (isOrganizer
           ? (t.format === "bo3" ? "Click the winner of each game as you play it. Past rounds stay editable too." : "Click the winner’s name to report a match (or Draw). Past rounds stay editable too.")
-          : (mePlayer ? "Your table is highlighted below — report your own score there. You'll be asked to confirm, and can't change it yourself afterward (ask the organizer if you need to fix it)." : "Live view — updates as scores are reported.")) +
+          : (mePlayer ? "Your table is highlighted below. Report your score once done. Please ask the organizer if you need to make changes to the score." : "Live view — updates as scores are reported.")) +
         "</p>";
     }
     var tableNums = tourneyTableNumbers(round);
