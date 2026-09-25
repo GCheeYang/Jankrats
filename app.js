@@ -1298,7 +1298,7 @@
   }
 
   function wantedMatchSectionHtml() {
-    var heading = '<h3 style="margin:26px 0 10px;">Who has these?</h3>';
+    var heading = '<h3 style="margin:0 0 10px;">Who has these?</h3>';
     if (!JVBackend.isConfigured()) return heading + socialNotConfiguredHtml("Checking friends");
     if (!state.social.session) return heading + socialSignInPromptHtml("Sign in with Google to check who owns these cards.");
 
@@ -1351,17 +1351,17 @@
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin:6px 0 16px;">No cards match “' + escapeHtml(state.wantedQuery) + '”.</p>';
     }
 
-    if (cards.length) html += wantedMatchSectionHtml();
-    html += "</div>";
-
-    html += '<div class="deck-panel"><div><h3>Your list (' + cards.length + ")</h3>";
+    html += '<h3 style="margin:22px 0 10px;">Your list (' + cards.length + ")</h3>";
     if (!cards.length) {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);">Nothing added yet — search and click <b>+ Add</b> on any card.</p>';
     } else {
       html += '<div class="deck-picker-list">' + cards.map(wantedListRowHtml).join("") + "</div>" +
         '<button class="btn small ghost" id="wt-clear" style="margin-top:10px;">Clear list</button>';
     }
-    html += "</div></div></div>";
+    html += "</div>";
+
+    if (cards.length) html += '<div class="deck-panel">' + wantedMatchSectionHtml() + "</div>";
+    html += "</div>";
 
     el.innerHTML = html;
     wireWantedView(el);
