@@ -808,3 +808,52 @@ create policy "users delete their own media"
   on storage.objects for delete
   to authenticated
   using (bucket_id = 'media' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ---------------------------------------------------------------------------
+-- messages: 1:1 direct messages between players (e.g. asking someone who has
+-- a card you need what they'd sell it for). Only the two people in a thread
+-- can read it; you can only send as yourself; the recipient can mark
+-- messages read but nobody can edit a message's text after it's sent.
+-- ---------------------------------------------------------------------------
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references public.profiles(id) on delete cascade,
+  recipient_id uuid not null references public.profiles(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 2000),
+  created_at timestamptz not null default now(),
+  read_at timestamptz,
+  constraint no_self_message check (sender_id <> recipient_id)
+);
+
+create index if not exists messages_sender_idx on public.messages (sender_id, created_at desc);
+create index if not exists messages_recipient_idx on public.messages (recipient_id, created_at desc);
+
+alter table public.messages enable row level security;
+
+drop policy if exists "participants can read their messages" on public.messages;
+create policy "participants can read their messages"
+  on public.messages for select
+  to authenticated
+  using (auth.uid() = sender_id or auth.uid() = recipient_id);
+
+drop policy if exists "users send messages as themselves" on public.messages;
+create policy "users send messages as themselves"
+  on public.messages for insert
+  to authenticated
+  with check (auth.uid() = sender_id);
+
+drop policy if exists "recipients mark messages read" on public.messages;
+create policy "recipients mark messages read"
+  on public.messages for update
+  to authenticated
+  using (auth.uid() = recipient_id)
+  with check (auth.uid() = recipient_id);
+
+revoke update on public.messages from authenticated;
+grant update (read_at) on public.messages to authenticated;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.messages;
+exception when duplicate_object then null;
+end $$;

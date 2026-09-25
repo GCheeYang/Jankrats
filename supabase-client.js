@@ -602,6 +602,61 @@
     return function unsubscribe() { c.removeChannel(channel); };
   }
 
+  /* ---------------- direct messages ---------------- */
+
+  function sendMessage(recipientId, body) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return c.from("messages").insert({ sender_id: uid, recipient_id: recipientId, body: body })
+      .select().single().then(function (r) { if (r.error) throw r.error; return r.data; });
+  }
+
+  function listConversation(otherId) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.resolve([]);
+    return c.from("messages").select("*")
+      .or("and(sender_id.eq." + uid + ",recipient_id.eq." + otherId + "),and(sender_id.eq." + otherId + ",recipient_id.eq." + uid + ")")
+      .order("created_at", { ascending: true }).limit(300)
+      .then(function (r) { return r.data || []; });
+  }
+
+  // Most recent messages involving me (either direction); the caller
+  // groups them into one row per conversation partner.
+  function listRecentMessages() {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.resolve([]);
+    return c.from("messages").select("*")
+      .or("sender_id.eq." + uid + ",recipient_id.eq." + uid)
+      .order("created_at", { ascending: false }).limit(300)
+      .then(function (r) { return r.data || []; });
+  }
+
+  function markConversationRead(otherId) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.resolve();
+    return Promise.resolve(c.from("messages").update({ read_at: new Date().toISOString() })
+      .eq("recipient_id", uid).eq("sender_id", otherId).is("read_at", null));
+  }
+
+  function countUnreadMessages() {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.resolve(0);
+    return c.from("messages").select("id", { count: "exact", head: true })
+      .eq("recipient_id", uid).is("read_at", null)
+      .then(function (r) { return r.count || 0; });
+  }
+
+  // cb receives the new message row for every message sent TO me.
+  function subscribeIncomingMessages(cb) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return function () {};
+    var channel = c.channel("messages:" + uid)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: "recipient_id=eq." + uid },
+        function (payload) { if (payload && payload.new) cb(payload.new); })
+      .subscribe();
+    return function unsubscribe() { c.removeChannel(channel); };
+  }
+
   /* ---------------- realtime ---------------- */
 
   // Calls cb() whenever a new post lands, so the feed can show a
@@ -734,6 +789,12 @@
     removeFriendEdge: removeFriendEdge,
     getTopCards: getTopCards,
     subscribeFeed: subscribeFeed,
+    sendMessage: sendMessage,
+    listConversation: listConversation,
+    listRecentMessages: listRecentMessages,
+    markConversationRead: markConversationRead,
+    countUnreadMessages: countUnreadMessages,
+    subscribeIncomingMessages: subscribeIncomingMessages,
     createTournamentRemote: createTournamentRemote,
     updateTournamentRemote: updateTournamentRemote,
     getTournamentRemote: getTournamentRemote,

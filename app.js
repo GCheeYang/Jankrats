@@ -219,6 +219,8 @@
     social: {
       session: null,           // Supabase auth session, or null when signed out
       myProfile: null,         // row from public.profiles for the signed-in user
+      chat: null,               // { withId, messages, prefill, back } while a direct-message thread is open, else null
+      unreadMessages: 0,        // count of messages sent to me that I haven't opened yet
       friendIds: [],            // ids of mutually-accepted friends
       incomingRequestIds: [],   // ids of people who requested this user, awaiting accept/decline
       outgoingRequestIds: [],   // ids this user has requested, awaiting their accept
@@ -3469,11 +3471,11 @@
         : owned === 0
           ? '<span class="pill bad">Has none</span>'
           : '<span class="pill warn">' + owned + " / " + total + "</span>";
-    var html = '<button class="friend-tile wanted-match-row" data-open-deck-match="' + p.id + '">' +
+    var html = '<div class="friend-tile wanted-match-row"><button class="friend-tile-open" data-open-deck-match="' + p.id + '">' +
       (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
       '<span class="friend-name">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span>" +
       badge +
-      "</button>";
+      '</button><button class="btn small" data-chat-with="' + p.id + '">Message</button></div>';
     if (expanded && owned !== null) {
       var coll = state.social.wantedCollections[p.id] || {};
       html += '<div class="wanted-match-detail">' + dm.items.map(function (item) {
@@ -3529,6 +3531,191 @@
         var id = b.getAttribute("data-open-deck-match");
         dm.expandedId = dm.expandedId === id ? null : id;
         refreshDeckMatchBody(root);
+      });
+    });
+    root.querySelectorAll("[data-chat-with]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-chat-with");
+        var coll = state.social.wantedCollections[id] || {};
+        var have = dm.items.filter(function (item) { return ownedQty(item.ids, coll) > 0; }).slice(0, 6)
+          .map(function (item) { return item.name; });
+        var prefill = have.length
+          ? "Hi! I saw you have " + have.join(", ") + ". Would you sell any of them? What price are you asking?"
+          : "";
+        openChat(id, { prefill: prefill, back: "match" });
+      });
+    });
+  }
+
+  /* ================================================================
+     DIRECT MESSAGES -- 1:1 chat between players (e.g. asking who has a
+     card what they'd sell it for). Threads open from the "Find who has
+     these" rows or from the Messages inbox in the top rail; new
+     messages arrive live over Supabase Realtime and drive the unread
+     badge on the rail.
+     ================================================================ */
+
+  var messagesUnsub = null;
+
+  function profileFor(id) {
+    var s = state.social;
+    var pool = (s.wantedProfiles || []).concat(s.friendsProfiles || []);
+    return pool.filter(function (p) { return p.id === id; })[0] || null;
+  }
+
+  function profileNameFor(id) {
+    var p = profileFor(id);
+    return (p && p.display_name) || "Anonymous brewer";
+  }
+
+  function ensureProfilesLoaded(cb) {
+    if (state.social.wantedProfiles !== null) { cb(); return; }
+    JVBackend.listProfiles().then(function (profiles) { state.social.wantedProfiles = profiles; cb(); }).catch(cb);
+  }
+
+  function refreshUnreadCount() {
+    if (!JVBackend.isConfigured() || !state.social.session) { state.social.unreadMessages = 0; return; }
+    JVBackend.countUnreadMessages().then(function (n) {
+      state.social.unreadMessages = n;
+      renderRail();
+    }).catch(function () {});
+  }
+
+  function startMessageListener() {
+    stopMessageListener();
+    if (!JVBackend.isConfigured() || !state.social.session) return;
+    refreshUnreadCount();
+    messagesUnsub = JVBackend.subscribeIncomingMessages(function (msg) {
+      var chat = state.social.chat;
+      if (chat && chat.withId === msg.sender_id) {
+        chat.messages.push(msg);
+        JVBackend.markConversationRead(msg.sender_id).catch(function () {});
+        renderChatBody();
+        return;
+      }
+      state.social.unreadMessages++;
+      renderRail();
+      ensureProfilesLoaded(function () { toast("New message from " + profileNameFor(msg.sender_id)); });
+    });
+  }
+
+  function stopMessageListener() {
+    if (messagesUnsub) { messagesUnsub(); messagesUnsub = null; }
+  }
+
+  function chatBubblesHtml(chat) {
+    var me = JVBackend.currentUserId();
+    if (!chat.messages.length) return '<p style="color:var(--ink-faint);font-size:13px;text-align:center;margin:24px 0;">No messages yet — say hi.</p>';
+    return chat.messages.map(function (m) {
+      var mine = m.sender_id === me;
+      return '<div class="chat-msg' + (mine ? " mine" : "") + '"><div class="chat-bubble">' + escapeHtml(m.body) + "</div></div>";
+    }).join("");
+  }
+
+  function renderChatBody() {
+    var chat = state.social.chat;
+    var box = document.getElementById("chat-thread");
+    if (!chat || !box) return;
+    box.innerHTML = chatBubblesHtml(chat);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function openChat(withId, opts) {
+    opts = opts || {};
+    if (!JVBackend.isConfigured() || !state.social.session) { toast("Sign in to send messages."); return; }
+    state.social.chat = { withId: withId, messages: [], prefill: opts.prefill || "", back: opts.back || "close" };
+    ensureProfilesLoaded(function () {
+      var chat = state.social.chat;
+      if (!chat || chat.withId !== withId) return;
+      var p = profileFor(withId);
+      var root = document.getElementById("modal-root");
+      root.innerHTML = '<div class="modal-backdrop" id="chat-modal"><div class="modal">' +
+        '<div class="modal-head"><h2 style="font-size:19px;">' +
+        (chat.back !== "close" ? '<button class="btn ghost small" data-chat-back style="margin-right:6px;">←</button>' : "") +
+        escapeHtml((p && p.display_name) || "Anonymous brewer") + '</h2><button class="modal-close" data-close>&times;</button></div>' +
+        '<div id="chat-thread" class="chat-thread"><p style="color:var(--ink-faint);font-size:13px;">Loading…</p></div>' +
+        '<form id="chat-form" class="chat-form"><textarea id="chat-input" rows="2" maxlength="2000" placeholder="Write a message…"></textarea>' +
+        '<button type="submit" class="btn primary">Send</button></form>' +
+        "</div></div>";
+      root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeChat); });
+      root.querySelector("#chat-modal").addEventListener("click", function (e) { if (e.target.id === "chat-modal") closeChat(); });
+      var backBtn = root.querySelector("[data-chat-back]");
+      if (backBtn) backBtn.addEventListener("click", chatGoBack);
+      var input = root.querySelector("#chat-input");
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); root.querySelector("#chat-form").requestSubmit(); }
+      });
+      root.querySelector("#chat-form").addEventListener("submit", function (e) {
+        e.preventDefault();
+        var body = input.value.trim();
+        if (!body) return;
+        input.value = "";
+        JVBackend.sendMessage(withId, body).then(function (msg) {
+          if (state.social.chat && state.social.chat.withId === withId) { state.social.chat.messages.push(msg); renderChatBody(); }
+        }).catch(function () { input.value = body; toast("Couldn't send that message."); });
+      });
+      JVBackend.listConversation(withId).then(function (msgs) {
+        if (!state.social.chat || state.social.chat.withId !== withId) return;
+        state.social.chat.messages = msgs;
+        if (!msgs.length && chat.prefill) input.value = chat.prefill;
+        renderChatBody();
+        input.focus();
+      }).catch(function () { toast("Couldn't load messages."); });
+      JVBackend.markConversationRead(withId).then(refreshUnreadCount).catch(function () {});
+    });
+  }
+
+  function closeChat() {
+    state.social.chat = null;
+    closeModal();
+  }
+
+  function chatGoBack() {
+    var back = state.social.chat && state.social.chat.back;
+    state.social.chat = null;
+    if (back === "inbox") { openInboxModal(); return; }
+    var dm = state.social.deckMatch;
+    var deck = dm && state.decks.filter(function (d) { return d.id === dm.deckId; })[0];
+    if (back === "match" && deck) { openDeckMatchModal(deck); return; }
+    closeModal();
+  }
+
+  function openInboxModal() {
+    if (!JVBackend.isConfigured() || !state.social.session) return;
+    var root = document.getElementById("modal-root");
+    root.innerHTML = '<div class="modal-backdrop" id="inbox-modal"><div class="modal">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">Messages</h2><button class="modal-close" data-close>&times;</button></div>' +
+      '<div id="inbox-body"><p style="color:var(--ink-faint);">Loading…</p></div></div></div>';
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#inbox-modal").addEventListener("click", function (e) { if (e.target.id === "inbox-modal") closeModal(); });
+    var me = JVBackend.currentUserId();
+    ensureProfilesLoaded(function () {
+      JVBackend.listRecentMessages().then(function (msgs) {
+        var body = document.getElementById("inbox-body");
+        if (!body) return;
+        var threads = {}, order = [];
+        msgs.forEach(function (m) {
+          var other = m.sender_id === me ? m.recipient_id : m.sender_id;
+          if (!threads[other]) { threads[other] = { last: m, unread: 0 }; order.push(other); }
+          if (m.recipient_id === me && !m.read_at) threads[other].unread++;
+        });
+        if (!order.length) { body.innerHTML = '<div class="empty-state"><h3>No messages yet</h3><p>Use <b>Message</b> next to anyone in <b>Find who has these</b> to start a chat.</p></div>'; return; }
+        body.innerHTML = '<div class="wanted-match-list">' + order.map(function (id) {
+          var t = threads[id];
+          var p = profileFor(id);
+          return '<button class="friend-tile" data-inbox-open="' + id + '">' +
+            (p && p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
+            '<span style="flex:1;min-width:0;display:flex;flex-direction:column;"><span class="friend-name">' + escapeHtml(profileNameFor(id)) + "</span>" +
+            '<span style="font-size:12px;font-weight:400;color:var(--ink-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+            (t.last.sender_id === me ? "You: " : "") + escapeHtml(t.last.body) + "</span></span>" +
+            (t.unread ? '<span class="pill warn">' + t.unread + " new</span>" : "") + "</button>";
+        }).join("") + "</div>";
+        body.querySelectorAll("[data-inbox-open]").forEach(function (b) {
+          b.addEventListener("click", function () { openChat(b.getAttribute("data-inbox-open"), { back: "inbox" }); });
+        });
+      }).catch(function () {
+        var body = document.getElementById("inbox-body");
+        if (body) body.innerHTML = '<p style="color:var(--ink-faint);">Couldn\'t load messages.</p>';
       });
     });
   }
@@ -5637,6 +5824,7 @@
           // that only happened to self-correct by navigating away and back.
           if (state.route === "feed" || state.route === "profile" || state.route === "dashboard" || state.route === "tournament") render();
         });
+        startMessageListener();
         JVBackend.listFriendEdges().then(function (edges) {
           state.social.friendIds = edges.friends;
           state.social.incomingRequestIds = edges.incoming;
@@ -5653,6 +5841,9 @@
         // re-uploaded, silently undoing the delete.
         if (event === "SIGNED_IN") { syncCollectionOnSignIn(); syncDecksOnSignIn(); }
       } else if (hadSession) {
+        stopMessageListener();
+        state.social.chat = null;
+        state.social.unreadMessages = 0;
         state.social.myProfile = null;
         state.social.friendIds = [];
         state.social.incomingRequestIds = [];
@@ -5793,13 +5984,17 @@
         "</div>";
     }
     var name = (s.myProfile && s.myProfile.display_name) || (s.session.user && s.session.user.email) || "Signed in";
-    return '<div class="social-auth signed-in"><button class="social-auth-me" data-open-my-profile>' +
+    return '<div class="social-auth signed-in"><button class="social-auth-me" data-open-inbox title="Messages">✉' +
+      (s.unreadMessages ? '<span class="msg-badge">' + s.unreadMessages + "</span>" : "") + '</button>' +
+      '<button class="social-auth-me" data-open-my-profile>' +
       (s.myProfile && s.myProfile.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(s.myProfile.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
       '<span>' + escapeHtml(name) + "</span></button></div>";
   }
 
   function wireAuthRail(el) {
     wireSignInButtons(el, "auth-signin");
+    var inboxBtn = el.querySelector("[data-open-inbox]");
+    if (inboxBtn) inboxBtn.addEventListener("click", openInboxModal);
     var meBtn = el.querySelector("[data-open-my-profile]");
     if (meBtn) meBtn.addEventListener("click", function () { navigate("dashboard"); });
   }
