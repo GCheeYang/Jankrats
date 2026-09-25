@@ -359,8 +359,14 @@ create table if not exists public.card_prices (
   card_id text primary key,
   en_price_usd numeric,
   en_foil_price_usd numeric,
+  tcgplayer_product_id bigint,
   updated_at timestamptz not null default now()
 );
+
+-- Lets the app link straight to a card's TCGplayer page
+-- (https://www.tcgplayer.com/product/<id>); cleans up an already-created
+-- table, which the create above won't retroactively alter.
+alter table public.card_prices add column if not exists tcgplayer_product_id bigint;
 
 -- USD only -- CN pricing was dropped after the first pass; these clean up
 -- an already-created table (create table above won't retroactively alter

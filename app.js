@@ -118,18 +118,13 @@
     }
   }
 
-  // Bilgewater Market's card URLs use the same id as ours minus the
-  // "/<setSize>" suffix, e.g. our "OGN-066a/298" -> their "/cards/OGN-066a".
-  // Bilgewater 404s on a bare id whenever the card's only printing is a
-  // special variant -- it needs an explicit ?print_variation matching the
-  // suffix on our own id (verified against their live pages): "*" is their
-  // "signature" parallel, a lone "a" is their "showcase"/alt-art print.
-  function bilgewaterUrl(card) {
-    var base = "https://bilgewatermarket.com/cards/" + encodeURIComponent(String(card.id).split("/")[0]);
-    var suf = variantSuffixOf(card);
-    if (suf === "*") return base + "?print_variation=signature";
-    if (suf === "a") return base + "?print_variation=showcase";
-    return base;
+  // Straight to the card's TCGplayer page when the daily price job has
+  // stored its product id; otherwise a TCGplayer search for the card's
+  // name (tokens, promo printings, and anything the job couldn't match).
+  function tcgplayerUrl(card) {
+    if (card.price && card.price.tcgplayerId) return "https://www.tcgplayer.com/product/" + card.price.tcgplayerId;
+    return "https://www.tcgplayer.com/search/riftbound-league-of-legends-trading-card-game/product?productLineName=riftbound-league-of-legends-trading-card-game&q=" +
+      encodeURIComponent(card.name || "");
   }
 
   function domainColor(name) {
@@ -1001,7 +996,7 @@
       (c.power !== null && c.power !== undefined ? '<span class="ct-power">' + c.power + "★</span>" : "") +
       "</div>" +
       "</button>" +
-      '<a class="ct-price-link" href="' + escapeHtml(bilgewaterUrl(c)) + '" target="_blank" rel="noopener noreferrer" title="Check price on Bilgewater Market">' + escapeHtml(priceLabel) + "</a>" +
+      '<a class="ct-price-link" href="' + escapeHtml(tcgplayerUrl(c)) + '" target="_blank" rel="noopener noreferrer" title="Check price on TCGplayer">' + escapeHtml(priceLabel) + "</a>" +
       "</div>";
   }
 
@@ -1040,7 +1035,7 @@
       "<span>" + escapeHtml(c.setName || c.set || "") + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
       "</div>" +
       cardDetailPriceHtml(c) +
-      '<a class="btn small ghost" href="' + escapeHtml(bilgewaterUrl(c)) + '" target="_blank" rel="noopener noreferrer" style="margin-bottom:12px;">Check price on Bilgewater Market ↗</a>' +
+      '<a class="btn small ghost" href="' + escapeHtml(tcgplayerUrl(c)) + '" target="_blank" rel="noopener noreferrer" style="margin-bottom:12px;">Check price on TCGplayer ↗</a>' +
       (c.tags && c.tags.length ? '<div style="margin-bottom:12px;">' + c.tags.map(function (t) { return '<span class="pill neutral" style="margin:0 4px 4px 0;">' + escapeHtml(t) + "</span>"; }).join("") + "</div>" : "") +
       (c.text ? '<p style="color:var(--ink-soft);line-height:1.6;">' + escapeHtml(c.text) + "</p>" : "") +
       (c.isPlaceholder ? '<p class="pill neutral" style="margin-top:8px;">Demo card</p>' : "") +

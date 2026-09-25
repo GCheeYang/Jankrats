@@ -79,7 +79,7 @@ async function collectPrices(ourIds) {
       if (!id || !ourIds.has(id)) continue;
       const price = pr.marketPrice ?? pr.midPrice;
       if (price === null || price === undefined) continue;
-      if (!byId.has(id)) byId.set(id, { normal: null, foil: null });
+      if (!byId.has(id)) byId.set(id, { normal: null, foil: null, productId: pr.productId });
       const entry = byId.get(id);
       if (pr.subTypeName === "Foil") entry.foil = price;
       else entry.normal = price;
@@ -95,6 +95,7 @@ function toRows(byId) {
     card_id,
     en_price_usd: v.normal ?? v.foil,
     en_foil_price_usd: v.normal !== null ? v.foil : null,
+    tcgplayer_product_id: v.productId,
     updated_at: now
   }));
 }

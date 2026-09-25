@@ -217,7 +217,7 @@
     if (!c) return Promise.resolve({});
     var PAGE = 1000, map = {};
     function fetchPage(from) {
-      return c.from("card_prices").select("card_id, en_price_usd, en_foil_price_usd, updated_at")
+      return c.from("card_prices").select("*")
         .order("card_id", { ascending: true }).range(from, from + PAGE - 1)
         .then(function (r) {
           var rows = r.data || [];
@@ -225,6 +225,7 @@
             map[row.card_id] = {
               en: row.en_price_usd,
               enFoil: row.en_foil_price_usd,
+              tcgplayerId: row.tcgplayer_product_id,
               updatedAt: row.updated_at
             };
           });
