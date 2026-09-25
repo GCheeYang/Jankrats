@@ -2,10 +2,10 @@ name: Update card prices
 
 on:
   schedule:
-    # 11:00 UTC = 7am during EDT (~Mar-Nov). Drifts to 6am ET during EST
-    # (~Nov-Mar) since GitHub Actions cron doesn't observe DST -- not worth
-    # a second cron line to chase an hour of drift twice a year.
-    - cron: "0 11 * * *"
+    # tcgcsv rebuilds its TCGplayer mirror once a day at ~20:05 UTC (see
+    # tcgcsv.com/docs) -- run just after so each run picks up the fresh
+    # build instead of the previous day's.
+    - cron: "0 21 * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -25,9 +25,6 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
 
       - name: Fetch and upsert prices
         env:

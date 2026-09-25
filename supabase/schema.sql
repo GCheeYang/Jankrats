@@ -349,8 +349,8 @@ create policy "users manage their own push subscriptions"
 -- anyway — this policy is belt-and-suspenders documentation, not required).
 
 -- ---------------------------------------------------------------------------
--- card_prices: Bilgewater Market prices, one row per card_id, refreshed
--- daily by scripts/price-scraper (see its README) via the service role key.
+-- card_prices: TCGplayer market prices (via tcgcsv.com), one row per card_id,
+-- refreshed daily by scripts/price-scraper (see its README) via the service role key.
 -- Not user-owned, so no per-row auth.uid() check -- readable by everyone,
 -- writable only by the service key (which bypasses RLS), same as
 -- push_subscriptions above.
