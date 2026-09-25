@@ -5882,6 +5882,26 @@
      SOCIAL: auth wiring, shared post-card renderer, composer, comments
      ================================================================ */
 
+  // Picks up where someone who signed in from a tournament invite link left
+  // off (see rememberReturnPath in supabase-client.js): if OAuth dropped them
+  // on the site root instead of back on /tournament/<CODE>, send them there.
+  // Expires after 15 minutes so an abandoned sign-in can't hijack a later
+  // visit, and only ever resumes invite paths.
+  function resumeSavedReturnPath() {
+    var saved = null;
+    try {
+      saved = JSON.parse(localStorage.getItem("jankvault:v1:returnPath") || "null");
+      localStorage.removeItem("jankvault:v1:returnPath");
+    } catch (e) { return; }
+    if (!saved || !saved.path || Date.now() - saved.at > 15 * 60 * 1000) return;
+    var code = tournamentCodeFromPath(saved.path);
+    if (!code || window.location.pathname === saved.path) return;
+    state.route = "tournament";
+    state.tourneyBuilder.tournamentId = code;
+    window.history.replaceState({ view: "tournament" }, "", tournamentInvitePath(code));
+    render();
+  }
+
   function wireAuth() {
     JVBackend.onAuthChange(function (session, event) {
       var hadSession = !!state.social.session;
@@ -5922,7 +5942,7 @@
         // a deck deleted moments before a refresh, with its cloud-delete
         // still in flight, would get pulled back from the cloud and
         // re-uploaded, silently undoing the delete.
-        if (event === "SIGNED_IN") { syncCollectionOnSignIn(); syncDecksOnSignIn(); }
+        if (event === "SIGNED_IN") { syncCollectionOnSignIn(); syncDecksOnSignIn(); resumeSavedReturnPath(); }
       } else if (hadSession) {
         stopMessageListener();
         state.social.chat = null;

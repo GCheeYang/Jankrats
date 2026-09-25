@@ -61,9 +61,23 @@
     if (cachedSession !== null) cb(cachedSession, "RESTORED");
   }
 
+  // Supabase only honors redirectTo if it's on the project's Redirect URLs
+  // allow-list, otherwise it falls back to the site root -- so someone who
+  // signs in from an invite link (/tournament/<CODE>) lands on Home and has
+  // to scan again. Remember where they were (app.js resumes it right after
+  // the sign-in completes, see resumeSavedReturnPath) so it works either way.
+  function rememberReturnPath() {
+    try {
+      if (window.location.pathname && window.location.pathname !== "/") {
+        localStorage.setItem("jankvault:v1:returnPath", JSON.stringify({ path: window.location.pathname, at: Date.now() }));
+      }
+    } catch (e) { /* storage unavailable -- redirectTo alone has to do */ }
+  }
+
   function signInWithGoogle() {
     var c = client_();
     if (!c) return Promise.reject(new Error("Backend not configured"));
+    rememberReturnPath();
     return c.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: window.location.origin + window.location.pathname }
@@ -73,6 +87,7 @@
   function signInWithDiscord() {
     var c = client_();
     if (!c) return Promise.reject(new Error("Backend not configured"));
+    rememberReturnPath();
     return c.auth.signInWithOAuth({
       provider: "discord",
       options: { redirectTo: window.location.origin + window.location.pathname }
