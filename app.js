@@ -1290,8 +1290,8 @@
         if (!c) return "";
         var e = coll[cardId];
         var qty = e ? (e.qty || 0) + (e.foil || 0) : 0;
-        return qty > 0 ? '<span class="pill good">' + escapeHtml(c.name) + " ×" + qty + "</span>" : "";
-      }).join("") + "</div>";
+        return qty > 0 ? qty + " " + c.name : "";
+      }).filter(Boolean).map(escapeHtml).join("\n") + "</div>";
     }
     return html;
   }
@@ -3480,8 +3480,8 @@
       var coll = state.social.wantedCollections[p.id] || {};
       html += '<div class="wanted-match-detail">' + dm.items.map(function (item) {
         var qty = ownedQty(item.ids, coll);
-        return qty > 0 ? '<span class="pill good">' + escapeHtml(item.name) + " ×" + qty + "</span>" : "";
-      }).join("") + "</div>";
+        return qty > 0 ? qty + " " + item.name : "";
+      }).filter(Boolean).map(escapeHtml).join("\n") + "</div>";
     }
     return html;
   }

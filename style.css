@@ -1213,7 +1213,7 @@ textarea { resize: vertical; min-height: 90px; }
 .wanted-match-row { width: 100%; justify-content: flex-start; }
 .wanted-match-row .friend-name { flex: 1; }
 .wanted-match-detail {
-  display: flex; flex-wrap: wrap; gap: 6px;
+  white-space: pre-line; font-size: 13.5px; line-height: 1.6; color: var(--ink-soft);
   padding: 10px 14px 12px 46px; margin-top: -4px;
 }
 
