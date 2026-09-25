@@ -1249,9 +1249,10 @@
       "</div>";
   }
 
-  function wantedChipHtml(c) {
-    return '<span class="wanted-chip">' + escapeHtml(c.name) +
-      '<button data-remove-wanted="' + c.id + '" aria-label="Remove ' + escapeHtml(c.name) + '">&times;</button></span>';
+  function wantedListRowHtml(c) {
+    return '<div class="pick-row">' + pickRowImgHtml(c) + '<div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</span>" +
+      '<span class="pr-meta"><span>' + escapeHtml(c.type || "") + "</span></span></div>" +
+      '<button class="btn small ghost" data-remove-wanted="' + c.id + '" aria-label="Remove ' + escapeHtml(c.name) + '">✕</button></div>';
   }
 
   // Fetches the collections of every not-yet-cached person in the current
@@ -1338,6 +1339,7 @@
 
     var html = '<div class="view-head"><div><h1>Wishlist</h1><p>Search for cards you’re after, add them here, then see which friends — or anyone else — already own the whole list.</p></div></div>';
 
+    html += '<div class="builder-grid"><div>';
     html += '<div class="toolbar">' +
       field("Search cards to add", '<input type="search" id="wt-q" placeholder="Card name…" value="' + escapeHtml(state.wantedQuery) + '">') +
       "</div>";
@@ -1349,15 +1351,17 @@
       html += '<p style="font-size:12.5px;color:var(--ink-faint);margin:6px 0 16px;">No cards match “' + escapeHtml(state.wantedQuery) + '”.</p>';
     }
 
-    html += '<h3 style="margin:22px 0 10px;">Your list (' + cards.length + ")</h3>";
+    if (cards.length) html += wantedMatchSectionHtml();
+    html += "</div>";
+
+    html += '<div class="deck-panel"><div><h3>Your list (' + cards.length + ")</h3>";
     if (!cards.length) {
-      html += '<div class="empty-state"><h3>Nothing added yet</h3><p>Search above and click <b>+ Add</b> on any card.</p></div>';
+      html += '<p style="font-size:12.5px;color:var(--ink-faint);">Nothing added yet — search and click <b>+ Add</b> on any card.</p>';
     } else {
-      html += '<div class="wanted-chip-row">' + cards.map(wantedChipHtml).join("") + "</div>" +
+      html += '<div class="deck-picker-list">' + cards.map(wantedListRowHtml).join("") + "</div>" +
         '<button class="btn small ghost" id="wt-clear" style="margin-top:10px;">Clear list</button>';
     }
-
-    if (cards.length) html += wantedMatchSectionHtml();
+    html += "</div></div></div>";
 
     el.innerHTML = html;
     wireWantedView(el);
