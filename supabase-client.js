@@ -602,6 +602,17 @@
     return function unsubscribe() { c.removeChannel(channel); };
   }
 
+  /* ---------------- feedback ---------------- */
+
+  // No .select() on purpose: users can insert feedback but have no read
+  // access to the table, so asking for the row back would be rejected.
+  function submitFeedback(kind, body, page) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return c.from("feedback").insert({ user_id: uid, kind: kind, body: body, page: page || null })
+      .then(function (r) { if (r.error) throw r.error; });
+  }
+
   /* ---------------- direct messages ---------------- */
 
   function sendMessage(recipientId, body) {
@@ -789,6 +800,7 @@
     removeFriendEdge: removeFriendEdge,
     getTopCards: getTopCards,
     subscribeFeed: subscribeFeed,
+    submitFeedback: submitFeedback,
     sendMessage: sendMessage,
     listConversation: listConversation,
     listRecentMessages: listRecentMessages,

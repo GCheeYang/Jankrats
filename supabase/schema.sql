@@ -857,3 +857,26 @@ begin
   alter publication supabase_realtime add table public.messages;
 exception when duplicate_object then null;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- feedback: bug reports / feature requests from the in-app feedback button.
+-- Signed-in users can only insert their own rows; there is deliberately no
+-- select policy, so submissions are readable only by the project owner
+-- (Supabase dashboard / service role), never by other users.
+-- ---------------------------------------------------------------------------
+create table if not exists public.feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  kind text not null check (kind in ('feature', 'bug', 'other')),
+  body text not null check (char_length(body) between 1 and 4000),
+  page text check (page is null or char_length(page) <= 200),
+  created_at timestamptz not null default now()
+);
+
+alter table public.feedback enable row level security;
+
+drop policy if exists "users submit their own feedback" on public.feedback;
+create policy "users submit their own feedback"
+  on public.feedback for insert
+  to authenticated
+  with check (auth.uid() = user_id);

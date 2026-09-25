@@ -6464,9 +6464,67 @@
     JVBackend.listScanCorrections().then(function (map) { state.scanCorrections = map; });
   }
 
+  /* ================================================================
+     FEEDBACK -- floating button (bottom-left) opening a modal where
+     signed-in users send a feature request or bug report.
+     ================================================================ */
+
+  function openFeedbackModal() {
+    var root = document.getElementById("modal-root");
+    var body;
+    if (!JVBackend.isConfigured()) {
+      body = socialNotConfiguredHtml("Feedback");
+    } else if (!state.social.session) {
+      body = socialSignInPromptHtml("Sign in to send feedback — it goes straight to the person running Jankrats.");
+    } else {
+      body = '<p style="color:var(--ink-soft);margin-bottom:12px;">Tell us about a feature you\'d like to see, or a bug you ran into.</p>' +
+        '<div class="tabs" id="feedback-kind" style="margin-bottom:12px;">' +
+        '<button class="active" data-kind="feature">Feature request</button>' +
+        '<button data-kind="bug">Bug</button>' +
+        '<button data-kind="other">Other</button></div>' +
+        '<textarea id="feedback-text" class="feedback-text" rows="9" maxlength="4000" placeholder="Describe it here — for bugs, what you did and what went wrong…"></textarea>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">' +
+        '<button class="btn ghost" data-close>Cancel</button>' +
+        '<button class="btn primary" id="feedback-send">Send feedback</button></div>';
+    }
+    root.innerHTML = '<div class="modal-backdrop" id="feedback-modal"><div class="modal modal-wide">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">Send feedback</h2><button class="modal-close" data-close>&times;</button></div>' +
+      body + "</div></div>";
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#feedback-modal").addEventListener("click", function (e) { if (e.target.id === "feedback-modal") closeModal(); });
+    wireSignInPrompt(root);
+
+    var kindWrap = root.querySelector("#feedback-kind");
+    if (!kindWrap) return;
+    var kind = "feature";
+    kindWrap.querySelectorAll("[data-kind]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        kind = b.getAttribute("data-kind");
+        kindWrap.querySelectorAll("[data-kind]").forEach(function (bb) { bb.classList.toggle("active", bb === b); });
+      });
+    });
+    var text = root.querySelector("#feedback-text");
+    text.focus();
+    var sendBtn = root.querySelector("#feedback-send");
+    sendBtn.addEventListener("click", function () {
+      var msg = text.value.trim();
+      if (!msg) { toast("Write something first."); return; }
+      sendBtn.disabled = true;
+      JVBackend.submitFeedback(kind, msg, state.route).then(function () {
+        closeModal();
+        toast("Thanks — feedback sent!");
+      }).catch(function () {
+        sendBtn.disabled = false;
+        toast("Couldn't send feedback. Try again.");
+      });
+    });
+  }
+
   function init() {
     loadAll();
     wireShell();
+    var fab = document.getElementById("feedback-fab");
+    if (fab) fab.addEventListener("click", openFeedbackModal);
     wireAuth();
     wireCardArtFallback();
     loadCardPrices();
