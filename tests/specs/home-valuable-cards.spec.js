@@ -29,7 +29,7 @@ test.describe('home page: most valuable cards', () => {
     const rail = page.locator('.home-trending-rail .card-tile-wrap');
     await expect(rail.first()).toBeVisible();
     const prices = await page.locator('.home-trending-rail .ct-price-link').allTextContents();
-    expect(prices.slice(0, 3)).toEqual(['$500.00 ↗', '$50.00 ↗', '$5.00 ↗']);
+    expect(prices.slice(0, 3)).toEqual(['USD $500.00 ↗', 'USD $50.00 ↗', 'USD $5.00 ↗']);
 
     await page.locator('.home-trending-rail .card-tile').first().click();
     await expect(page.locator('#card-modal')).toBeVisible();

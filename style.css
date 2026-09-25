@@ -607,6 +607,23 @@ textarea { resize: vertical; min-height: 90px; }
   height: 34px;
 }
 
+/* Explore Cards and Collection tiles show Battlefields turned 90deg so they
+   fill the same portrait slot as every other card (the deck builder keeps
+   them landscape -- see .deck-pick-grid, which is excluded here). The image
+   is laid out at the slot's height x width, then rotated about its centre. */
+.card-grid:not(.deck-pick-grid) .card-tile .ct-img.is-landscape,
+.coll-tile .ct-img.is-landscape {
+  aspect-ratio: 744 / 1039;
+  position: relative;
+}
+.card-grid:not(.deck-pick-grid) .card-tile .ct-img.is-landscape img,
+.coll-tile .ct-img.is-landscape img {
+  position: absolute; top: 50%; left: 50%;
+  width: calc(100% * 1039 / 744); height: calc(100% * 744 / 1039);
+  max-width: none;
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
 /* ============================================================
    Modal / drawer
    ============================================================ */

@@ -979,7 +979,7 @@
   }
 
   function formatUsd(n) {
-    return "$" + Number(n).toFixed(2);
+    return "USD $" + Number(n).toFixed(2);
   }
 
   function cardTileHtml(c) {
