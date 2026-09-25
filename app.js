@@ -4294,8 +4294,8 @@
     }
     root.innerHTML = '<div class="modal-backdrop" id="tourney-qr-modal"><div class="modal">' +
       '<div class="modal-head"><h2 style="font-size:19px;">Invite QR code</h2><button class="modal-close" data-close>&times;</button></div>' +
-      '<div class="tourney-qr">' + body + "</div>" +
       '<p class="tourney-qr-codetext">' + escapeHtml(code) + "</p>" +
+      '<div class="tourney-qr">' + body + "</div>" +
       "</div></div>";
     root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
     root.querySelector("#tourney-qr-modal").addEventListener("click", function (e) { if (e.target.id === "tourney-qr-modal") closeModal(); });
