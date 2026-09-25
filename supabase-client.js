@@ -192,21 +192,31 @@
 
   // card_prices is populated by scripts/price-scraper (a daily GitHub
   // Action), not by any signed-in user -- this is a plain public read.
+  //
+  // Supabase caps every request at 1000 rows by default, and there are more
+  // priced cards than that -- a single plain select silently dropped the
+  // rest, so those cards showed no price. Page through with .range() (in a
+  // stable card_id order so pages don't overlap or skip) until a short page.
   function listCardPrices() {
     var c = client_();
     if (!c) return Promise.resolve({});
-    return c.from("card_prices").select("card_id, en_price_usd, en_foil_price_usd, updated_at")
-      .then(function (r) {
-        var map = {};
-        (r.data || []).forEach(function (row) {
-          map[row.card_id] = {
-            en: row.en_price_usd,
-            enFoil: row.en_foil_price_usd,
-            updatedAt: row.updated_at
-          };
+    var PAGE = 1000, map = {};
+    function fetchPage(from) {
+      return c.from("card_prices").select("card_id, en_price_usd, en_foil_price_usd, updated_at")
+        .order("card_id", { ascending: true }).range(from, from + PAGE - 1)
+        .then(function (r) {
+          var rows = r.data || [];
+          rows.forEach(function (row) {
+            map[row.card_id] = {
+              en: row.en_price_usd,
+              enFoil: row.en_foil_price_usd,
+              updatedAt: row.updated_at
+            };
+          });
+          return rows.length === PAGE ? fetchPage(from + PAGE) : map;
         });
-        return map;
-      });
+    }
+    return fetchPage(0);
   }
 
   /* ---------------- scan corrections (shared, crowd-sourced) ---------------- */
