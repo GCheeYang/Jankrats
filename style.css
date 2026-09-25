@@ -1008,7 +1008,11 @@ textarea { resize: vertical; min-height: 90px; }
 .curve-bar .bcount { font-size: 10px; color: var(--ink-faint); font-family: 'IBM Plex Mono', monospace; }
 .curve-bar .blabel { font-size: 10px; color: var(--ink-faint); }
 
-.deck-pick-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+/* At most 5 cards per row in the deck builder's pickers (the floor is
+   whichever is bigger: 150px, or a fifth of the row net of gaps), and at
+   most 3 Battlefields per row so their landscape art shows large. */
+.deck-pick-grid { grid-template-columns: repeat(auto-fill, minmax(max(150px, calc((100% - 48px) / 5)), 1fr)); }
+.deck-pick-grid[data-pick-bf] { grid-template-columns: repeat(auto-fill, minmax(max(220px, calc((100% - 24px) / 3)), 1fr)); }
 .deck-pick-grid .card-tile-wrap.in-deck { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .deck-pick-grid .card-tile-wrap.at-limit { opacity: 0.45; }
 .deck-pick-grid .card-tile-wrap.at-limit .card-tile { cursor: not-allowed; }
@@ -1037,7 +1041,7 @@ textarea { resize: vertical; min-height: 90px; }
   z-index: 1;
 }
 
-.legend-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; }
+.legend-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(150px, calc((100% - 40px) / 5)), 1fr)); gap: 10px; }
 .legend-card {
   border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface);
   cursor: pointer; display: flex; flex-direction: column; gap: 6px;
