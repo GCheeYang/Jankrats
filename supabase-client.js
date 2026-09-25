@@ -192,21 +192,31 @@
 
   // card_prices is populated by scripts/price-scraper (a daily GitHub
   // Action), not by any signed-in user -- this is a plain public read.
+  //
+  // Supabase caps every request at 1000 rows by default, and there are more
+  // priced cards than that -- a single plain select silently dropped the
+  // rest, so those cards showed no price. Page through with .range() (in a
+  // stable card_id order so pages don't overlap or skip) until a short page.
   function listCardPrices() {
     var c = client_();
     if (!c) return Promise.resolve({});
-    return c.from("card_prices").select("card_id, en_price_usd, en_foil_price_usd, updated_at")
-      .then(function (r) {
-        var map = {};
-        (r.data || []).forEach(function (row) {
-          map[row.card_id] = {
-            en: row.en_price_usd,
-            enFoil: row.en_foil_price_usd,
-            updatedAt: row.updated_at
-          };
+    var PAGE = 1000, map = {};
+    function fetchPage(from) {
+      return c.from("card_prices").select("card_id, en_price_usd, en_foil_price_usd, updated_at")
+        .order("card_id", { ascending: true }).range(from, from + PAGE - 1)
+        .then(function (r) {
+          var rows = r.data || [];
+          rows.forEach(function (row) {
+            map[row.card_id] = {
+              en: row.en_price_usd,
+              enFoil: row.en_foil_price_usd,
+              updatedAt: row.updated_at
+            };
+          });
+          return rows.length === PAGE ? fetchPage(from + PAGE) : map;
         });
-        return map;
-      });
+    }
+    return fetchPage(0);
   }
 
   /* ---------------- scan corrections (shared, crowd-sourced) ---------------- */
@@ -602,6 +612,72 @@
     return function unsubscribe() { c.removeChannel(channel); };
   }
 
+  /* ---------------- feedback ---------------- */
+
+  // No .select() on purpose: users can insert feedback but have no read
+  // access to the table, so asking for the row back would be rejected.
+  function submitFeedback(kind, body, page) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return c.from("feedback").insert({ user_id: uid, kind: kind, body: body, page: page || null })
+      .then(function (r) { if (r.error) throw r.error; });
+  }
+
+  /* ---------------- direct messages ---------------- */
+
+  function sendMessage(recipientId, body) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.reject(new Error("Not signed in"));
+    return c.from("messages").insert({ sender_id: uid, recipient_id: recipientId, body: body })
+      .select().single().then(function (r) { if (r.error) throw r.error; return r.data; });
+  }
+
+  function listConversation(otherId) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.resolve([]);
+    return c.from("messages").select("*")
+      .or("and(sender_id.eq." + uid + ",recipient_id.eq." + otherId + "),and(sender_id.eq." + otherId + ",recipient_id.eq." + uid + ")")
+      .order("created_at", { ascending: true }).limit(300)
+      .then(function (r) { return r.data || []; });
+  }
+
+  // Most recent messages involving me (either direction); the caller
+  // groups them into one row per conversation partner.
+  function listRecentMessages() {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.resolve([]);
+    return c.from("messages").select("*")
+      .or("sender_id.eq." + uid + ",recipient_id.eq." + uid)
+      .order("created_at", { ascending: false }).limit(300)
+      .then(function (r) { return r.data || []; });
+  }
+
+  function markConversationRead(otherId) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.resolve();
+    return Promise.resolve(c.from("messages").update({ read_at: new Date().toISOString() })
+      .eq("recipient_id", uid).eq("sender_id", otherId).is("read_at", null));
+  }
+
+  function countUnreadMessages() {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return Promise.resolve(0);
+    return c.from("messages").select("id", { count: "exact", head: true })
+      .eq("recipient_id", uid).is("read_at", null)
+      .then(function (r) { return r.count || 0; });
+  }
+
+  // cb receives the new message row for every message sent TO me.
+  function subscribeIncomingMessages(cb) {
+    var c = client_(); var uid = currentUserId();
+    if (!c || !uid) return function () {};
+    var channel = c.channel("messages:" + uid)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: "recipient_id=eq." + uid },
+        function (payload) { if (payload && payload.new) cb(payload.new); })
+      .subscribe();
+    return function unsubscribe() { c.removeChannel(channel); };
+  }
+
   /* ---------------- realtime ---------------- */
 
   // Calls cb() whenever a new post lands, so the feed can show a
@@ -734,6 +810,13 @@
     removeFriendEdge: removeFriendEdge,
     getTopCards: getTopCards,
     subscribeFeed: subscribeFeed,
+    submitFeedback: submitFeedback,
+    sendMessage: sendMessage,
+    listConversation: listConversation,
+    listRecentMessages: listRecentMessages,
+    markConversationRead: markConversationRead,
+    countUnreadMessages: countUnreadMessages,
+    subscribeIncomingMessages: subscribeIncomingMessages,
     createTournamentRemote: createTournamentRemote,
     updateTournamentRemote: updateTournamentRemote,
     getTournamentRemote: getTournamentRemote,

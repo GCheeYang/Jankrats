@@ -15,6 +15,7 @@
     decks: STORAGE_PREFIX + "decks",
     deletedDeckIds: STORAGE_PREFIX + "deletedDeckIds",
     wanted: STORAGE_PREFIX + "wanted",
+    wantedQty: STORAGE_PREFIX + "wantedQty",
     tournaments: STORAGE_PREFIX + "tournaments",
     profile: STORAGE_PREFIX + "profile",
     lastAuthProvider: STORAGE_PREFIX + "lastAuthProvider"
@@ -201,6 +202,7 @@
     collection: {},
     decks: [],
     wanted: [],          // card ids the player is searching for
+    wantedQty: {},       // cardId -> how many copies they want (missing = 1)
     wantedQuery: "",     // transient search box text, not persisted
     tournaments: [],
     scanCorrections: {}, // normalized AI-detected phrase -> cardId, see loadScanCorrections
@@ -219,6 +221,8 @@
     social: {
       session: null,           // Supabase auth session, or null when signed out
       myProfile: null,         // row from public.profiles for the signed-in user
+      chat: null,               // { withId, messages, prefill, back } while a direct-message thread is open, else null
+      unreadMessages: 0,        // count of messages sent to me that I haven't opened yet
       friendIds: [],            // ids of mutually-accepted friends
       incomingRequestIds: [],   // ids of people who requested this user, awaiting accept/decline
       outgoingRequestIds: [],   // ids this user has requested, awaiting their accept
@@ -269,6 +273,7 @@
     state.decks = loadJSON(KEYS.decks, []);
     if (sanitizeDeckRunes(state.decks)) persistDecks();
     state.wanted = loadJSON(KEYS.wanted, []);
+    state.wantedQty = loadJSON(KEYS.wantedQty, {});
     state.tournaments = loadJSON(KEYS.tournaments, []);
     state.profile = loadJSON(KEYS.profile, { name: "" });
   }
@@ -299,7 +304,7 @@
     saveJSON(KEYS.cardExtras, state.cards.filter(function (c) { return !baseIds[c.id]; }));
   }
   function persistCollection() { saveJSON(KEYS.collection, state.collection); }
-  function persistWanted() { saveJSON(KEYS.wanted, state.wanted); }
+  function persistWanted() { saveJSON(KEYS.wanted, state.wanted); saveJSON(KEYS.wantedQty, state.wantedQty); }
   function persistTournaments() { saveJSON(KEYS.tournaments, state.tournaments); }
   function persistDecks() {
     saveJSON(KEYS.decks, state.decks);
@@ -347,15 +352,23 @@
 
   function isWanted(cardId) { return state.wanted.indexOf(cardId) !== -1; }
 
+  function wantedQtyOf(cardId) { return state.wantedQty[cardId] || 1; }
+
+  function setWantedQty(cardId, qty) {
+    qty = clamp(qty, 1, 99);
+    if (qty === 1) delete state.wantedQty[cardId]; else state.wantedQty[cardId] = qty;
+    persistWanted();
+  }
+
   function toggleWanted(cardId) {
     var i = state.wanted.indexOf(cardId);
-    if (i !== -1) state.wanted.splice(i, 1); else state.wanted.push(cardId);
+    if (i !== -1) { state.wanted.splice(i, 1); delete state.wantedQty[cardId]; } else state.wanted.push(cardId);
     persistWanted();
   }
 
   function removeWanted(cardId) {
     var i = state.wanted.indexOf(cardId);
-    if (i !== -1) { state.wanted.splice(i, 1); persistWanted(); }
+    if (i !== -1) { state.wanted.splice(i, 1); delete state.wantedQty[cardId]; persistWanted(); }
   }
 
   // How many of a list of card ids a given collection map (yours, a
@@ -966,7 +979,7 @@
   }
 
   function formatUsd(n) {
-    return "$" + Number(n).toFixed(2);
+    return "USD $" + Number(n).toFixed(2);
   }
 
   function cardTileHtml(c) {
@@ -979,7 +992,6 @@
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
       (c.imageUrl ? '<div class="ct-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span></div>" +
-      '<div>' + domainChips(c.domains) + "</div>" +
       '<div class="ct-meta"><span>' + escapeHtml(c.rarity || "") + "</span>" +
       (c.power !== null && c.power !== undefined ? '<span class="ct-power">' + c.power + "★</span>" : "") +
       "</div>" +
@@ -1130,7 +1142,6 @@
       (c.cost !== null && c.cost !== undefined ? '<span class="ct-cost">' + c.cost + "⚡</span>" : "") +
       "</div>" +
       '<span class="coll-id-chip">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
-      "<div>" + domainChips(c.domains) + "</div>" +
       '<div class="coll-steppers">' + steppersHtml + "</div></div></div>";
   }
 
@@ -1247,9 +1258,12 @@
       "</div>";
   }
 
-  function wantedChipHtml(c) {
-    return '<span class="wanted-chip">' + escapeHtml(c.name) +
-      '<button data-remove-wanted="' + c.id + '" aria-label="Remove ' + escapeHtml(c.name) + '">&times;</button></span>';
+  function wantedListRowHtml(c) {
+    return '<div class="pick-row">' + pickRowImgHtml(c) + '<div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</span>" +
+      '<span class="pr-meta"><span>' + escapeHtml(c.type || "") + "</span></span></div>" +
+      '<div class="stepper" title="Copies you want"><button data-wanted-step="-1" data-wanted-id="' + c.id + '"' + (wantedQtyOf(c.id) <= 1 ? " disabled" : "") + '>−</button>' +
+      '<span class="val">' + wantedQtyOf(c.id) + '</span><button data-wanted-step="1" data-wanted-id="' + c.id + '">+</button></div>' +
+      '<button class="btn small ghost" data-remove-wanted="' + c.id + '" aria-label="Remove ' + escapeHtml(c.name) + '">✕</button></div>';
   }
 
   // Fetches the collections of every not-yet-cached person in the current
@@ -1287,15 +1301,15 @@
         var c = state.cardsById[cardId];
         if (!c) return "";
         var e = coll[cardId];
-        var has = e && (e.qty || 0) + (e.foil || 0) > 0;
-        return '<span class="pill ' + (has ? "good" : "bad") + '">' + (has ? "✓ " : "✗ ") + escapeHtml(c.name) + "</span>";
-      }).join("") + "</div>";
+        var qty = e ? (e.qty || 0) + (e.foil || 0) : 0;
+        return qty > 0 ? qty + " " + c.name : "";
+      }).filter(Boolean).map(escapeHtml).join("\n") + "</div>";
     }
     return html;
   }
 
   function wantedMatchSectionHtml() {
-    var heading = '<h3 style="margin:26px 0 10px;">Who has these?</h3>';
+    var heading = '<h3 style="margin:0 0 10px;">Who has these?</h3>';
     if (!JVBackend.isConfigured()) return heading + socialNotConfiguredHtml("Checking friends");
     if (!state.social.session) return heading + socialSignInPromptHtml("Sign in with Google to check who owns these cards.");
 
@@ -1336,6 +1350,7 @@
 
     var html = '<div class="view-head"><div><h1>Wishlist</h1><p>Search for cards you’re after, add them here, then see which friends — or anyone else — already own the whole list.</p></div></div>';
 
+    html += '<div class="builder-grid"><div>';
     html += '<div class="toolbar">' +
       field("Search cards to add", '<input type="search" id="wt-q" placeholder="Card name…" value="' + escapeHtml(state.wantedQuery) + '">') +
       "</div>";
@@ -1349,13 +1364,15 @@
 
     html += '<h3 style="margin:22px 0 10px;">Your list (' + cards.length + ")</h3>";
     if (!cards.length) {
-      html += '<div class="empty-state"><h3>Nothing added yet</h3><p>Search above and click <b>+ Add</b> on any card.</p></div>';
+      html += '<p style="font-size:12.5px;color:var(--ink-faint);">Nothing added yet — search and click <b>+ Add</b> on any card.</p>';
     } else {
-      html += '<div class="wanted-chip-row">' + cards.map(wantedChipHtml).join("") + "</div>" +
+      html += '<div class="deck-picker-list">' + cards.map(wantedListRowHtml).join("") + "</div>" +
         '<button class="btn small ghost" id="wt-clear" style="margin-top:10px;">Clear list</button>';
     }
+    html += "</div>";
 
-    if (cards.length) html += wantedMatchSectionHtml();
+    if (cards.length) html += '<div class="deck-panel">' + wantedMatchSectionHtml() + "</div>";
+    html += "</div>";
 
     el.innerHTML = html;
     wireWantedView(el);
@@ -1371,8 +1388,15 @@
     el.querySelectorAll("[data-remove-wanted]").forEach(function (b) {
       b.addEventListener("click", function () { removeWanted(b.getAttribute("data-remove-wanted")); renderWantedView(); });
     });
+    el.querySelectorAll("[data-wanted-step]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-wanted-id");
+        setWantedQty(id, wantedQtyOf(id) + parseInt(b.getAttribute("data-wanted-step"), 10));
+        renderWantedView();
+      });
+    });
     var clear = el.querySelector("#wt-clear");
-    if (clear) clear.addEventListener("click", function () { state.wanted = []; persistWanted(); renderWantedView(); });
+    if (clear) clear.addEventListener("click", function () { state.wanted = []; state.wantedQty = {}; persistWanted(); renderWantedView(); });
 
     if (!JVBackend.isConfigured() || !state.wanted.length) return;
     if (!state.social.session) { wireSignInPrompt(el); return; }
@@ -2170,7 +2194,6 @@
       '<div class="lc-name">' + escapeHtml(l.name) + escapeHtml(variantLabel(l)) + "</div>" +
       (identity ? '<div style="font-size:11.5px;color:var(--ink-faint);margin-top:-4px;">' + escapeHtml(identity) + "</div>" : "") +
       '<span class="coll-id-chip">' + escapeHtml(l.set) + " " + escapeHtml(l.collectorNumber || "") + "</span>" +
-      domainChips(l.domains) +
       '<span class="pill neutral">' + escapeHtml(l.rarity || "") + "</span>" +
       '<span class="pill ' + (owned ? "good" : "neutral") + '">' + (owned ? "Own " + owned : "Not owned") + "</span>" +
       "</div>";
@@ -2281,7 +2304,6 @@
         (c.imageUrl ? '<div class="lc-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
         '<div class="lc-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</div><div class=\"ct-meta\">" + c.cost + "⚡ / " + c.power + "★</div>" +
         '<span class="coll-id-chip">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
-        domainChips(c.domains) +
         '<span class="pill ' + (owned ? "good" : "neutral") + '">' + (owned ? "Own " + owned : "Not owned") + "</span>" +
         "</div>";
     }).join("") + "</div>" +
@@ -2732,6 +2754,7 @@
           var id = m.ids && m.ids[0];
           if (!id || state.wanted.indexOf(id) !== -1) return;
           state.wanted.push(id);
+          if (m.short > 1) state.wantedQty[id] = m.short;
           added++;
         });
         if (!added) { toast("Those cards are already on your Wishlist."); return; }
@@ -3415,6 +3438,13 @@
     });
   }
 
+  function ownedQty(ids, collection) {
+    return ids.reduce(function (n, id) {
+      var e = collection[id];
+      return n + (e ? (e.qty || 0) + (e.foil || 0) : 0);
+    }, 0);
+  }
+
   function deckMatchBodyHtml() {
     var dm = state.social.deckMatch;
     if (!dm) return "";
@@ -3462,17 +3492,17 @@
         : owned === 0
           ? '<span class="pill bad">Has none</span>'
           : '<span class="pill warn">' + owned + " / " + total + "</span>";
-    var html = '<button class="friend-tile wanted-match-row" data-open-deck-match="' + p.id + '">' +
+    var html = '<div class="friend-tile wanted-match-row"><button class="friend-tile-open" data-open-deck-match="' + p.id + '">' +
       (p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
       '<span class="friend-name">' + escapeHtml(p.display_name || "Anonymous brewer") + "</span>" +
       badge +
-      "</button>";
+      '</button><button class="btn small" data-chat-with="' + p.id + '">Message</button></div>';
     if (expanded && owned !== null) {
       var coll = state.social.wantedCollections[p.id] || {};
       html += '<div class="wanted-match-detail">' + dm.items.map(function (item) {
-        var has = hasAnyOwned(item.ids, coll);
-        return '<span class="pill ' + (has ? "good" : "bad") + '">' + (has ? "✓ " : "✗ ") + escapeHtml(item.name) + "</span>";
-      }).join("") + "</div>";
+        var qty = ownedQty(item.ids, coll);
+        return qty > 0 ? qty + " " + item.name : "";
+      }).filter(Boolean).map(escapeHtml).join("\n") + "</div>";
     }
     return html;
   }
@@ -3522,6 +3552,191 @@
         var id = b.getAttribute("data-open-deck-match");
         dm.expandedId = dm.expandedId === id ? null : id;
         refreshDeckMatchBody(root);
+      });
+    });
+    root.querySelectorAll("[data-chat-with]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-chat-with");
+        var coll = state.social.wantedCollections[id] || {};
+        var have = dm.items.filter(function (item) { return ownedQty(item.ids, coll) > 0; }).slice(0, 6)
+          .map(function (item) { return item.name; });
+        var prefill = have.length
+          ? "Hi! I saw you have " + have.join(", ") + ". Would you sell any of them? What price are you asking?"
+          : "";
+        openChat(id, { prefill: prefill, back: "match" });
+      });
+    });
+  }
+
+  /* ================================================================
+     DIRECT MESSAGES -- 1:1 chat between players (e.g. asking who has a
+     card what they'd sell it for). Threads open from the "Find who has
+     these" rows or from the Messages inbox in the top rail; new
+     messages arrive live over Supabase Realtime and drive the unread
+     badge on the rail.
+     ================================================================ */
+
+  var messagesUnsub = null;
+
+  function profileFor(id) {
+    var s = state.social;
+    var pool = (s.wantedProfiles || []).concat(s.friendsProfiles || []);
+    return pool.filter(function (p) { return p.id === id; })[0] || null;
+  }
+
+  function profileNameFor(id) {
+    var p = profileFor(id);
+    return (p && p.display_name) || "Anonymous brewer";
+  }
+
+  function ensureProfilesLoaded(cb) {
+    if (state.social.wantedProfiles !== null) { cb(); return; }
+    JVBackend.listProfiles().then(function (profiles) { state.social.wantedProfiles = profiles; cb(); }).catch(cb);
+  }
+
+  function refreshUnreadCount() {
+    if (!JVBackend.isConfigured() || !state.social.session) { state.social.unreadMessages = 0; return; }
+    JVBackend.countUnreadMessages().then(function (n) {
+      state.social.unreadMessages = n;
+      renderRail();
+    }).catch(function () {});
+  }
+
+  function startMessageListener() {
+    stopMessageListener();
+    if (!JVBackend.isConfigured() || !state.social.session) return;
+    refreshUnreadCount();
+    messagesUnsub = JVBackend.subscribeIncomingMessages(function (msg) {
+      var chat = state.social.chat;
+      if (chat && chat.withId === msg.sender_id) {
+        chat.messages.push(msg);
+        JVBackend.markConversationRead(msg.sender_id).catch(function () {});
+        renderChatBody();
+        return;
+      }
+      state.social.unreadMessages++;
+      renderRail();
+      ensureProfilesLoaded(function () { toast("New message from " + profileNameFor(msg.sender_id)); });
+    });
+  }
+
+  function stopMessageListener() {
+    if (messagesUnsub) { messagesUnsub(); messagesUnsub = null; }
+  }
+
+  function chatBubblesHtml(chat) {
+    var me = JVBackend.currentUserId();
+    if (!chat.messages.length) return '<p style="color:var(--ink-faint);font-size:13px;text-align:center;margin:24px 0;">No messages yet — say hi.</p>';
+    return chat.messages.map(function (m) {
+      var mine = m.sender_id === me;
+      return '<div class="chat-msg' + (mine ? " mine" : "") + '"><div class="chat-bubble">' + escapeHtml(m.body) + "</div></div>";
+    }).join("");
+  }
+
+  function renderChatBody() {
+    var chat = state.social.chat;
+    var box = document.getElementById("chat-thread");
+    if (!chat || !box) return;
+    box.innerHTML = chatBubblesHtml(chat);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function openChat(withId, opts) {
+    opts = opts || {};
+    if (!JVBackend.isConfigured() || !state.social.session) { toast("Sign in to send messages."); return; }
+    state.social.chat = { withId: withId, messages: [], prefill: opts.prefill || "", back: opts.back || "close" };
+    ensureProfilesLoaded(function () {
+      var chat = state.social.chat;
+      if (!chat || chat.withId !== withId) return;
+      var p = profileFor(withId);
+      var root = document.getElementById("modal-root");
+      root.innerHTML = '<div class="modal-backdrop" id="chat-modal"><div class="modal">' +
+        '<div class="modal-head"><h2 style="font-size:19px;">' +
+        (chat.back !== "close" ? '<button class="btn ghost small" data-chat-back style="margin-right:6px;">←</button>' : "") +
+        escapeHtml((p && p.display_name) || "Anonymous brewer") + '</h2><button class="modal-close" data-close>&times;</button></div>' +
+        '<div id="chat-thread" class="chat-thread"><p style="color:var(--ink-faint);font-size:13px;">Loading…</p></div>' +
+        '<form id="chat-form" class="chat-form"><textarea id="chat-input" rows="2" maxlength="2000" placeholder="Write a message…"></textarea>' +
+        '<button type="submit" class="btn primary">Send</button></form>' +
+        "</div></div>";
+      root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeChat); });
+      root.querySelector("#chat-modal").addEventListener("click", function (e) { if (e.target.id === "chat-modal") closeChat(); });
+      var backBtn = root.querySelector("[data-chat-back]");
+      if (backBtn) backBtn.addEventListener("click", chatGoBack);
+      var input = root.querySelector("#chat-input");
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); root.querySelector("#chat-form").requestSubmit(); }
+      });
+      root.querySelector("#chat-form").addEventListener("submit", function (e) {
+        e.preventDefault();
+        var body = input.value.trim();
+        if (!body) return;
+        input.value = "";
+        JVBackend.sendMessage(withId, body).then(function (msg) {
+          if (state.social.chat && state.social.chat.withId === withId) { state.social.chat.messages.push(msg); renderChatBody(); }
+        }).catch(function () { input.value = body; toast("Couldn't send that message."); });
+      });
+      JVBackend.listConversation(withId).then(function (msgs) {
+        if (!state.social.chat || state.social.chat.withId !== withId) return;
+        state.social.chat.messages = msgs;
+        if (!msgs.length && chat.prefill) input.value = chat.prefill;
+        renderChatBody();
+        input.focus();
+      }).catch(function () { toast("Couldn't load messages."); });
+      JVBackend.markConversationRead(withId).then(refreshUnreadCount).catch(function () {});
+    });
+  }
+
+  function closeChat() {
+    state.social.chat = null;
+    closeModal();
+  }
+
+  function chatGoBack() {
+    var back = state.social.chat && state.social.chat.back;
+    state.social.chat = null;
+    if (back === "inbox") { openInboxModal(); return; }
+    var dm = state.social.deckMatch;
+    var deck = dm && state.decks.filter(function (d) { return d.id === dm.deckId; })[0];
+    if (back === "match" && deck) { openDeckMatchModal(deck); return; }
+    closeModal();
+  }
+
+  function openInboxModal() {
+    if (!JVBackend.isConfigured() || !state.social.session) return;
+    var root = document.getElementById("modal-root");
+    root.innerHTML = '<div class="modal-backdrop" id="inbox-modal"><div class="modal">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">Messages</h2><button class="modal-close" data-close>&times;</button></div>' +
+      '<div id="inbox-body"><p style="color:var(--ink-faint);">Loading…</p></div></div></div>';
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#inbox-modal").addEventListener("click", function (e) { if (e.target.id === "inbox-modal") closeModal(); });
+    var me = JVBackend.currentUserId();
+    ensureProfilesLoaded(function () {
+      JVBackend.listRecentMessages().then(function (msgs) {
+        var body = document.getElementById("inbox-body");
+        if (!body) return;
+        var threads = {}, order = [];
+        msgs.forEach(function (m) {
+          var other = m.sender_id === me ? m.recipient_id : m.sender_id;
+          if (!threads[other]) { threads[other] = { last: m, unread: 0 }; order.push(other); }
+          if (m.recipient_id === me && !m.read_at) threads[other].unread++;
+        });
+        if (!order.length) { body.innerHTML = '<div class="empty-state"><h3>No messages yet</h3><p>Use <b>Message</b> next to anyone in <b>Find who has these</b> to start a chat.</p></div>'; return; }
+        body.innerHTML = '<div class="wanted-match-list">' + order.map(function (id) {
+          var t = threads[id];
+          var p = profileFor(id);
+          return '<button class="friend-tile" data-inbox-open="' + id + '">' +
+            (p && p.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(p.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
+            '<span style="flex:1;min-width:0;display:flex;flex-direction:column;"><span class="friend-name">' + escapeHtml(profileNameFor(id)) + "</span>" +
+            '<span style="font-size:12px;font-weight:400;color:var(--ink-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+            (t.last.sender_id === me ? "You: " : "") + escapeHtml(t.last.body) + "</span></span>" +
+            (t.unread ? '<span class="pill warn">' + t.unread + " new</span>" : "") + "</button>";
+        }).join("") + "</div>";
+        body.querySelectorAll("[data-inbox-open]").forEach(function (b) {
+          b.addEventListener("click", function () { openChat(b.getAttribute("data-inbox-open"), { back: "inbox" }); });
+        });
+      }).catch(function () {
+        var body = document.getElementById("inbox-body");
+        if (body) body.innerHTML = '<p style="color:var(--ink-faint);">Couldn\'t load messages.</p>';
       });
     });
   }
@@ -3758,10 +3973,12 @@
   /* ---------------- live sync (organizer's other tabs + every participant) ---------------- */
 
   var tourneyLiveUnsub = null;
+  var tourneyPollTimer = null;
   var tourneyLiveTournamentId = null;
 
   function tourneyStopLiveSync() {
     if (tourneyLiveUnsub) { tourneyLiveUnsub(); tourneyLiveUnsub = null; }
+    if (tourneyPollTimer) { clearInterval(tourneyPollTimer); tourneyPollTimer = null; }
     tourneyLiveTournamentId = null;
   }
 
@@ -3775,6 +3992,15 @@
       if (!incoming) return;
       applyRemoteTournamentData(t.id, incoming);
     });
+    // Realtime can drop silently (sleeping tab, flaky network), so also
+    // re-check every few seconds while the tab is visible; the updatedAt
+    // check in applyRemoteTournamentData makes an unchanged poll a no-op.
+    tourneyPollTimer = setInterval(function () {
+      if (document.hidden || state.route !== "tournament") return;
+      JVBackend.getTournamentRemote(t.id).then(function (row) {
+        if (row) applyRemoteTournamentData(t.id, row.data);
+      }).catch(function () {});
+    }, 5000);
   }
 
   // Applies a tournament row's data (freshly fetched, or pushed live via
@@ -3792,7 +4018,9 @@
     if (idx !== -1 && data.updatedAt && state.tournaments[idx].updatedAt && data.updatedAt <= state.tournaments[idx].updatedAt) return;
     var merged = Object.assign({}, data, { id: id });
     var viewingThis = state.tourneyBuilder.tournamentId === id && state.route === "tournament";
-    if (viewingThis && merged.status === "setup" && tourneyIsOrganizer(merged)) {
+    var ae = document.activeElement;
+    var typing = !!(ae && ae.tagName === "INPUT" && ae.closest && ae.closest("#view-tournament"));
+    if (viewingThis && merged.status === "setup" && tourneyIsOrganizer(merged) && typing) {
       state.tourneyBuilder.pendingRosterUpdate = merged;
       var banner = document.getElementById("tourney-refresh-banner");
       if (banner) banner.style.display = "flex";
@@ -3801,6 +4029,20 @@
     if (idx === -1) state.tournaments.push(merged); else state.tournaments[idx] = merged;
     saveJSON(KEYS.tournaments, state.tournaments);
     if (viewingThis) renderTournamentView();
+  }
+
+  // Before an organizer's own save goes up, fold in anyone who joined since
+  // this screen last refreshed -- otherwise saving a stale copy of the roster
+  // would overwrite the server's version and silently drop the joiner.
+  function mergePendingJoins(t) {
+    var pending = state.tourneyBuilder.pendingRosterUpdate;
+    if (!pending || pending.id !== t.id) return;
+    state.tourneyBuilder.pendingRosterUpdate = null;
+    (pending.players || []).forEach(function (pp) {
+      if (!pp.userId || t.players.some(function (p) { return p.userId === pp.userId; })) return;
+      var slot = t.players.filter(function (p) { return !p.userId && !(p.name || "").trim(); })[0];
+      if (slot) { slot.name = pp.name; slot.userId = pp.userId; } else t.players.push(pp);
+    });
   }
 
   // Folds a held-back live update into state without itself forcing a
@@ -4135,6 +4377,8 @@
 
     if (!tourneyIsOrganizer(t)) return;
 
+    function saveSetup() { mergePendingJoins(t); persistCurrentTournament(t); }
+
     var copyBtn = el.querySelector('[data-action="copy-code"]');
     if (copyBtn) copyBtn.addEventListener("click", function () { copyToClipboard(t.id); toast("Code copied."); });
 
@@ -4156,7 +4400,7 @@
         if (!p) return;
         p.name = inp.value;
         t.updatedAt = Date.now ? Date.now() : 0;
-        persistCurrentTournament(t);
+        saveSetup();
       });
     });
     el.querySelectorAll("[data-remove-player]").forEach(function (b) {
@@ -4164,7 +4408,7 @@
         var id = b.getAttribute("data-remove-player");
         t.players = t.players.filter(function (pp) { return pp.id !== id; });
         t.updatedAt = Date.now ? Date.now() : 0;
-        persistCurrentTournament(t);
+        saveSetup();
         renderTournamentView();
       });
     });
@@ -4172,7 +4416,7 @@
     if (addBtn) addBtn.addEventListener("click", function () {
       t.players.push({ id: uid("plyr"), name: "", dropped: false, userId: null });
       t.updatedAt = Date.now ? Date.now() : 0;
-      persistCurrentTournament(t);
+      saveSetup();
       renderTournamentView();
     });
     var startBtn = el.querySelector('[data-action="start-tourney"]');
@@ -4184,7 +4428,7 @@
       t.status = "active";
       generateNextRound(t);
       t.updatedAt = Date.now ? Date.now() : 0;
-      persistCurrentTournament(t);
+      saveSetup();
       renderTournamentView();
     });
   }
@@ -4372,7 +4616,7 @@
       html += '<p style="font-size:11.5px;color:var(--ink-faint);margin-bottom:10px;">' +
         (isOrganizer
           ? (t.format === "bo3" ? "Click the winner of each game as you play it. Past rounds stay editable too." : "Click the winner’s name to report a match (or Draw). Past rounds stay editable too.")
-          : (mePlayer ? "Your table is highlighted below — report your own score there. You'll be asked to confirm, and can't change it yourself afterward (ask the organizer if you need to fix it)." : "Live view — updates as scores are reported.")) +
+          : (mePlayer ? "Your table is highlighted below. Report your score once done. Please ask the organizer if you need to make changes to the score." : "Live view — updates as scores are reported.")) +
         "</p>";
     }
     var tableNums = tourneyTableNumbers(round);
@@ -5646,6 +5890,7 @@
           // that only happened to self-correct by navigating away and back.
           if (state.route === "feed" || state.route === "profile" || state.route === "dashboard" || state.route === "tournament") render();
         });
+        startMessageListener();
         JVBackend.listFriendEdges().then(function (edges) {
           state.social.friendIds = edges.friends;
           state.social.incomingRequestIds = edges.incoming;
@@ -5662,6 +5907,9 @@
         // re-uploaded, silently undoing the delete.
         if (event === "SIGNED_IN") { syncCollectionOnSignIn(); syncDecksOnSignIn(); }
       } else if (hadSession) {
+        stopMessageListener();
+        state.social.chat = null;
+        state.social.unreadMessages = 0;
         state.social.myProfile = null;
         state.social.friendIds = [];
         state.social.incomingRequestIds = [];
@@ -5802,13 +6050,17 @@
         "</div>";
     }
     var name = (s.myProfile && s.myProfile.display_name) || (s.session.user && s.session.user.email) || "Signed in";
-    return '<div class="social-auth signed-in"><button class="social-auth-me" data-open-my-profile>' +
+    return '<div class="social-auth signed-in"><button class="social-auth-me inbox-btn" data-open-inbox title="Messages">✉' +
+      (s.unreadMessages ? '<span class="msg-badge">' + s.unreadMessages + "</span>" : "") + '</button>' +
+      '<button class="social-auth-me" data-open-my-profile>' +
       (s.myProfile && s.myProfile.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(s.myProfile.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
       '<span>' + escapeHtml(name) + "</span></button></div>";
   }
 
   function wireAuthRail(el) {
     wireSignInButtons(el, "auth-signin");
+    var inboxBtn = el.querySelector("[data-open-inbox]");
+    if (inboxBtn) inboxBtn.addEventListener("click", openInboxModal);
     var meBtn = el.querySelector("[data-open-my-profile]");
     if (meBtn) meBtn.addEventListener("click", function () { navigate("dashboard"); });
   }
@@ -6278,9 +6530,67 @@
     JVBackend.listScanCorrections().then(function (map) { state.scanCorrections = map; });
   }
 
+  /* ================================================================
+     FEEDBACK -- floating button (bottom-left) opening a modal where
+     signed-in users send a feature request or bug report.
+     ================================================================ */
+
+  function openFeedbackModal() {
+    var root = document.getElementById("modal-root");
+    var body;
+    if (!JVBackend.isConfigured()) {
+      body = socialNotConfiguredHtml("Feedback");
+    } else if (!state.social.session) {
+      body = socialSignInPromptHtml("Sign in to send feedback — it goes straight to the person running Jankrats.");
+    } else {
+      body = '<p style="color:var(--ink-soft);margin-bottom:12px;">Tell us about a feature you\'d like to see, or a bug you ran into.</p>' +
+        '<div class="tabs" id="feedback-kind" style="margin-bottom:12px;">' +
+        '<button class="active" data-kind="feature">Feature request</button>' +
+        '<button data-kind="bug">Bug</button>' +
+        '<button data-kind="other">Other</button></div>' +
+        '<textarea id="feedback-text" class="feedback-text" rows="9" maxlength="4000" placeholder="Describe it here — for bugs, what you did and what went wrong…"></textarea>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">' +
+        '<button class="btn ghost" data-close>Cancel</button>' +
+        '<button class="btn primary" id="feedback-send">Send feedback</button></div>';
+    }
+    root.innerHTML = '<div class="modal-backdrop" id="feedback-modal"><div class="modal modal-wide">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">Send feedback</h2><button class="modal-close" data-close>&times;</button></div>' +
+      body + "</div></div>";
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#feedback-modal").addEventListener("click", function (e) { if (e.target.id === "feedback-modal") closeModal(); });
+    wireSignInPrompt(root);
+
+    var kindWrap = root.querySelector("#feedback-kind");
+    if (!kindWrap) return;
+    var kind = "feature";
+    kindWrap.querySelectorAll("[data-kind]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        kind = b.getAttribute("data-kind");
+        kindWrap.querySelectorAll("[data-kind]").forEach(function (bb) { bb.classList.toggle("active", bb === b); });
+      });
+    });
+    var text = root.querySelector("#feedback-text");
+    text.focus();
+    var sendBtn = root.querySelector("#feedback-send");
+    sendBtn.addEventListener("click", function () {
+      var msg = text.value.trim();
+      if (!msg) { toast("Write something first."); return; }
+      sendBtn.disabled = true;
+      JVBackend.submitFeedback(kind, msg, state.route).then(function () {
+        closeModal();
+        toast("Thanks — feedback sent!");
+      }).catch(function () {
+        sendBtn.disabled = false;
+        toast("Couldn't send feedback. Try again.");
+      });
+    });
+  }
+
   function init() {
     loadAll();
     wireShell();
+    var fab = document.getElementById("feedback-fab");
+    if (fab) fab.addEventListener("click", openFeedbackModal);
     wireAuth();
     wireCardArtFallback();
     loadCardPrices();
