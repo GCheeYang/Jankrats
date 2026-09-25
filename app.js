@@ -4675,7 +4675,15 @@
           var oppId = myMatch.p1Id === mePlayer.id ? myMatch.p2Id : myMatch.p1Id;
           var opp = tourneyPlayerById(t, oppId);
           var myTable = tourneyTableNumbers(latestRound)[myMatch.id];
-          html += '<div class="callout" style="margin-bottom:16px;">You\'re at <b>Table ' + myTable + "</b> vs <b>" + escapeHtml(opp.name) + "</b></div>";
+          html += '<div class="callout" style="margin-bottom:16px;">You\'re at <b>Table ' + myTable + "</b> vs <b>" + escapeHtml(opp.name) + "</b>" +
+            (tourneyMatchDecided(t, myMatch)
+              ? '<div style="margin-top:6px;font-size:13px;">Result reported: <b>' +
+                (myMatch.result === "draw" ? "Draw" : escapeHtml(tourneyPlayerById(t, myMatch.result === "p1" ? myMatch.p1Id : myMatch.p2Id).name) + " won") +
+                "</b>. It's locked now -- ask the organizer if it needs to be changed.</div>"
+              : "") +
+            "</div>";
+        } else {
+          html += '<div class="callout" style="margin-bottom:16px;">You\'re on the roster but not paired in this round (you may have joined after it started) -- ask the organizer.</div>';
         }
       }
     }
@@ -4826,24 +4834,36 @@
           if (!match || !roundNumber) return;
           var gameAttr = btn.getAttribute("data-game");
           var pick = btn.getAttribute("data-pick");
+          function submitPick() {
+            tourneyApplyPick(match, gameAttr, pick);
+            t.updatedAt = Date.now ? Date.now() : 0;
+            saveJSON(KEYS.tournaments, state.tournaments);
+            renderTournamentView();
+            JVBackend.reportMatchResultRemote(t.id, roundNumber, match.id, match.result, match.games)
+              .then(function () { return JVBackend.getTournamentRemote(t.id); })
+              .then(function (row) { if (row) applyRemoteTournamentData(t.id, row.data); })
+              .catch(function () {
+                toast("Couldn't sync your score -- try again.");
+                JVBackend.getTournamentRemote(t.id).then(function (row) { if (row) applyRemoteTournamentData(t.id, row.data); });
+              });
+          }
           if (tourneyWouldDecide(match, gameAttr, pick)) {
             var p1 = tourneyPlayerById(t, match.p1Id), p2 = tourneyPlayerById(t, match.p2Id);
             var winnerName = pick === "draw" ? null : (pick === "p1" ? p1.name : p2.name);
-            var msg = (winnerName ? "Report " + winnerName + " as the winner" : "Report this match as a draw") +
-              "? You won't be able to change it yourself afterward -- you'd need to ask the organizer.";
-            if (!window.confirm(msg)) return;
-          }
-          tourneyApplyPick(match, gameAttr, pick);
-          t.updatedAt = Date.now ? Date.now() : 0;
-          saveJSON(KEYS.tournaments, state.tournaments);
-          renderTournamentView();
-          JVBackend.reportMatchResultRemote(t.id, roundNumber, match.id, match.result, match.games)
-            .then(function () { return JVBackend.getTournamentRemote(t.id); })
-            .then(function (row) { if (row) applyRemoteTournamentData(t.id, row.data); })
-            .catch(function () {
-              toast("Couldn't sync your score -- try again.");
-              JVBackend.getTournamentRemote(t.id).then(function (row) { if (row) applyRemoteTournamentData(t.id, row.data); });
+            // In-app modal, not window.confirm: a lot of phone browsers
+            // (in-app webviews from Discord, Line, QR-scanner apps, ...)
+            // silently return false from a native confirm, so the tap
+            // just did nothing and the player couldn't report at all.
+            openConfirmModal({
+              title: "Report this result?",
+              message: (winnerName ? "Report " + winnerName + " as the winner" : "Report this match as a draw") +
+                "? You won't be able to change it yourself afterward -- you'd need to ask the organizer.",
+              confirmLabel: "Report",
+              onConfirm: submitPick
             });
+            return;
+          }
+          submitPick();
         });
       });
     });
