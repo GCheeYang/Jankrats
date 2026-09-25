@@ -5988,7 +5988,7 @@
         "</div>";
     }
     var name = (s.myProfile && s.myProfile.display_name) || (s.session.user && s.session.user.email) || "Signed in";
-    return '<div class="social-auth signed-in"><button class="social-auth-me" data-open-inbox title="Messages">✉' +
+    return '<div class="social-auth signed-in"><button class="social-auth-me inbox-btn" data-open-inbox title="Messages">✉' +
       (s.unreadMessages ? '<span class="msg-badge">' + s.unreadMessages + "</span>" : "") + '</button>' +
       '<button class="social-auth-me" data-open-my-profile>' +
       (s.myProfile && s.myProfile.avatar_url ? '<img class="social-avatar-sm" src="' + escapeHtml(s.myProfile.avatar_url) + '" alt="">' : '<span class="social-avatar-sm placeholder"></span>') +
