@@ -4286,10 +4286,10 @@
     var qr = window.qrcode(0, "M");
     qr.addData(url);
     qr.make();
-    return '<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;">' +
-      '<div style="background:#fff;padding:8px;border-radius:10px;width:160px;height:160px;box-sizing:border-box;line-height:0;">' +
+    return '<div class="tourney-qr">' +
+      '<div class="tourney-qr-code">' +
       qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }) + "</div>" +
-      '<p style="font-size:12.5px;color:var(--ink-faint);max-width:220px;">Players can scan this to open the invite link and join.</p>' +
+      '<p>Players can scan this to open the invite link and join.</p>' +
       "</div>";
   }
 
