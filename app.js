@@ -4281,7 +4281,7 @@
   // Scannable version of the invite link, in a modal so it isn't taking up
   // the whole screen on mobile. Always dark-on-white regardless of theme (a
   // QR needs that contrast to scan); says so if the QR library didn't load.
-  function openTourneyQrModal(url) {
+  function openTourneyQrModal(url, code) {
     var root = document.getElementById("modal-root");
     var body;
     if (typeof window.qrcode === "function") {
@@ -4294,7 +4294,9 @@
     }
     root.innerHTML = '<div class="modal-backdrop" id="tourney-qr-modal"><div class="modal">' +
       '<div class="modal-head"><h2 style="font-size:19px;">Invite QR code</h2><button class="modal-close" data-close>&times;</button></div>' +
-      '<div class="tourney-qr">' + body + "</div></div></div>";
+      '<div class="tourney-qr">' + body + "</div>" +
+      '<p class="tourney-qr-codetext">' + escapeHtml(code) + "</p>" +
+      "</div></div>";
     root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
     root.querySelector("#tourney-qr-modal").addEventListener("click", function (e) { if (e.target.id === "tourney-qr-modal") closeModal(); });
   }
@@ -4394,7 +4396,7 @@
 
     var qrBtn = el.querySelector('[data-action="show-qr"]');
     if (qrBtn) qrBtn.addEventListener("click", function () {
-      openTourneyQrModal(window.location.origin + tournamentInvitePath(t.id));
+      openTourneyQrModal(window.location.origin + tournamentInvitePath(t.id), t.id);
     });
 
     var copyLinkBtn = el.querySelector('[data-action="copy-link"]');
