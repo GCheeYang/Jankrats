@@ -4036,6 +4036,21 @@
     }
   }
 
+  // Scannable version of the invite link, for players standing next to the
+  // organizer. Always dark-on-white regardless of theme (a QR needs that
+  // contrast to scan); renders nothing if the QR library didn't load.
+  function tourneyQrHtml(url) {
+    if (typeof window.qrcode !== "function") return "";
+    var qr = window.qrcode(0, "M");
+    qr.addData(url);
+    qr.make();
+    return '<div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;">' +
+      '<div style="background:#fff;padding:8px;border-radius:10px;width:160px;height:160px;box-sizing:border-box;line-height:0;">' +
+      qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }) + "</div>" +
+      '<p style="font-size:12.5px;color:var(--ink-faint);max-width:220px;">Players can scan this to open the invite link and join.</p>' +
+      "</div>";
+  }
+
   function tourneyFormatLabelHtml(t) {
     return '<div class="field" style="margin-bottom:10px;"><label>Match format</label>' +
       '<span class="pill neutral" style="display:inline-block;">' + (t.format === "bo1" ? "Best of 1" : "Best of 3") + "</span></div>";
@@ -4052,6 +4067,7 @@
         (isOrganizer ? '<button type="button" class="btn small" data-action="copy-code">Copy code</button>' : "") +
         (isOrganizer ? '<button type="button" class="btn small primary" data-action="copy-link">Copy invite link</button>' : "") +
         "</div>";
+      if (isOrganizer) html += tourneyQrHtml(window.location.origin + tournamentInvitePath(t.id));
     }
 
     if (isOrganizer && t.organizerId) {
