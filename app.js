@@ -3973,10 +3973,12 @@
   /* ---------------- live sync (organizer's other tabs + every participant) ---------------- */
 
   var tourneyLiveUnsub = null;
+  var tourneyPollTimer = null;
   var tourneyLiveTournamentId = null;
 
   function tourneyStopLiveSync() {
     if (tourneyLiveUnsub) { tourneyLiveUnsub(); tourneyLiveUnsub = null; }
+    if (tourneyPollTimer) { clearInterval(tourneyPollTimer); tourneyPollTimer = null; }
     tourneyLiveTournamentId = null;
   }
 
@@ -3990,6 +3992,15 @@
       if (!incoming) return;
       applyRemoteTournamentData(t.id, incoming);
     });
+    // Realtime can drop silently (sleeping tab, flaky network), so also
+    // re-check every few seconds while the tab is visible; the updatedAt
+    // check in applyRemoteTournamentData makes an unchanged poll a no-op.
+    tourneyPollTimer = setInterval(function () {
+      if (document.hidden || state.route !== "tournament") return;
+      JVBackend.getTournamentRemote(t.id).then(function (row) {
+        if (row) applyRemoteTournamentData(t.id, row.data);
+      }).catch(function () {});
+    }, 5000);
   }
 
   // Applies a tournament row's data (freshly fetched, or pushed live via
@@ -4007,7 +4018,9 @@
     if (idx !== -1 && data.updatedAt && state.tournaments[idx].updatedAt && data.updatedAt <= state.tournaments[idx].updatedAt) return;
     var merged = Object.assign({}, data, { id: id });
     var viewingThis = state.tourneyBuilder.tournamentId === id && state.route === "tournament";
-    if (viewingThis && merged.status === "setup" && tourneyIsOrganizer(merged)) {
+    var ae = document.activeElement;
+    var typing = !!(ae && ae.tagName === "INPUT" && ae.closest && ae.closest("#view-tournament"));
+    if (viewingThis && merged.status === "setup" && tourneyIsOrganizer(merged) && typing) {
       state.tourneyBuilder.pendingRosterUpdate = merged;
       var banner = document.getElementById("tourney-refresh-banner");
       if (banner) banner.style.display = "flex";
@@ -4016,6 +4029,20 @@
     if (idx === -1) state.tournaments.push(merged); else state.tournaments[idx] = merged;
     saveJSON(KEYS.tournaments, state.tournaments);
     if (viewingThis) renderTournamentView();
+  }
+
+  // Before an organizer's own save goes up, fold in anyone who joined since
+  // this screen last refreshed -- otherwise saving a stale copy of the roster
+  // would overwrite the server's version and silently drop the joiner.
+  function mergePendingJoins(t) {
+    var pending = state.tourneyBuilder.pendingRosterUpdate;
+    if (!pending || pending.id !== t.id) return;
+    state.tourneyBuilder.pendingRosterUpdate = null;
+    (pending.players || []).forEach(function (pp) {
+      if (!pp.userId || t.players.some(function (p) { return p.userId === pp.userId; })) return;
+      var slot = t.players.filter(function (p) { return !p.userId && !(p.name || "").trim(); })[0];
+      if (slot) { slot.name = pp.name; slot.userId = pp.userId; } else t.players.push(pp);
+    });
   }
 
   // Folds a held-back live update into state without itself forcing a
@@ -4334,6 +4361,8 @@
 
     if (!tourneyIsOrganizer(t)) return;
 
+    function saveSetup() { mergePendingJoins(t); persistCurrentTournament(t); }
+
     var copyBtn = el.querySelector('[data-action="copy-code"]');
     if (copyBtn) copyBtn.addEventListener("click", function () { copyToClipboard(t.id); toast("Code copied."); });
 
@@ -4355,7 +4384,7 @@
         if (!p) return;
         p.name = inp.value;
         t.updatedAt = Date.now ? Date.now() : 0;
-        persistCurrentTournament(t);
+        saveSetup();
       });
     });
     el.querySelectorAll("[data-remove-player]").forEach(function (b) {
@@ -4363,7 +4392,7 @@
         var id = b.getAttribute("data-remove-player");
         t.players = t.players.filter(function (pp) { return pp.id !== id; });
         t.updatedAt = Date.now ? Date.now() : 0;
-        persistCurrentTournament(t);
+        saveSetup();
         renderTournamentView();
       });
     });
@@ -4371,7 +4400,7 @@
     if (addBtn) addBtn.addEventListener("click", function () {
       t.players.push({ id: uid("plyr"), name: "", dropped: false, userId: null });
       t.updatedAt = Date.now ? Date.now() : 0;
-      persistCurrentTournament(t);
+      saveSetup();
       renderTournamentView();
     });
     var startBtn = el.querySelector('[data-action="start-tourney"]');
@@ -4383,7 +4412,7 @@
       t.status = "active";
       generateNextRound(t);
       t.updatedAt = Date.now ? Date.now() : 0;
-      persistCurrentTournament(t);
+      saveSetup();
       renderTournamentView();
     });
   }

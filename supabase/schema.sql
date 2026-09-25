@@ -880,3 +880,13 @@ create policy "users submit their own feedback"
   on public.feedback for insert
   to authenticated
   with check (auth.uid() = user_id);
+
+-- Live tournament updates (a player joining, scores reported) reach every
+-- open browser through Supabase Realtime, which only streams tables that are
+-- in this publication. It was missing for tournaments, so an organizer's
+-- screen never learned about joins until they reopened the tournament.
+do $$
+begin
+  alter publication supabase_realtime add table public.tournaments;
+exception when duplicate_object then null;
+end $$;
