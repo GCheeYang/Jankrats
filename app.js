@@ -992,7 +992,6 @@
       (owned ? '<span class="ct-owned">×' + owned + "</span>" : "") +
       (c.imageUrl ? '<div class="ct-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
       '<div class="ct-top"><span class="ct-name">' + escapeHtml(c.name) + "</span></div>" +
-      '<div>' + domainChips(c.domains) + "</div>" +
       '<div class="ct-meta"><span>' + escapeHtml(c.rarity || "") + "</span>" +
       (c.power !== null && c.power !== undefined ? '<span class="ct-power">' + c.power + "★</span>" : "") +
       "</div>" +
@@ -1143,7 +1142,6 @@
       (c.cost !== null && c.cost !== undefined ? '<span class="ct-cost">' + c.cost + "⚡</span>" : "") +
       "</div>" +
       '<span class="coll-id-chip">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
-      "<div>" + domainChips(c.domains) + "</div>" +
       '<div class="coll-steppers">' + steppersHtml + "</div></div></div>";
   }
 
@@ -2196,7 +2194,6 @@
       '<div class="lc-name">' + escapeHtml(l.name) + escapeHtml(variantLabel(l)) + "</div>" +
       (identity ? '<div style="font-size:11.5px;color:var(--ink-faint);margin-top:-4px;">' + escapeHtml(identity) + "</div>" : "") +
       '<span class="coll-id-chip">' + escapeHtml(l.set) + " " + escapeHtml(l.collectorNumber || "") + "</span>" +
-      domainChips(l.domains) +
       '<span class="pill neutral">' + escapeHtml(l.rarity || "") + "</span>" +
       '<span class="pill ' + (owned ? "good" : "neutral") + '">' + (owned ? "Own " + owned : "Not owned") + "</span>" +
       "</div>";
@@ -2307,7 +2304,6 @@
         (c.imageUrl ? '<div class="lc-img' + (isLandscapeCard(c) ? " is-landscape" : "") + '"><img src="' + escapeHtml(c.imageUrl) + '" alt="" loading="lazy"></div>' : "") +
         '<div class="lc-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</div><div class=\"ct-meta\">" + c.cost + "⚡ / " + c.power + "★</div>" +
         '<span class="coll-id-chip">' + escapeHtml(c.set) + " " + escapeHtml(c.collectorNumber || "") + "</span>" +
-        domainChips(c.domains) +
         '<span class="pill ' + (owned ? "good" : "neutral") + '">' + (owned ? "Own " + owned : "Not owned") + "</span>" +
         "</div>";
     }).join("") + "</div>" +
