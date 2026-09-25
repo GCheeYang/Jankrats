@@ -4289,7 +4289,6 @@
     return '<div class="tourney-qr">' +
       '<div class="tourney-qr-code">' +
       qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }) + "</div>" +
-      '<p>Players can scan this to open the invite link and join.</p>' +
       "</div>";
   }
 
