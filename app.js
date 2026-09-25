@@ -1366,7 +1366,7 @@
     if (!cards.length) {
       html += '<p style="font-size:12.5px;color:var(--ink-faint);">Nothing added yet — search and click <b>+ Add</b> on any card.</p>';
     } else {
-      html += '<div class="deck-picker-list">' + cards.map(wantedListRowHtml).join("") + "</div>" +
+      html += '<div class="deck-picker-list wanted-list">' + cards.map(wantedListRowHtml).join("") + "</div>" +
         '<button class="btn small ghost" id="wt-clear" style="margin-top:10px;">Clear list</button>';
     }
     html += "</div>";
