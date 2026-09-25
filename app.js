@@ -15,6 +15,7 @@
     decks: STORAGE_PREFIX + "decks",
     deletedDeckIds: STORAGE_PREFIX + "deletedDeckIds",
     wanted: STORAGE_PREFIX + "wanted",
+    wantedQty: STORAGE_PREFIX + "wantedQty",
     tournaments: STORAGE_PREFIX + "tournaments",
     profile: STORAGE_PREFIX + "profile",
     lastAuthProvider: STORAGE_PREFIX + "lastAuthProvider"
@@ -201,6 +202,7 @@
     collection: {},
     decks: [],
     wanted: [],          // card ids the player is searching for
+    wantedQty: {},       // cardId -> how many copies they want (missing = 1)
     wantedQuery: "",     // transient search box text, not persisted
     tournaments: [],
     scanCorrections: {}, // normalized AI-detected phrase -> cardId, see loadScanCorrections
@@ -271,6 +273,7 @@
     state.decks = loadJSON(KEYS.decks, []);
     if (sanitizeDeckRunes(state.decks)) persistDecks();
     state.wanted = loadJSON(KEYS.wanted, []);
+    state.wantedQty = loadJSON(KEYS.wantedQty, {});
     state.tournaments = loadJSON(KEYS.tournaments, []);
     state.profile = loadJSON(KEYS.profile, { name: "" });
   }
@@ -301,7 +304,7 @@
     saveJSON(KEYS.cardExtras, state.cards.filter(function (c) { return !baseIds[c.id]; }));
   }
   function persistCollection() { saveJSON(KEYS.collection, state.collection); }
-  function persistWanted() { saveJSON(KEYS.wanted, state.wanted); }
+  function persistWanted() { saveJSON(KEYS.wanted, state.wanted); saveJSON(KEYS.wantedQty, state.wantedQty); }
   function persistTournaments() { saveJSON(KEYS.tournaments, state.tournaments); }
   function persistDecks() {
     saveJSON(KEYS.decks, state.decks);
@@ -349,15 +352,23 @@
 
   function isWanted(cardId) { return state.wanted.indexOf(cardId) !== -1; }
 
+  function wantedQtyOf(cardId) { return state.wantedQty[cardId] || 1; }
+
+  function setWantedQty(cardId, qty) {
+    qty = clamp(qty, 1, 99);
+    if (qty === 1) delete state.wantedQty[cardId]; else state.wantedQty[cardId] = qty;
+    persistWanted();
+  }
+
   function toggleWanted(cardId) {
     var i = state.wanted.indexOf(cardId);
-    if (i !== -1) state.wanted.splice(i, 1); else state.wanted.push(cardId);
+    if (i !== -1) { state.wanted.splice(i, 1); delete state.wantedQty[cardId]; } else state.wanted.push(cardId);
     persistWanted();
   }
 
   function removeWanted(cardId) {
     var i = state.wanted.indexOf(cardId);
-    if (i !== -1) { state.wanted.splice(i, 1); persistWanted(); }
+    if (i !== -1) { state.wanted.splice(i, 1); delete state.wantedQty[cardId]; persistWanted(); }
   }
 
   // How many of a list of card ids a given collection map (yours, a
@@ -1252,6 +1263,8 @@
   function wantedListRowHtml(c) {
     return '<div class="pick-row">' + pickRowImgHtml(c) + '<div class="pr-body"><span class="pr-name">' + escapeHtml(c.name) + escapeHtml(variantLabel(c)) + "</span>" +
       '<span class="pr-meta"><span>' + escapeHtml(c.type || "") + "</span></span></div>" +
+      '<div class="stepper" title="Copies you want"><button data-wanted-step="-1" data-wanted-id="' + c.id + '"' + (wantedQtyOf(c.id) <= 1 ? " disabled" : "") + '>−</button>' +
+      '<span class="val">' + wantedQtyOf(c.id) + '</span><button data-wanted-step="1" data-wanted-id="' + c.id + '">+</button></div>' +
       '<button class="btn small ghost" data-remove-wanted="' + c.id + '" aria-label="Remove ' + escapeHtml(c.name) + '">✕</button></div>';
   }
 
@@ -1377,8 +1390,15 @@
     el.querySelectorAll("[data-remove-wanted]").forEach(function (b) {
       b.addEventListener("click", function () { removeWanted(b.getAttribute("data-remove-wanted")); renderWantedView(); });
     });
+    el.querySelectorAll("[data-wanted-step]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = b.getAttribute("data-wanted-id");
+        setWantedQty(id, wantedQtyOf(id) + parseInt(b.getAttribute("data-wanted-step"), 10));
+        renderWantedView();
+      });
+    });
     var clear = el.querySelector("#wt-clear");
-    if (clear) clear.addEventListener("click", function () { state.wanted = []; persistWanted(); renderWantedView(); });
+    if (clear) clear.addEventListener("click", function () { state.wanted = []; state.wantedQty = {}; persistWanted(); renderWantedView(); });
 
     if (!JVBackend.isConfigured() || !state.wanted.length) return;
     if (!state.social.session) { wireSignInPrompt(el); return; }
@@ -2738,6 +2758,7 @@
           var id = m.ids && m.ids[0];
           if (!id || state.wanted.indexOf(id) !== -1) return;
           state.wanted.push(id);
+          if (m.short > 1) state.wantedQty[id] = m.short;
           added++;
         });
         if (!added) { toast("Those cards are already on your Wishlist."); return; }
