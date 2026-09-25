@@ -1403,7 +1403,7 @@ textarea { resize: vertical; min-height: 90px; }
 
 /* ---- Feedback button + modal ---- */
 .feedback-fab {
-  position: fixed; left: 18px; bottom: 18px; z-index: 45;
+  position: fixed; right: 18px; bottom: 18px; z-index: 45;
   width: 46px; height: 46px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: var(--accent); color: var(--accent-ink); border: 1px solid var(--accent-strong);
