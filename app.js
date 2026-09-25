@@ -437,7 +437,12 @@
   // some chat client's auto-linkifier still resolves.
   function tournamentCodeFromPath(pathname) {
     var m = /^\/tournament\/([^\/]+)\/?$/.exec(pathname || "");
-    return m ? decodeURIComponent(m[1]).toUpperCase() : null;
+    if (!m) return null;
+    var raw = decodeURIComponent(m[1]);
+    // A device-local tournament's id is lowercase ("tourney_..."), not a
+    // join code -- keep it as-is when it matches one we already have.
+    if ((state.tournaments || []).some(function (tt) { return tt.id === raw; })) return raw;
+    return raw.toUpperCase();
   }
   function tournamentInvitePath(code) {
     return "/tournament/" + encodeURIComponent(code);
@@ -3753,6 +3758,7 @@
      ================================================================ */
 
   var TOURNEY_ROUNDS = 3;
+  var TOURNEY_DEFAULT_ROUND_MINUTES = 30;
 
   function newTournamentObject() {
     return {
@@ -3822,6 +3828,8 @@
       '<input type="text" id="new-tourney-name" value="New Tournament"></div>' +
       '<div class="field" style="max-width:220px;margin-bottom:14px;"><label>Number of participants</label>' +
       '<input type="number" min="2" max="64" id="new-tourney-count" value="8"></div>' +
+      '<div class="field" style="max-width:220px;margin-bottom:14px;"><label>Round timer (minutes)</label>' +
+      '<input type="number" min="1" max="180" id="new-tourney-minutes" value="' + TOURNEY_DEFAULT_ROUND_MINUTES + '"></div>' +
       '<div class="field" style="margin-bottom:18px;"><label>Match format</label><div style="display:flex;gap:8px;" id="new-tourney-format">' +
       '<button type="button" class="btn small primary" data-format="bo1">Best of 1</button>' +
       '<button type="button" class="btn small" data-format="bo3">Best of 3</button>' +
@@ -3843,16 +3851,18 @@
       var name = root.querySelector("#new-tourney-name").value;
       var count = clamp(parseInt(root.querySelector("#new-tourney-count").value, 10) || 2, 2, 64);
       var format = formatWrap.querySelector(".primary").getAttribute("data-format");
+      var minutes = clamp(parseInt(root.querySelector("#new-tourney-minutes").value, 10) || TOURNEY_DEFAULT_ROUND_MINUTES, 1, 180);
       closeModal();
-      startNewTournamentFlow(name, count, format);
+      startNewTournamentFlow(name, count, format, minutes);
     });
   }
 
-  function startNewTournamentFlow(name, count, format) {
+  function startNewTournamentFlow(name, count, format, minutes) {
     if (JVBackend.isConfigured() && !state.social.session) { toast("Sign in to create a tournament."); return; }
     var t = newTournamentObject();
     if (name && name.trim()) t.name = name.trim();
     t.format = format || t.format;
+    t.roundMinutes = minutes || TOURNEY_DEFAULT_ROUND_MINUTES;
     count = count || 8;
     for (var i = 0; i < count; i++) t.players.push({ id: uid("plyr"), name: "", dropped: false, userId: null });
     if (JVBackend.isConfigured() && JVBackend.currentUserId()) {
@@ -4201,7 +4211,42 @@
       var order = tourneyStandings(t).map(function (r) { return r.player; }).filter(function (p) { return !p.dropped; });
       matches = tourneyPairSwiss(t, order);
     }
-    t.rounds.push({ number: roundNum, matches: matches });
+    // startedAt is what the round timer counts down from (see
+    // tourneyTimerText) -- lives in the shared tournament data, so every
+    // participant sees the same clock, not just the organizer's device.
+    t.rounds.push({ number: roundNum, matches: matches, startedAt: Date.now() });
+  }
+
+  // Minutes left in a round as "mm:ss", or null when there's nothing to
+  // count (old tournaments/rounds created before timers existed).
+  function tourneyTimerText(t, round) {
+    if (!round || !round.startedAt) return null;
+    var endsAt = round.startedAt + (t.roundMinutes || TOURNEY_DEFAULT_ROUND_MINUTES) * 60000;
+    var left = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+    var mm = Math.floor(left / 60), ss = left % 60;
+    return { left: left, text: (mm < 10 ? "0" : "") + mm + ":" + (ss < 10 ? "0" : "") + ss };
+  }
+
+  function tourneyTimerClass(secondsLeft) {
+    return secondsLeft <= 0 ? "over" : secondsLeft <= 300 ? "low" : "ok";
+  }
+
+  // One page-wide ticker that just rewrites the text of whichever timer
+  // pill is currently on screen -- no re-render, so it can't disturb
+  // anything the organizer is mid-typing/clicking.
+  var tourneyTimerInterval = null;
+  function tourneyEnsureTimerTick() {
+    if (tourneyTimerInterval) return;
+    tourneyTimerInterval = setInterval(function () {
+      var pill = document.getElementById("tourney-timer");
+      if (!pill) return;
+      var t = currentTournament();
+      if (!t || !t.rounds.length) return;
+      var tm = tourneyTimerText(t, t.rounds[t.rounds.length - 1]);
+      if (!tm) return;
+      pill.textContent = tm.left ? tm.text : "Time!";
+      pill.className = "tourney-timer " + tourneyTimerClass(tm.left);
+    }, 1000);
   }
 
   /* ---------------- render ---------------- */
@@ -4226,6 +4271,17 @@
       return;
     }
     if (t && consumePendingRosterUpdate(t.id)) t = currentTournament();
+    // A tournament already running before round timers existed has no
+    // start time on its current round -- give it one (and the default
+    // length) the first time its organizer opens it. Only the organizer can
+    // write it, and it syncs to participants like any other edit; until
+    // then they just see no timer.
+    if (t && t.status === "active" && t.rounds.length && tourneyIsOrganizer(t) && !t.rounds[t.rounds.length - 1].startedAt) {
+      t.rounds[t.rounds.length - 1].startedAt = Date.now();
+      t.roundMinutes = t.roundMinutes || TOURNEY_DEFAULT_ROUND_MINUTES;
+      t.updatedAt = Date.now();
+      persistCurrentTournament(t);
+    }
     tourneyEnsureLiveSync(t);
     var html = "";
     if (!t) {
@@ -4592,6 +4648,8 @@
     var isOrganizer = tourneyIsOrganizer(t);
     var myId = !isOrganizer ? JVBackend.currentUserId() : null;
     var mePlayer = myId ? t.players.filter(function (p) { return p.userId === myId; })[0] : null;
+    var timer = t.status === "active" ? tourneyTimerText(t, latestRound) : null;
+    if (timer) tourneyEnsureTimerTick();
     var html = "<div>";
     html += '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
       (isOrganizer
@@ -4620,6 +4678,11 @@
           html += '<div class="callout" style="margin-bottom:16px;">You\'re at <b>Table ' + myTable + "</b> vs <b>" + escapeHtml(opp.name) + "</b></div>";
         }
       }
+    }
+
+    if (timer && viewingLatest) {
+      html += '<div class="tourney-timer-wrap"><div class="tourney-timer-label">Round ' + latestRound.number + ' time remaining</div>' +
+        '<div id="tourney-timer" class="tourney-timer ' + tourneyTimerClass(timer.left) + '">' + (timer.left ? timer.text : "Time!") + "</div></div>";
     }
 
     if (t.rounds.length > 1) {

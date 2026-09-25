@@ -1433,6 +1433,12 @@ textarea { resize: vertical; min-height: 90px; }
 }
 button, a, [role="button"], label, select, summary { touch-action: manipulation; }
 
+.tourney-timer-wrap { text-align: center; margin-bottom: 18px; padding: 14px 10px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; }
+.tourney-timer-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); }
+.tourney-timer { font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: clamp(52px, 16vw, 96px); line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--ink); }
+.tourney-timer.low { color: var(--warn); }
+.tourney-timer.over { color: var(--bad); animation: tourney-timer-pulse 1s ease-in-out infinite; }
+@keyframes tourney-timer-pulse { 50% { opacity: 0.45; } }
 .tourney-share-buttons { display: flex; flex-basis: 100%; gap: 8px; }
 .tourney-share-buttons .btn { flex: none; white-space: nowrap; }
 .tourney-qr { display: flex; justify-content: center; }
