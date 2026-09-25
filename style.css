@@ -1433,5 +1433,7 @@ textarea { resize: vertical; min-height: 90px; }
 }
 button, a, [role="button"], label, select, summary { touch-action: manipulation; }
 
+.tourney-share-buttons { display: flex; flex-basis: 100%; gap: 8px; }
+.tourney-share-buttons .btn { flex: none; white-space: nowrap; }
 .tourney-qr { display: flex; justify-content: center; }
 .tourney-qr-code { background: #fff; padding: 8px; border-radius: 10px; width: min(240px, 100%); aspect-ratio: 1; box-sizing: border-box; line-height: 0; }

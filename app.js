@@ -4312,9 +4312,13 @@
       html += '<div class="callout" style="margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
         '<span>' + (isOrganizer ? "Share this code so players can join:" : "Joined as a participant. Tournament code:") + "</span>" +
         '<span style="font-family:\'IBM Plex Mono\',monospace;font-weight:700;font-size:16px;letter-spacing:0.08em;">' + escapeHtml(t.id) + "</span>" +
-        (isOrganizer ? '<button type="button" class="btn small" data-action="copy-code">Copy code</button>' : "") +
-        (isOrganizer ? '<button type="button" class="btn small primary" data-action="copy-link">Copy invite link</button>' : "") +
-        (isOrganizer ? '<button type="button" class="btn small" data-action="show-qr">Show QR code</button>' : "") +
+        (isOrganizer
+          ? '<div class="tourney-share-buttons">' +
+            '<button type="button" class="btn small" data-action="copy-code">Copy code</button>' +
+            '<button type="button" class="btn small" data-action="show-qr">QR code</button>' +
+            '<button type="button" class="btn small primary" data-action="copy-link">Copy link</button>' +
+            "</div>"
+          : "") +
         "</div>";
     }
 
