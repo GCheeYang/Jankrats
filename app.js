@@ -4278,18 +4278,25 @@
     }
   }
 
-  // Scannable version of the invite link, for players standing next to the
-  // organizer. Always dark-on-white regardless of theme (a QR needs that
-  // contrast to scan); renders nothing if the QR library didn't load.
-  function tourneyQrHtml(url) {
-    if (typeof window.qrcode !== "function") return "";
-    var qr = window.qrcode(0, "M");
-    qr.addData(url);
-    qr.make();
-    return '<div class="tourney-qr">' +
-      '<div class="tourney-qr-code">' +
-      qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }) + "</div>" +
-      "</div>";
+  // Scannable version of the invite link, in a modal so it isn't taking up
+  // the whole screen on mobile. Always dark-on-white regardless of theme (a
+  // QR needs that contrast to scan); says so if the QR library didn't load.
+  function openTourneyQrModal(url) {
+    var root = document.getElementById("modal-root");
+    var body;
+    if (typeof window.qrcode === "function") {
+      var qr = window.qrcode(0, "M");
+      qr.addData(url);
+      qr.make();
+      body = '<div class="tourney-qr-code">' + qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true }) + "</div>";
+    } else {
+      body = '<p style="color:var(--ink-faint);">Couldn\'t load the QR code -- use the invite link instead.</p>';
+    }
+    root.innerHTML = '<div class="modal-backdrop" id="tourney-qr-modal"><div class="modal">' +
+      '<div class="modal-head"><h2 style="font-size:19px;">Invite QR code</h2><button class="modal-close" data-close>&times;</button></div>' +
+      '<div class="tourney-qr">' + body + "</div></div></div>";
+    root.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", closeModal); });
+    root.querySelector("#tourney-qr-modal").addEventListener("click", function (e) { if (e.target.id === "tourney-qr-modal") closeModal(); });
   }
 
   function tourneyFormatLabelHtml(t) {
@@ -4307,8 +4314,8 @@
         '<span style="font-family:\'IBM Plex Mono\',monospace;font-weight:700;font-size:16px;letter-spacing:0.08em;">' + escapeHtml(t.id) + "</span>" +
         (isOrganizer ? '<button type="button" class="btn small" data-action="copy-code">Copy code</button>' : "") +
         (isOrganizer ? '<button type="button" class="btn small primary" data-action="copy-link">Copy invite link</button>' : "") +
+        (isOrganizer ? '<button type="button" class="btn small" data-action="show-qr">Show QR code</button>' : "") +
         "</div>";
-      if (isOrganizer) html += tourneyQrHtml(window.location.origin + tournamentInvitePath(t.id));
     }
 
     if (isOrganizer && t.organizerId) {
@@ -4380,6 +4387,11 @@
 
     var copyBtn = el.querySelector('[data-action="copy-code"]');
     if (copyBtn) copyBtn.addEventListener("click", function () { copyToClipboard(t.id); toast("Code copied."); });
+
+    var qrBtn = el.querySelector('[data-action="show-qr"]');
+    if (qrBtn) qrBtn.addEventListener("click", function () {
+      openTourneyQrModal(window.location.origin + tournamentInvitePath(t.id));
+    });
 
     var copyLinkBtn = el.querySelector('[data-action="copy-link"]');
     if (copyLinkBtn) copyLinkBtn.addEventListener("click", function () {
