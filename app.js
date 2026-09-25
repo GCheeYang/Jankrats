@@ -1287,8 +1287,8 @@
         var c = state.cardsById[cardId];
         if (!c) return "";
         var e = coll[cardId];
-        var has = e && (e.qty || 0) + (e.foil || 0) > 0;
-        return '<span class="pill ' + (has ? "good" : "bad") + '">' + (has ? "✓ " : "✗ ") + escapeHtml(c.name) + "</span>";
+        var qty = e ? (e.qty || 0) + (e.foil || 0) : 0;
+        return qty > 0 ? '<span class="pill good">' + escapeHtml(c.name) + " ×" + qty + "</span>" : "";
       }).join("") + "</div>";
     }
     return html;
@@ -3415,6 +3415,13 @@
     });
   }
 
+  function ownedQty(ids, collection) {
+    return ids.reduce(function (n, id) {
+      var e = collection[id];
+      return n + (e ? (e.qty || 0) + (e.foil || 0) : 0);
+    }, 0);
+  }
+
   function deckMatchBodyHtml() {
     var dm = state.social.deckMatch;
     if (!dm) return "";
@@ -3470,8 +3477,8 @@
     if (expanded && owned !== null) {
       var coll = state.social.wantedCollections[p.id] || {};
       html += '<div class="wanted-match-detail">' + dm.items.map(function (item) {
-        var has = hasAnyOwned(item.ids, coll);
-        return '<span class="pill ' + (has ? "good" : "bad") + '">' + (has ? "✓ " : "✗ ") + escapeHtml(item.name) + "</span>";
+        var qty = ownedQty(item.ids, coll);
+        return qty > 0 ? '<span class="pill good">' + escapeHtml(item.name) + " ×" + qty + "</span>" : "";
       }).join("") + "</div>";
     }
     return html;
