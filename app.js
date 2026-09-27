@@ -599,6 +599,8 @@
     html += '<div class="view-head"><div><p>Your ledger for tracking the Riftbound cards you own and the jank decks you keep building instead of the meta ones.</p></div>' +
       '<button class="btn primary" data-action="new-deck">+ New deck</button></div>';
 
+    html += dashboardNameSectionHtml();
+
     html += '<div class="stat-row">' +
       statCard(totalOwned, "Total cards owned") +
       statCard(uniqueOwned, "Unique cards owned") +
@@ -631,8 +633,60 @@
     el.querySelector("#change-banner-btn").addEventListener("click", openBannerPicker);
     var dashSignout = el.querySelector("#dash-signout");
     if (dashSignout) dashSignout.addEventListener("click", function () { JVBackend.signOut(); });
+    wireDashboardNameSection(el);
     el.querySelectorAll("[data-card-id]").forEach(function (t) {
       t.addEventListener("click", function () { openCardDetail(t.getAttribute("data-card-id")); });
+    });
+  }
+
+  var DISPLAY_NAME_COOLDOWN_MS = 15 * 24 * 60 * 60 * 1000;
+
+  // null display_name_changed_at means it's still the OAuth-seeded name and
+  // has never been manually changed -- always free (this is the "editable
+  // on sign-up" case). The server enforces the same 15-day window
+  // (see enforce_display_name_cooldown in supabase/schema.sql); this is
+  // just so the UI doesn't offer a Save button that's certain to be
+  // rejected, and can say how long is left.
+  function displayNameCooldown(profile) {
+    if (!profile || !profile.display_name_changed_at) return { locked: false, daysLeft: 0 };
+    var msLeft = DISPLAY_NAME_COOLDOWN_MS - (Date.now() - new Date(profile.display_name_changed_at).getTime());
+    return msLeft > 0 ? { locked: true, daysLeft: Math.ceil(msLeft / (24 * 60 * 60 * 1000)) } : { locked: false, daysLeft: 0 };
+  }
+
+  // Only meaningful for a signed-in cloud profile -- there's nothing to
+  // rename in local-only mode (no backend, or not signed in), so the
+  // section just doesn't render then.
+  function dashboardNameSectionHtml() {
+    var profile = state.social.myProfile;
+    if (!JVBackend.isConfigured() || !state.social.session || !profile) return "";
+    var cd = displayNameCooldown(profile);
+    return '<div class="section-block"><h2>Display name</h2>' +
+      '<div class="field" style="max-width:320px;margin-bottom:8px;">' +
+      '<input type="text" id="display-name-input" maxlength="40" value="' + escapeHtml(profile.display_name || "") + '"' + (cd.locked ? " disabled" : "") + "></div>" +
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+      '<button class="btn small primary" id="save-display-name"' + (cd.locked ? " disabled" : "") + ">Save name</button>" +
+      '<span style="font-size:12.5px;color:var(--ink-faint);">' +
+      (cd.locked ? "You can change this again in " + cd.daysLeft + " day" + (cd.daysLeft === 1 ? "" : "s") + "." : "You can change this once every 15 days.") +
+      "</span></div></div>";
+  }
+
+  function wireDashboardNameSection(el) {
+    var saveBtn = el.querySelector("#save-display-name");
+    if (!saveBtn) return;
+    saveBtn.addEventListener("click", function () {
+      var input = el.querySelector("#display-name-input");
+      var name = (input.value || "").trim();
+      if (!name) { toast("Enter a display name."); return; }
+      if (name === (state.social.myProfile.display_name || "")) { toast("That's already your display name."); return; }
+      saveBtn.disabled = true;
+      JVBackend.updateMyProfile({ display_name: name }).then(function (row) {
+        state.social.myProfile = row;
+        toast("Display name updated.");
+        renderDashboard();
+      }).catch(function (err) {
+        toast((err && err.message) || "Couldn't update your display name.");
+        saveBtn.disabled = false;
+      });
     });
   }
 

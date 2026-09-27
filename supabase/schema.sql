@@ -10,8 +10,13 @@ create table if not exists public.profiles (
   display_name text not null default 'Anonymous brewer',
   avatar_url text,                    -- from Google account, informational only
   champion_banner_card_id text,       -- id from the Riftbound card database, e.g. "OGN-066/298"
+  display_name_changed_at timestamptz, -- null = never manually changed (the OAuth-seeded name doesn't count), so the first edit is always free
   created_at timestamptz not null default now()
 );
+
+-- Cleans up an already-created table -- the create above won't retroactively
+-- add this to one that already exists.
+alter table public.profiles add column if not exists display_name_changed_at timestamptz;
 
 alter table public.profiles enable row level security;
 
@@ -55,6 +60,34 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- Rate-limits display_name changes to once every 15 days -- enforced here,
+-- not just client-side, since RLS's own using/with check clauses can't see
+-- the OLD row to compare against. The very first change is always free
+-- (display_name_changed_at is still null, seeded by handle_new_user above);
+-- every change after that stamps the new changed_at so the next one is
+-- timed from it. Any other profile field (avatar, banner) updates freely.
+create or replace function public.enforce_display_name_cooldown()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.display_name is distinct from old.display_name then
+    if old.display_name_changed_at is not null
+       and now() - old.display_name_changed_at < interval '15 days' then
+      raise exception 'You can only change your display name once every 15 days.'
+        using errcode = 'P0001';
+    end if;
+    new.display_name_changed_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_display_name_cooldown on public.profiles;
+create trigger profiles_display_name_cooldown
+  before update on public.profiles
+  for each row execute function public.enforce_display_name_cooldown();
 
 -- ---------------------------------------------------------------------------
 -- collection_entries: how many of each card a player owns, one row per

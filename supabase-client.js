@@ -120,7 +120,7 @@
     var c = client_(); var uid = currentUserId();
     if (!c || !uid) return Promise.reject(new Error("Not signed in"));
     return c.from("profiles").update(fields).eq("id", uid).select().single()
-      .then(function (r) { return r.data; });
+      .then(function (r) { if (r.error) throw r.error; return r.data; });
   }
 
   /* ---------------- collection (shared with friends) ---------------- */
