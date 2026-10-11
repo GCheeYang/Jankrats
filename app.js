@@ -4999,12 +4999,12 @@
   // qty, foil) are exactly what the CSV importer reads, so the file can be
   // imported back; the rest are reference details for other tools.
   function cardsToCsv(entries) {
-    var header = ["id", "name", "qty", "foil", "set", "set_name", "collector_number", "type", "domains", "rarity", "cost", "power", "price_usd", "foil_price_usd"];
+    var header = ["id", "name", "qty", "foil", "set", "set_name", "collector_number", "type", "domains", "rarity", "price_usd", "foil_price_usd"];
     var lines = [header.join(",")];
     entries.forEach(function (r) {
       var c = r.c, p = c.price || {};
       lines.push([c.id, c.name, r.qty, r.foil || 0, c.set, c.setName, c.collectorNumber, c.type, (c.domains || []).join("; "), c.rarity,
-        c.cost, c.power, p.en !== null && p.en !== undefined ? Number(p.en).toFixed(2) : "",
+        p.en !== null && p.en !== undefined ? Number(p.en).toFixed(2) : "",
         p.enFoil !== null && p.enFoil !== undefined ? Number(p.enFoil).toFixed(2) : ""].map(csvCell).join(","));
     });
     return lines.join(CSV_EOL) + CSV_EOL;
