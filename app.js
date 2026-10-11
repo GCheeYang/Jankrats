@@ -1220,6 +1220,47 @@
     });
   }
 
+  // Cards scanned or edited on another device (typically the phone) live in
+  // the account's cloud collection, but this device only pulls that down at
+  // the moment of sign-in -- an already-signed-in desktop would keep showing
+  // its stale local copy. So the first time Collection opens on each page
+  // load, quietly re-read the account's collection and re-render if it differs.
+  var collectionCloudRefreshed = false;
+  function refreshCollectionFromCloudOnce() {
+    if (collectionCloudRefreshed || !JVBackend.isConfigured() || !JVBackend.currentUserId()) return;
+    collectionCloudRefreshed = true;
+    JVBackend.listMyCollection().then(function (cloud) {
+      if (!Object.keys(cloud).length) return;
+      if (JSON.stringify(cloud) === JSON.stringify(state.collection)) return;
+      state.collection = cloud;
+      persistCollection();
+      renderRail();
+      if (state.route === "collection") renderCollectionView();
+    }).catch(function () { collectionCloudRefreshed = false; });
+  }
+
+  // Whole-collection CSV. Reads the account's collection at click time (so
+  // it includes cards just scanned on a phone) and falls back to this
+  // device's copy when signed out or offline.
+  function downloadCollectionCsv(btn) {
+    btn.disabled = true;
+    var cloud = JVBackend.isConfigured() && JVBackend.currentUserId()
+      ? JVBackend.listMyCollection().catch(function () { return null; })
+      : Promise.resolve(null);
+    cloud.then(function (map) {
+      var source = map && Object.keys(map).length ? map : state.collection;
+      var entries = Object.keys(source).map(function (id) {
+        var e = source[id], c = state.cardsById[id];
+        return c && ((e.qty || 0) + (e.foil || 0)) > 0 ? { c: c, qty: e.qty || 0, foil: e.foil || 0 } : null;
+      }).filter(Boolean).sort(function (a, b) {
+        return (a.c.set || "").localeCompare(b.c.set || "") || (a.c.collectorNumber || "").localeCompare(b.c.collectorNumber || "", undefined, { numeric: true }) || a.c.name.localeCompare(b.c.name);
+      });
+      if (!entries.length) { toast("Your collection is empty — nothing to download."); return; }
+      downloadCsv(cardsToCsv(entries), "jankrats-collection-" + new Date().toISOString().slice(0, 10) + ".csv");
+      toast("Downloaded " + entries.length + " card" + (entries.length === 1 ? "" : "s") + ".");
+    }).then(function () { btn.disabled = false; }, function () { btn.disabled = false; toast("Couldn't build the CSV."); });
+  }
+
   function renderCollectionView() {
     var el = document.getElementById("view-collection");
     var topTabsHtml = collectionTopTabsHtml("cards");
@@ -1239,7 +1280,8 @@
     var page = list.slice(0, shown);
 
     var html = topTabsHtml + '<div class="view-head"><div><h1>Collection</h1><p>You own — ' + uniqueOwned + " / " + state.cards.length + " unique cards! (" + pct + '%). Browse <b>Explore Cards</b> to find search for new cards.</p></div>' +
-      '<button class="btn primary" id="open-import-btn">Import cards</button></div>';
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn" id="download-collection-btn">Download CSV</button>' +
+      '<button class="btn primary" id="open-import-btn">Import cards</button></div></div>';
 
     html += '<div class="toolbar">' +
       field("Search", '<input type="search" id="cof-q" placeholder="Name or text…" value="' + escapeHtml(collFilterState.q) + '">') +
@@ -1261,6 +1303,9 @@
     el.innerHTML = html;
     wireCollectionTopTabs(el);
     el.querySelector("#open-import-btn").addEventListener("click", openImportModal);
+    var dlBtn = el.querySelector("#download-collection-btn");
+    if (dlBtn) dlBtn.addEventListener("click", function () { downloadCollectionCsv(dlBtn); });
+    refreshCollectionFromCloudOnce();
     var q = el.querySelector("#cof-q");
     if (q) q.addEventListener("input", function () { collFilterState.q = q.value; collFilterState.limit = COLL_PAGE_SIZE; rerenderSoft(el, renderCollectionView); });
     ["domain", "type", "rarity"].forEach(function (k) {
