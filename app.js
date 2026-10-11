@@ -4951,7 +4951,6 @@
     html += '<div class="tabs" style="margin-bottom:14px;">' +
       importMethodTabBtn("scan", "Photo / Video") +
       importMethodTabBtn("text", "CSV / JSON") +
-      importMethodTabBtn("export", "Export CSV") +
       "</div>";
     html += '<div id="import-method-panel">' + importMethodPanelHtml() + "</div>";
     return html;
@@ -4962,7 +4961,6 @@
   }
 
   function importMethodPanelHtml() {
-    if (importMethodTab === "export") return renderExportSection();
     return importMethodTab === "scan" ? renderScanImportSection() : renderTextImportSection();
   }
 
@@ -4987,67 +4985,43 @@
 
   function wireImportMethodPanel(panel) {
     if (importMethodTab === "scan") wireScanImport(panel);
-    else if (importMethodTab === "export") wireExportSection(panel);
     else wireTextImport(panel);
   }
 
-  /* ---------------- export collection as CSV ---------------- */
+  /* ---------------- CSV download of scanned cards ---------------- */
 
   function csvCell(v) {
     var t = v === null || v === undefined ? "" : String(v);
     return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
   }
 
-  // One row per owned card. The first four columns (id, name, qty, foil)
-  // are exactly what the CSV importer reads, so an export can be imported
-  // straight back; the rest are reference details for other tools.
-  function collectionToCsv() {
+  // entries: [{ c: card, qty, foil }]. The first four columns (id, name,
+  // qty, foil) are exactly what the CSV importer reads, so the file can be
+  // imported back; the rest are reference details for other tools.
+  function cardsToCsv(entries) {
     var header = ["id", "name", "qty", "foil", "set", "set_name", "collector_number", "type", "domains", "rarity", "cost", "power", "price_usd", "foil_price_usd"];
-    var rows = Object.keys(state.collection).map(function (id) {
-      var e = state.collection[id], c = state.cardsById[id];
-      if (!c || ((e.qty || 0) + (e.foil || 0)) <= 0) return null;
-      return { c: c, qty: e.qty || 0, foil: e.foil || 0 };
-    }).filter(Boolean).sort(function (a, b) {
-      return (a.c.set || "").localeCompare(b.c.set || "") || (a.c.collectorNumber || "").localeCompare(b.c.collectorNumber || "", undefined, { numeric: true }) || a.c.name.localeCompare(b.c.name);
-    });
     var lines = [header.join(",")];
-    rows.forEach(function (r) {
+    entries.forEach(function (r) {
       var c = r.c, p = c.price || {};
-      lines.push([c.id, c.name, r.qty, r.foil, c.set, c.setName, c.collectorNumber, c.type, (c.domains || []).join("; "), c.rarity,
+      lines.push([c.id, c.name, r.qty, r.foil || 0, c.set, c.setName, c.collectorNumber, c.type, (c.domains || []).join("; "), c.rarity,
         c.cost, c.power, p.en !== null && p.en !== undefined ? Number(p.en).toFixed(2) : "",
         p.enFoil !== null && p.enFoil !== undefined ? Number(p.enFoil).toFixed(2) : ""].map(csvCell).join(","));
     });
-    return { csv: lines.join("\r\n") + "\r\n", rows: rows.length, copies: rows.reduce(function (n, r) { return n + r.qty + r.foil; }, 0) };
+    return lines.join(CSV_EOL) + CSV_EOL;
   }
 
-  function renderExportSection() {
-    var info = collectionToCsv();
-    var html = '<p style="color:var(--ink-soft);margin-bottom:12px;">Download your whole collection as a CSV spreadsheet — handy as a backup or for moving it to another tool.</p>';
-    if (!info.rows) {
-      return html + '<div class="empty-state"><h3>Nothing to export yet</h3><p>Add some cards to your collection first.</p></div>';
-    }
-    html += '<p style="font-size:12.5px;color:var(--ink-faint);margin-bottom:14px;"><b>' + info.rows + "</b> unique card" + (info.rows === 1 ? "" : "s") + ", <b>" + info.copies + "</b> total cop" + (info.copies === 1 ? "y" : "ies") +
-      ". Columns: id, name, qty, foil, set, set name, collector number, type, domains, rarity, cost, power, price (USD), foil price (USD). The file can be imported back using the CSV / JSON tab.</p>";
-    html += '<button class="btn primary" id="export-csv-btn">Download CSV</button>';
-    return html;
-  }
+  var CSV_EOL = String.fromCharCode(13, 10);
 
-  function wireExportSection(root) {
-    var btn = root.querySelector("#export-csv-btn");
-    if (!btn) return;
-    btn.addEventListener("click", function () {
-      var info = collectionToCsv();
-      var blob = new Blob(["\ufeff" + info.csv], { type: "text/csv;charset=utf-8" });
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url;
-      a.download = "jankrats-collection-" + new Date().toISOString().slice(0, 10) + ".csv";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-      toast("Exported " + info.rows + " cards.");
-    });
+  function downloadCsv(csv, filename) {
+    var blob = new Blob([String.fromCharCode(0xFEFF) + csv], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
   function renderTextImportSection() {
@@ -5159,7 +5133,7 @@
     return c.name + variantLabel(c) + " — " + c.set + " " + (c.collectorNumber || "");
   }
 
-  function matchResultsTableHtml(results, addLabel) {
+  function matchResultsTableHtml(results, addLabel, opts) {
     if (!results.length) return "";
     var html = '<div style="overflow-x:auto;"><table class="coll-table"><thead><tr>' +
       "<th>Card</th><th>Qty</th><th>Add</th>" +
@@ -5177,7 +5151,8 @@
           "</tr>";
       }).join("") +
       "</tbody></table></div>";
-    html += '<div style="margin-top:10px;"><button class="btn primary" data-match-add type="button">' + escapeHtml(addLabel) + "</button></div>";
+    html += '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;"><button class="btn primary" data-match-add type="button">' + escapeHtml(addLabel) + "</button>" +
+      (opts && opts.csv ? '<button class="btn" data-match-csv type="button">Download CSV</button>' : "") + "</div>";
     return html;
   }
 
@@ -5427,7 +5402,7 @@
   }
 
   function scanResultsHtml() {
-    return matchResultsTableHtml(scanImportState.results, "Add checked cards to collection");
+    return matchResultsTableHtml(scanImportState.results, "Add checked cards to collection", { csv: true });
   }
 
   function rerenderScanResults() {
@@ -5437,8 +5412,24 @@
     wireScanResultsControls();
   }
 
+  // Downloads the scanned cards that are currently ticked (with whatever
+  // quantity is in the table) as a CSV, without adding them to the collection.
+  function downloadScanCsv(host) {
+    var entries = [];
+    scanImportState.results.forEach(function (r, i) {
+      var chk = host.querySelector('input[data-field="include"][data-row="' + i + '"]');
+      var card = r.cardId ? state.cardsById[r.cardId] : null;
+      if (chk && chk.checked && card && r.qty > 0) entries.push({ c: card, qty: r.qty, foil: 0 });
+    });
+    if (!entries.length) { toast("Tick at least one matched card to download."); return; }
+    downloadCsv(cardsToCsv(entries), "jankrats-scan-" + new Date().toISOString().slice(0, 10) + ".csv");
+    toast("Downloaded " + entries.length + " card" + (entries.length === 1 ? "" : "s") + ".");
+  }
+
   function wireScanResultsControls() {
     var host = document.getElementById("scan-results");
+    var csvBtn = host && host.querySelector("[data-match-csv]");
+    if (csvBtn) csvBtn.addEventListener("click", function () { downloadScanCsv(host); });
     wireMatchResultsTable(host, scanImportState.results, function () {
       scanImportState.results = [];
       rerenderScanResults();
